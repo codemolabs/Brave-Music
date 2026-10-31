@@ -1633,6 +1633,14 @@ webview {
   flex-wrap: wrap;
 }
 
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .sort-control {
   display: inline-flex;
   align-items: center;
@@ -3852,31 +3860,31 @@ webview {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.82rem;
-  font-weight: 600;
-  padding: 0 14px;
-  height: 38px;
-  border-radius: 9px;
-  background: var(--bg-surface-elevated);
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0 13px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.4);
   border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all var(--duration-fast);
   cursor: pointer;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .select-mode-btn:hover {
-  background: var(--bg-surface-hover);
+  background: rgba(255, 255, 255, 0.06);
   border-color: var(--border-hover);
   color: var(--text-main);
-  transform: translateY(-1px);
 }
 
 .select-mode-btn.active {
-  background: rgba(251, 84, 43, 0.16);
+  background: rgba(251, 84, 43, 0.12);
   border-color: var(--accent-brave);
   color: #ff7a59;
-  box-shadow: 0 0 16px rgba(251, 84, 43, 0.25);
+  box-shadow: 0 0 0 2px rgba(251, 84, 43, 0.15), 0 0 16px rgba(251, 84, 43, 0.2);
 }
 
 /* Bulk Selection Action Bar */
@@ -3884,13 +3892,14 @@ webview {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  margin-bottom: 14px;
+  padding: 8px 16px;
+  margin-top: 10px;
+  margin-bottom: 8px;
   background: linear-gradient(135deg, rgba(21, 24, 34, 0.95), rgba(14, 16, 23, 0.98));
-  border: 1px solid rgba(251, 84, 43, 0.3);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 20px rgba(251, 84, 43, 0.12);
-  animation: slideDownSelection 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid rgba(251, 84, 43, 0.32);
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), 0 0 16px rgba(251, 84, 43, 0.1);
+  animation: slideDownSelection 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes slideDownSelection {
@@ -3907,7 +3916,14 @@ webview {
 .selection-bar-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
+}
+
+.selection-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 2px;
 }
 
 .selection-bar-right {
@@ -4034,14 +4050,55 @@ webview {
   box-shadow: none;
 }
 
-/* Table Row Selection Highlighting */
-.tracks-table tbody tr.row-selected {
+/* Selection Done Button */
+.selection-done-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+
+.selection-done-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+/* Table in Select Mode - Simple & Fluid Interaction */
+.tracks-table.select-mode-active tbody tr {
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tracks-table.select-mode-active tbody tr:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.tracks-table.select-mode-active tbody tr.row-selected {
   background: rgba(251, 84, 43, 0.12) !important;
   box-shadow: inset 3px 0 0 var(--accent-brave);
 }
 
-.tracks-table tbody tr.row-selected td {
-  color: var(--text-main);
+.tracks-table.select-mode-active tbody tr.row-selected td {
+  color: #ffffff;
+}
+
+.tracks-table.select-mode-active tbody tr.row-builtin-protected {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tracks-table.select-mode-active tbody tr.row-builtin-protected:hover {
+  background: transparent;
 }
 
 .col-num.select-cell {

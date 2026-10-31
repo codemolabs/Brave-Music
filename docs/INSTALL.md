@@ -48,10 +48,10 @@ The official standalone Debian package installs Brave Music with all system menu
 ### Step 1: Download or Build the Package
 Download the latest verified package directly from GitHub Releases:
 ```bash
-wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.2/brave-music_1.0.2_amd64.deb
+wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.3/brave-music_1.0.3_amd64.deb
 ```
 
-Direct binary download: [**brave-music_1.0.2_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.2/brave-music_1.0.2_amd64.deb)
+Direct binary download: [**brave-music_1.0.3_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.3/brave-music_1.0.3_amd64.deb)
 
 Or build it locally from source:
 ```bash
@@ -61,17 +61,17 @@ npm run build:deb
 ### Step 2: Verify Package Integrity (SHA-256)
 Before installing, verify that the package hash matches the official release record:
 ```bash
-sha256sum brave-music_1.0.2_amd64.deb
+sha256sum brave-music_1.0.3_amd64.deb
 ```
 Expected output:
 ```text
-b473bc8dd13d7f12fcf6de1a23f70e0a7c6c65f4f0d19ce6bd2ace23a49c4b59  brave-music_1.0.2_amd64.deb
+fa4e43f52e8432946f52e25b72efe884bcda07aad330f26930318ecb56f191ae  brave-music_1.0.3_amd64.deb
 ```
 
 ### Step 3: Install Package via APT
 Use `apt install` so that any missing distribution dependencies are automatically resolved:
 ```bash
-sudo apt install ./brave-music_1.0.2_amd64.deb
+sudo apt install ./brave-music_1.0.3_amd64.deb
 ```
 
 ### Step 4: Launch Brave Music

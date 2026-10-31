@@ -26,6 +26,29 @@ All official releases follow [Semantic Versioning 2.0.0](https://semver.org/):
 
 ## Release History
 
+### Release v1.0.3 (Select Button Repositioning & Simple Selection UI/UX)
+- **Release Date**: November 1, 2026
+- **Release Tag**: `v1.0.3`
+- **Target Architecture**: Linux `x86_64` / `amd64`
+- **License**: GPL-3.0 (Codemo OSL)
+- **Direct Download**: [**brave-music_1.0.3_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.3/brave-music_1.0.3_amd64.deb)
+
+#### Package Checksums (SHA-256)
+```text
+fa4e43f52e8432946f52e25b72efe884bcda07aad330f26930318ecb56f191ae  brave-music_1.0.3_amd64.deb
+```
+
+#### Highlights and Fixes
+- **Toolbar Layout Repositioning**: Positioned the Select Button on the left side of the Sort dropdown button, and the Search Bar on the right side of the Sort dropdown button (`[Select] -> [Sort By] -> [Search Bar]`).
+- **Simple Selection UI/UX**:
+  - Entire track rows are single-click interactive in selection mode for simple and immediate selection toggling.
+  - In-place reactive DOM updates without redrawing the table, providing a fluid 60fps experience.
+  - Pressing `Escape` or clicking "Done" cleanly exits selection mode.
+  - Custom checkbox styling with orange accent glow and soft row highlight.
+  - Core built-in tracks are protected with a disabled lock state.
+
+---
+
 ### Release v1.0.2 (Info Button Dynamic Version Sync & Stable Release)
 - **Release Date**: November 1, 2026
 - **Release Tag**: `v1.0.2`

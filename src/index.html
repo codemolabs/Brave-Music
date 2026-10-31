@@ -256,10 +256,21 @@
                 <span class="segment-badge" id="badge-playlists">0</span>
               </button>
             </div>
+          </div>
 
-            <!-- Custom Dark Sort Controls -->
+          <div class="toolbar-right">
+            <!-- 1. Select Button (Positioned on Left Place of Sort Button) -->
+            <button class="ghost-btn select-mode-btn" id="btn-toggle-select-mode" title="Select multiple tracks to manage or delete">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 11 12 14 22 4"></polyline>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+              </svg>
+              <span id="btn-select-mode-text">Select</span>
+            </button>
+
+            <!-- 2. Sort Dropdown Control (In the Middle) -->
             <div class="custom-select-wrapper" id="sort-select-wrapper">
-              <button type="button" class="custom-select-trigger sort-trigger" id="sort-trigger" aria-haspopup="listbox" aria-expanded="false">
+              <button type="button" class="custom-select-trigger sort-trigger" id="sort-trigger" aria-haspopup="listbox" aria-expanded="false" title="Sort offline tracks">
                 <svg class="custom-select-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="4" y1="6" x2="20" y2="6"></line>
                   <line x1="4" y1="12" x2="14" y2="12"></line>
@@ -296,9 +307,8 @@
               </div>
               <input type="hidden" id="sort-tracks-select" value="recent">
             </div>
-          </div>
 
-          <div class="toolbar-right">
+            <!-- 3. Search Bar (Positioned on Right Side of Sort Button) -->
             <div class="search-box">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="11" cy="11" r="8"></circle>
@@ -306,13 +316,6 @@
               </svg>
               <input type="text" id="search-local-library" placeholder="Search downloaded tracks…">
             </div>
-            <button class="ghost-btn select-mode-btn" id="btn-toggle-select-mode" title="Select multiple music tracks to manage or delete">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="9 11 12 14 22 4"></polyline>
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
-              </svg>
-              <span id="btn-select-mode-text">Select</span>
-            </button>
           </div>
         </div>
 
@@ -324,6 +327,7 @@
               <span class="custom-checkbox-box"></span>
               <span class="selection-all-text" id="selection-all-text">Select All</span>
             </label>
+            <div class="selection-divider"></div>
             <div class="selection-badge-wrap">
               <span class="selection-count-badge" id="selection-count-badge">0</span>
               <span class="selection-count-label">selected</span>
@@ -333,13 +337,16 @@
           <div class="selection-bar-right">
             <button class="bulk-delete-btn" id="btn-delete-selected" disabled title="Delete selected tracks from offline storage">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="3 6 5 6 21 6"></polyline>
+                <polyline points="3 6 21 6"></polyline>
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
               </svg>
               <span id="btn-delete-selected-text">Delete Selected</span>
             </button>
-            <button class="ghost-btn" id="btn-cancel-selection" style="height: 34px; padding: 0 12px;" title="Exit selection mode">
-              <span>Cancel</span>
+            <button class="ghost-btn selection-done-btn" id="btn-cancel-selection" title="Exit selection mode (Esc)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <span>Done</span>
             </button>
           </div>
         </div>
@@ -776,7 +783,7 @@
           </div>
           <h4 class="about-cosl-center-title">Product Owned by Codemo Open Source Labs</h4>
           <p class="about-cosl-center-sub">Open Source Collective &amp; Engineering Lab</p>
-          <span class="about-cosl-center-version" id="about-app-version">Version v1.0.2 (Codemo Stable Release)</span>
+          <span class="about-cosl-center-version" id="about-app-version">Version v1.0.3 (Codemo Stable Release)</span>
         </div>
 
         <div class="about-white-divider"></div>

@@ -279,7 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const btnReportIssue = document.getElementById('btn-report-issue');
   btnReportIssue?.addEventListener('click', async () => {
-    let appVer = '1.0.2';
+    let appVer = '1.0.3';
     try {
       if (window.braveApi?.getAppVersion) {
         appVer = await window.braveApi.getAppVersion();
@@ -723,6 +723,10 @@ Observed Behavior:
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      if (state.selectionMode) {
+        toggleSelectMode(false);
+        return;
+      }
       if (authSyncModal && authSyncModal.style.display !== 'none') closeAuthSyncModal();
       if (aboutModal && aboutModal.style.display !== 'none') closeAboutModal();
       if (createPlaylistModal && createPlaylistModal.style.display !== 'none') createPlaylistModal.style.display = 'none';
@@ -994,8 +998,14 @@ Observed Behavior:
       state.selectedTrackIds.clear();
     }
 
+    const tracksTable = document.getElementById('tracks-table');
+    if (tracksTable) {
+      tracksTable.classList.toggle('select-mode-active', state.selectionMode);
+    }
+
     if (btnToggleSelectMode) {
       btnToggleSelectMode.classList.toggle('active', state.selectionMode);
+      btnToggleSelectMode.title = state.selectionMode ? 'Finish selection (Esc)' : 'Select multiple tracks to manage or delete';
     }
     if (btnSelectModeText) {
       btnSelectModeText.textContent = state.selectionMode ? 'Done' : 'Select';
@@ -1012,6 +1022,29 @@ Observed Behavior:
 
     updateSelectionUI();
     renderTracksTable();
+  }
+
+  function handleRowSelect(trackId, tr, explicitChecked) {
+    const shouldSelect = typeof explicitChecked === 'boolean'
+      ? explicitChecked
+      : !state.selectedTrackIds.has(trackId);
+
+    if (shouldSelect) {
+      state.selectedTrackIds.add(trackId);
+      if (tr) tr.classList.add('row-selected');
+    } else {
+      state.selectedTrackIds.delete(trackId);
+      if (tr) tr.classList.remove('row-selected');
+    }
+
+    if (tr) {
+      const cb = tr.querySelector('.row-select-checkbox');
+      if (cb && cb.checked !== shouldSelect) {
+        cb.checked = shouldSelect;
+      }
+    }
+
+    updateSelectionUI();
   }
 
   function updateSelectionUI() {
@@ -1052,8 +1085,19 @@ Observed Behavior:
       visibleTracks.forEach(t => state.selectedTrackIds.add(t.id));
     }
 
+    // In-place reactive update of rendered table rows without tearing down DOM
+    const rows = tracksTableBody.querySelectorAll('tr');
+    rows.forEach(tr => {
+      const cb = tr.querySelector('.row-select-checkbox');
+      if (cb && !cb.disabled) {
+        const tId = cb.getAttribute('data-track-id');
+        const shouldBeChecked = state.selectedTrackIds.has(tId);
+        cb.checked = shouldBeChecked;
+        tr.classList.toggle('row-selected', shouldBeChecked);
+      }
+    });
+
     updateSelectionUI();
-    renderTracksTable();
   }
 
   btnToggleSelectMode?.addEventListener('click', () => toggleSelectMode());
@@ -2075,6 +2119,9 @@ Observed Behavior:
       if (state.selectionMode && isSelected) {
         tr.classList.add('row-selected');
       }
+      if (state.selectionMode && isBuiltIn) {
+        tr.classList.add('row-builtin-protected');
+      }
 
       let colNumHtml = '';
       if (state.selectionMode) {
@@ -2160,30 +2207,18 @@ Observed Behavior:
       // Checkbox listener
       tr.querySelector('.row-select-checkbox')?.addEventListener('change', (e) => {
         e.stopPropagation();
-        if (e.target.checked) {
-          state.selectedTrackIds.add(track.id);
-        } else {
-          state.selectedTrackIds.delete(track.id);
-        }
-        renderTracksTable();
-        updateSelectionUI();
+        handleRowSelect(track.id, tr, e.target.checked);
       });
 
-      // Selection mode row click toggle
+      // Simple selection row click toggle
       tr.addEventListener('click', (e) => {
         if (state.selectionMode) {
           if (e.target.closest('.row-actions-group') || e.target.closest('button')) return;
           if (isBuiltIn) {
-            showToast('Built-in track is protected and cannot be deleted');
+            showToast('Built-in core track is protected and cannot be deleted');
             return;
           }
-          if (state.selectedTrackIds.has(track.id)) {
-            state.selectedTrackIds.delete(track.id);
-          } else {
-            state.selectedTrackIds.add(track.id);
-          }
-          renderTracksTable();
-          updateSelectionUI();
+          handleRowSelect(track.id, tr);
         }
       });
 
