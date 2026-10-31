@@ -124,31 +124,19 @@
 
 ## Install Portal
 
-### Option A: Install via Standalone Debian Package (Recommended for Linux)
+### Standalone Debian Package (Linux x64)
 
 Download and install the verified Debian package on Ubuntu, Debian, Linux Mint, or Pop!_OS:
 
 ```bash
-# 1. Download package or build locally
-npm run build:deb
-
-# 2. Install package
+# 1. Install package via APT
 sudo apt install ./brave-music_1.0.0_amd64.deb
 
-# 3. Launch from desktop application menu or terminal
+# 2. Launch from desktop application menu or terminal
 brave-music
 ```
 
-### Option B: Quick Terminal One-Liner (Source Run)
-
-Run directly from source without installing system-wide packages:
-
-```bash
-git clone git@github.com:codemoteams/Brave-Music.git
-cd Brave-Music
-npm install
-npm start
-```
+For complete installation steps, building from source, dependency management, and uninstallation, see [**docs/INSTALL.md**](docs/INSTALL.md).
 
 ### Supported Operating Systems Matrix
 
@@ -167,9 +155,10 @@ Brave Music is an open-source collaboration maintained under Codemo Open Source 
 
 | Documentation | Primary Scope | Read When You Need To |
 | :--- | :--- | :--- |
+| [**docs/INSTALL.md**](docs/INSTALL.md) | Installation and Setup Guide | Install via deb package, compile from source, and configure system dependencies |
 | [**docs/RULES.md**](docs/RULES.md) | Legal Ownership and Governance | Understand Codemo OSL product ownership, legal rights, and developer rules |
 | [**docs/CONTRIBUTION.md**](docs/CONTRIBUTION.md) | Contributor Workflow and Android Milestone | Learn the PR submission process, Android development goals, and Discord perks |
-| [**docs/DEV-GUIDE.md**](docs/DEV-GUIDE.md) | Local Setup and Architecture Guide | Set up dependencies, debug Widevine DRM, run tests, and build deb packages |
+| [**docs/DEV-GUIDE.md**](docs/DEV-GUIDE.md) | Local Setup and Architecture Specs | Complete project architecture, Mermaid diagrams, DRM checks, and build pipeline |
 | [**docs/DESIGN-GUIDE.md**](docs/DESIGN-GUIDE.md) | UI/UX Specs and Design Tokens | Follow the dark color palette, Ananda Black typography, and mobile touch targets |
 | [**docs/CREDITS.md**](docs/CREDITS.md) | Upstream Technologies and Authors | View acknowledgments for CastLabs, Musikcube, Brave, yt-dlp, and community devs |
 | [**docs/SECURITY.md**](docs/SECURITY.md) | Security Policy and Disclosure | Report vulnerabilities responsibly and inspect IPC sandbox isolation boundaries |
