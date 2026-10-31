@@ -15,7 +15,7 @@ Brave Music combines YouTube Music, Spotify Web, and an embedded native C++ audi
 <table border="0" align="center">
 <tr>
 <td align="center">
-<a href="#installation"><img src="src/assets/icons/linux.svg" alt="Linux Tux Logo" width="36" height="36"/></a><br/>
+<a href="#installation"><img src="https://thumb.wikimedia.org/wikipedia/commons/thumb/3/35/Tux.svg/960px-Tux.svg.png?_=20260427133119" alt="Linux Tux Logo" width="36" height="36"/></a><br/>
 <sub><strong>Linux</strong></sub>
 </td>
 <td width="28"></td>
@@ -111,7 +111,7 @@ Explore the Brave Music interface and its primary application components.
 
 ---
 
-## Installation Portal
+## Installation
 
 ### Linux Desktop
 
@@ -143,44 +143,6 @@ brave-music
 | [Installation Guide](docs/INSTALL.md) | Complete installation and configuration instructions. |
 | [Developer Guide](docs/DEV-GUIDE.md) | Build the application from source. |
 | [Release Notes](docs/RELEASE.md) | Review available versions and release information. |
-
----
-
-## Platform Availability
-
-Brave Music is designed with a multi-platform roadmap.
-
-<table>
-<tr>
-<th align="center">Platform</th>
-<th align="center">Status</th>
-<th align="center">Distribution</th>
-</tr>
-<tr>
-<td align="center">
-<img src="src/assets/icons/linux.svg" width="30" alt="Linux Tux"/><br/>
-<strong>Linux</strong>
-</td>
-<td align="center">Available</td>
-<td>Debian Package (.deb)</td>
-</tr>
-<tr>
-<td align="center">
-<img src="src/assets/icons/microsoft.svg" width="30" alt="Windows"/><br/>
-<strong>Windows</strong>
-</td>
-<td align="center">Coming Soon</td>
-<td>EXE / MSI Installer</td>
-</tr>
-<tr>
-<td align="center">
-<img src="src/assets/icons/android.svg" width="30" alt="Android"/><br/>
-<strong>Android</strong>
-</td>
-<td align="center">Planned</td>
-<td>Native Android APK</td>
-</tr>
-</table>
 
 ---
 
