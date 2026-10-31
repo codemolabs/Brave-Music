@@ -67,6 +67,9 @@ class Backend {
   }
 
   registerIpc() {
+    // App Version & Meta
+    ipcMain.handle('get-app-version', () => require('../package.json').version || '1.0.1');
+
     // Downloads
     ipcMain.handle('start-download', (event, payload) => downloadController.startDownload(event, payload));
     ipcMain.handle('cancel-download', (event, downloadId) => downloadController.cancelDownload(event, downloadId));

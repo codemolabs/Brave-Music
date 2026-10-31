@@ -218,13 +218,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnCloseAbout = document.getElementById('btn-close-about');
   const btnAboutOk = document.getElementById('btn-about-ok');
 
-  function openAboutModal() {
+  async function openAboutModal() {
     if (aboutModal) {
       // Dynamic avatar reload to ensure fresh GitHub profile picture
       const devAvatar = document.getElementById('about-dev-avatar');
       if (devAvatar) {
         devAvatar.src = `https://github.com/uzairshahidgithub.png?t=${Date.now()}`;
       }
+      try {
+        if (window.braveApi?.getAppVersion) {
+          const v = await window.braveApi.getAppVersion();
+          const versionEl = document.getElementById('about-app-version');
+          if (versionEl) {
+            versionEl.textContent = `Version v${v} (Codemo Stable Release)`;
+          }
+        }
+      } catch (e) {}
       aboutModal.style.display = 'flex';
       btnCloseAbout?.focus();
     }
@@ -234,6 +243,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (aboutModal) {
       aboutModal.style.display = 'none';
     }
+  }
+
+  // Pre-fetch version on load
+  if (window.braveApi?.getAppVersion) {
+    window.braveApi.getAppVersion().then(v => {
+      const versionEl = document.getElementById('about-app-version');
+      if (versionEl) {
+        versionEl.textContent = `Version v${v} (Codemo Stable Release)`;
+      }
+    }).catch(() => {});
   }
 
   btnAbout?.addEventListener('click', openAboutModal);
@@ -259,10 +278,16 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   const btnReportIssue = document.getElementById('btn-report-issue');
-  btnReportIssue?.addEventListener('click', () => {
-    const subject = encodeURIComponent('Brave Music v1.0.0 Issue Report');
+  btnReportIssue?.addEventListener('click', async () => {
+    let appVer = '1.0.1';
+    try {
+      if (window.braveApi?.getAppVersion) {
+        appVer = await window.braveApi.getAppVersion();
+      }
+    } catch (e) {}
+    const subject = encodeURIComponent(`Brave Music v${appVer} Issue Report`);
     const bodyText = `[Brave Music Issue Report]
-App Version: v1.0.0 Stable (Codemo Release)
+App Version: v${appVer} Stable (Codemo Release)
 Platform: Linux x86_64
 Timestamp: ${new Date().toISOString()}
 

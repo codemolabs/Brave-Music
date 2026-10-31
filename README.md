@@ -117,7 +117,7 @@ Explore the Brave Music interface and its primary application components.
 
 ### Linux Desktop
 
-<sub>AVAILABLE NOW · VERSION 1.0.0 · X86_64</sub>
+<sub>AVAILABLE NOW · VERSION 1.0.1 · X86_64</sub>
 
 Brave Music currently provides a standalone Debian installation package for compatible Linux distributions.
 
@@ -246,7 +246,7 @@ Developers interested in contributing should review the official contribution do
 | Property | Information |
 |:---|:---|
 | Product Name | Brave Music |
-| Current Version | `v1.0.0` |
+| Current Version | `v1.0.1` |
 | Product Organization | Codemo Open Source Labs |
 | Product Authority | Codemo OSL |
 | Software License | GPL-3.0 |
