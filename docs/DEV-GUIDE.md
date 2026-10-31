@@ -227,9 +227,9 @@ Or run the script:
 ./build-deb.sh
 ```
 
-The script outputs `brave-music_1.0.1_amd64.deb` at the project root. Install and test the package with:
+The script outputs `brave-music_1.0.2_amd64.deb` at the project root. Install and test the package with:
 ```bash
-sudo apt install ./brave-music_1.0.1_amd64.deb
+sudo apt install ./brave-music_1.0.2_amd64.deb
 ```
 
 ---

@@ -279,7 +279,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const btnReportIssue = document.getElementById('btn-report-issue');
   btnReportIssue?.addEventListener('click', async () => {
-    let appVer = '1.0.1';
+    let appVer = '1.0.2';
     try {
       if (window.braveApi?.getAppVersion) {
         appVer = await window.braveApi.getAppVersion();

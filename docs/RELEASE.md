@@ -26,6 +26,24 @@ All official releases follow [Semantic Versioning 2.0.0](https://semver.org/):
 
 ## Release History
 
+### Release v1.0.2 (Info Button Dynamic Version Sync & Stable Release)
+- **Release Date**: November 1, 2026
+- **Release Tag**: `v1.0.2`
+- **Target Architecture**: Linux `x86_64` / `amd64`
+- **License**: GPL-3.0 (Codemo OSL)
+- **Direct Download**: [**brave-music_1.0.2_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.2/brave-music_1.0.2_amd64.deb)
+
+#### Package Checksums (SHA-256)
+```text
+b473bc8dd13d7f12fcf6de1a23f70e0a7c6c65f4f0d19ce6bd2ace23a49c4b59  brave-music_1.0.2_amd64.deb
+```
+
+#### Highlights and Fixes
+- **Dynamic Info Button Version Sync**: Wired the Info modal and Issue Reporter to automatically fetch and display the live installed package version via IPC (`get-app-version`).
+- **All v1.0.1 Playlist & Selection Capabilities**: Includes full playlist batch downloading for YouTube Music and Spotify, original title preservation, high-res covers, multi-track select mode, and bulk deletion.
+
+---
+
 ### Release v1.0.1 (Playlist Downloader & Multi-Track Selection Fixes)
 - **Release Date**: November 1, 2026
 - **Release Tag**: `v1.0.1`
