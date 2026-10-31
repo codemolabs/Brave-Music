@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('braveApi', {
   // Library & Storage
   getLibrary: () => ipcRenderer.invoke('get-library'),
   deleteTrack: (trackId) => ipcRenderer.invoke('delete-track', trackId),
+  deleteTracks: (trackIds) => ipcRenderer.invoke('delete-tracks', trackIds),
   createPlaylist: (payload) => ipcRenderer.invoke('create-playlist', payload),
   deletePlaylist: (name, deleteFiles = false) => {
     if (typeof name === 'object' && name !== null) {

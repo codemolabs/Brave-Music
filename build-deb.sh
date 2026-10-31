@@ -2,13 +2,14 @@
 set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="$DIR/dist/brave-music_1.0.0_amd64"
-OUTPUT_DEB="$DIR/brave-music_1.0.0_amd64.deb"
+VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "1.0.1")
+BUILD_DIR="$DIR/dist/brave-music_${VERSION}_amd64"
+OUTPUT_DEB="$DIR/brave-music_${VERSION}_amd64.deb"
 
-echo "=== Building Brave Music Debian (.deb) Package ==="
+echo "=== Building Brave Music Debian (.deb) Package (v${VERSION}) ==="
 
 # Clean previous build artifacts
-rm -rf "$DIR/dist" "$OUTPUT_DEB"
+rm -rf "$DIR/dist" "$DIR"/brave-music_*_amd64.deb
 mkdir -p "$BUILD_DIR/DEBIAN"
 mkdir -p "$BUILD_DIR/opt/brave-music"
 mkdir -p "$BUILD_DIR/usr/bin"
@@ -16,9 +17,9 @@ mkdir -p "$BUILD_DIR/usr/share/applications"
 mkdir -p "$BUILD_DIR/usr/share/icons/hicolor/scalable/apps"
 
 # 1. DEBIAN/control
-cat << 'EOF' > "$BUILD_DIR/DEBIAN/control"
+cat << EOF > "$BUILD_DIR/DEBIAN/control"
 Package: brave-music
-Version: 1.0.0
+Version: ${VERSION}
 Section: sound
 Priority: optional
 Architecture: amd64

@@ -37,7 +37,7 @@ jobs:
 
       - name: Generate Checksum
         run: |
-          sha256sum brave-music_1.0.0_amd64.deb > SHA256SUMS.txt
+          sha256sum brave-music_*_amd64.deb > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Create GitHub Release
@@ -46,7 +46,7 @@ jobs:
           name: Brave Music ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           files: |
-            brave-music_1.0.0_amd64.deb
+            brave-music_*_amd64.deb
             SHA256SUMS.txt
           draft: false
           prerelease: false

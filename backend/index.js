@@ -74,6 +74,7 @@ class Backend {
     // Library & Storage
     ipcMain.handle('get-library', () => libraryController.getLibrary());
     ipcMain.handle('delete-track', (event, trackId) => libraryController.deleteTrack(event, trackId));
+    ipcMain.handle('delete-tracks', (event, trackIds) => libraryController.deleteTracks(event, trackIds));
     ipcMain.handle('create-playlist', (event, payload) => libraryController.createPlaylist(event, payload));
     ipcMain.handle('delete-playlist', (event, payload) => libraryController.deletePlaylist(event, payload));
     ipcMain.handle('set-playlist-cover', (event, payload) => libraryController.setPlaylistCover(event, payload));

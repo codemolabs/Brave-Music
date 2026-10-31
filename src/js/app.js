@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', () => {
     searchQuery: '',
     sortMode: 'recent',   // 'recent' | 'title-asc' | 'title-desc' | 'artist-asc' | 'duration-desc' | 'duration-asc'
     selectedPlaylist: null, // filter by specific playlist name if chosen
+    selectionMode: false, // multi-track selection mode
+    selectedTrackIds: new Set(), // set of selected track IDs
     player: {
       currentTrack: null,
       currentIndex: -1,
@@ -56,6 +58,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const emptyStateBox = document.getElementById('empty-state-box');
   const viewAllMusic = document.getElementById('view-all-music');
   const viewPlaylists = document.getElementById('view-playlists');
+
+  // Multi-Selection Controls
+  const btnToggleSelectMode = document.getElementById('btn-toggle-select-mode');
+  const btnSelectModeText = document.getElementById('btn-select-mode-text');
+  const selectionActionBar = document.getElementById('selection-action-bar');
+  const checkboxSelectAll = document.getElementById('checkbox-select-all');
+  const selectionCountBadge = document.getElementById('selection-count-badge');
+  const btnDeleteSelected = document.getElementById('btn-delete-selected');
+  const btnDeleteSelectedText = document.getElementById('btn-delete-selected-text');
+  const btnCancelSelection = document.getElementById('btn-cancel-selection');
+  const thNumLabel = document.getElementById('th-num-label');
+  const thCheckboxWrap = document.getElementById('th-checkbox-wrap');
+  const thSelectAllCheckbox = document.getElementById('th-select-all-checkbox');
 
   // Built-in Runtime Player Bar Elements
   const runtimeAudio = document.getElementById('runtime-audio-element');
@@ -934,11 +949,126 @@ Observed Behavior:
   });
 
   filterPlaylists?.addEventListener('click', () => {
+    if (state.selectionMode) toggleSelectMode(false);
     state.activeView = 'playlists';
     filterPlaylists.classList.add('active');
     filterAllMusic.classList.remove('active');
     viewAllMusic.style.display = 'none';
     viewPlaylists.style.display = 'block';
+  });
+
+  // Multi-Selection Logic & Event Handlers
+  function toggleSelectMode(enable) {
+    if (typeof enable === 'boolean') {
+      state.selectionMode = enable;
+    } else {
+      state.selectionMode = !state.selectionMode;
+    }
+
+    if (!state.selectionMode) {
+      state.selectedTrackIds.clear();
+    }
+
+    if (btnToggleSelectMode) {
+      btnToggleSelectMode.classList.toggle('active', state.selectionMode);
+    }
+    if (btnSelectModeText) {
+      btnSelectModeText.textContent = state.selectionMode ? 'Done' : 'Select';
+    }
+    if (selectionActionBar) {
+      selectionActionBar.style.display = state.selectionMode ? 'flex' : 'none';
+    }
+    if (thNumLabel) {
+      thNumLabel.style.display = state.selectionMode ? 'none' : 'inline';
+    }
+    if (thCheckboxWrap) {
+      thCheckboxWrap.style.display = state.selectionMode ? 'inline-flex' : 'none';
+    }
+
+    updateSelectionUI();
+    renderTracksTable();
+  }
+
+  function updateSelectionUI() {
+    const visibleTracks = getSortedAndFilteredTracks().filter(t => !isBuiltInTrack(t));
+    const count = state.selectedTrackIds.size;
+
+    if (selectionCountBadge) {
+      selectionCountBadge.textContent = count;
+    }
+    if (btnDeleteSelected) {
+      btnDeleteSelected.disabled = count === 0;
+    }
+    if (btnDeleteSelectedText) {
+      btnDeleteSelectedText.textContent = count > 0 ? `Delete (${count})` : 'Delete Selected';
+    }
+
+    const allSelected = visibleTracks.length > 0 && visibleTracks.every(t => state.selectedTrackIds.has(t.id));
+    const someSelected = count > 0 && !allSelected;
+
+    if (checkboxSelectAll) {
+      checkboxSelectAll.checked = allSelected;
+      checkboxSelectAll.indeterminate = someSelected;
+    }
+    if (thSelectAllCheckbox) {
+      thSelectAllCheckbox.checked = allSelected;
+      thSelectAllCheckbox.indeterminate = someSelected;
+    }
+  }
+
+  function toggleSelectAll() {
+    const visibleTracks = getSortedAndFilteredTracks().filter(t => !isBuiltInTrack(t));
+    if (visibleTracks.length === 0) return;
+
+    const allSelected = visibleTracks.every(t => state.selectedTrackIds.has(t.id));
+    if (allSelected) {
+      visibleTracks.forEach(t => state.selectedTrackIds.delete(t.id));
+    } else {
+      visibleTracks.forEach(t => state.selectedTrackIds.add(t.id));
+    }
+
+    updateSelectionUI();
+    renderTracksTable();
+  }
+
+  btnToggleSelectMode?.addEventListener('click', () => toggleSelectMode());
+  checkboxSelectAll?.addEventListener('change', () => toggleSelectAll());
+  thSelectAllCheckbox?.addEventListener('change', () => toggleSelectAll());
+  btnCancelSelection?.addEventListener('click', () => toggleSelectMode(false));
+
+  btnDeleteSelected?.addEventListener('click', async () => {
+    const count = state.selectedTrackIds.size;
+    if (count === 0) return;
+
+    const confirmMsg = count === 1
+      ? 'Delete 1 selected track from offline storage? This will remove the file from your computer and library.'
+      : `Delete ${count} selected tracks from offline storage? This will remove the files from your computer and library.`;
+
+    if (confirm(confirmMsg)) {
+      const idsToDelete = Array.from(state.selectedTrackIds);
+
+      // Stop & reset player if playing one of the tracks being deleted
+      if (state.player.currentTrack && idsToDelete.includes(state.player.currentTrack.id)) {
+        runtimeAudio.pause();
+        runtimeAudio.src = '';
+        state.player.currentTrack = null;
+        state.player.isPlaying = false;
+        playerTitle.textContent = 'Select a track to play';
+        playerArtist.textContent = 'Offline Library';
+        playerArtImg.src = EMPTY_MUSIC_THUMBNAIL;
+        if (playerWaves) playerWaves.style.display = 'none';
+        playerPlayIcon.style.display = 'block';
+        playerPauseIcon.style.display = 'none';
+      }
+
+      const res = await window.braveApi?.deleteTracks(idsToDelete);
+      const deletedCount = res?.deletedCount || idsToDelete.length;
+      showToast(`Deleted ${deletedCount} ${deletedCount === 1 ? 'track' : 'tracks'} from offline storage`);
+
+      state.selectedTrackIds.clear();
+      toggleSelectMode(false);
+      await loadLibrary();
+    }
   });
 
   // Sort dropdown handler
@@ -1893,6 +2023,7 @@ Observed Behavior:
       const isCurrentlyPlayingThis = state.player.currentTrack && state.player.currentTrack.id === track.id;
       const isVideoFile = /\.(mp4|webm|mkv|m4v)$/i.test(track.filename || '');
       const isBuiltIn = isBuiltInTrack(track);
+      const isSelected = state.selectedTrackIds.has(track.id);
 
       // Dynamically compute active playlist membership
       const assignedPlaylists = Object.keys(state.library.playlists || {}).filter(pName =>
@@ -1916,12 +2047,36 @@ Observed Behavior:
       if (isCurrentlyPlayingThis) {
         tr.classList.add('playing-row');
       }
+      if (state.selectionMode && isSelected) {
+        tr.classList.add('row-selected');
+      }
+
+      let colNumHtml = '';
+      if (state.selectionMode) {
+        if (isBuiltIn) {
+          colNumHtml = `
+            <label class="custom-checkbox-wrap" style="justify-content: center; margin: 0;" title="Built-in core track is protected from deletion">
+              <input type="checkbox" class="custom-checkbox" disabled>
+              <span class="custom-checkbox-box"></span>
+            </label>
+          `;
+        } else {
+          colNumHtml = `
+            <label class="custom-checkbox-wrap row-checkbox-label" style="justify-content: center; margin: 0;" onclick="event.stopPropagation();" title="Select track">
+              <input type="checkbox" class="custom-checkbox row-select-checkbox" data-track-id="${track.id}" ${isSelected ? 'checked' : ''}>
+              <span class="custom-checkbox-box"></span>
+            </label>
+          `;
+        }
+      } else {
+        colNumHtml = (isCurrentlyPlayingThis && state.player.isPlaying)
+          ? '<div class="playing-num-eq"><span></span><span></span><span></span></div>'
+          : (idx + 1);
+      }
 
       tr.innerHTML = `
         <td class="col-num">
-          ${isCurrentlyPlayingThis && state.player.isPlaying
-            ? '<div class="playing-num-eq"><span></span><span></span><span></span></div>'
-            : (idx + 1)}
+          ${colNumHtml}
         </td>
         <td class="col-title">
           <div class="track-meta-cell">
@@ -1977,14 +2132,46 @@ Observed Behavior:
         </td>
       `;
 
+      // Checkbox listener
+      tr.querySelector('.row-select-checkbox')?.addEventListener('change', (e) => {
+        e.stopPropagation();
+        if (e.target.checked) {
+          state.selectedTrackIds.add(track.id);
+        } else {
+          state.selectedTrackIds.delete(track.id);
+        }
+        renderTracksTable();
+        updateSelectionUI();
+      });
+
+      // Selection mode row click toggle
+      tr.addEventListener('click', (e) => {
+        if (state.selectionMode) {
+          if (e.target.closest('.row-actions-group') || e.target.closest('button')) return;
+          if (isBuiltIn) {
+            showToast('Built-in track is protected and cannot be deleted');
+            return;
+          }
+          if (state.selectedTrackIds.has(track.id)) {
+            state.selectedTrackIds.delete(track.id);
+          } else {
+            state.selectedTrackIds.add(track.id);
+          }
+          renderTracksTable();
+          updateSelectionUI();
+        }
+      });
+
       // Play via built-in player
       tr.querySelector('.play-track-btn')?.addEventListener('click', () => {
         playTrack(track, idx);
       });
 
-      // Double-click row to play
+      // Double-click row to play (only when not in selection mode)
       tr.addEventListener('dblclick', () => {
-        playTrack(track, idx);
+        if (!state.selectionMode) {
+          playTrack(track, idx);
+        }
       });
 
       // Add to custom playlist (only for non-built-in tracks)

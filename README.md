@@ -15,7 +15,7 @@ Brave Music combines YouTube Music, Spotify Web, and an embedded native C++ audi
 <table border="0" align="center">
 <tr>
 <td align="center">
-<a href="https://github.com/codemoteams/Brave-Music/releases/download/v1.0.0/brave-music_1.0.0_amd64.deb"><img src="https://thumb.wikimedia.org/wikipedia/commons/thumb/3/35/Tux.svg/960px-Tux.svg.png?_=20260427133119" alt="Linux Tux Logo" width="36" height="36"/></a><br/>
+<a href="https://github.com/codemoteams/Brave-Music/releases/download/v1.0.1/brave-music_1.0.1_amd64.deb"><img src="https://thumb.wikimedia.org/wikipedia/commons/thumb/3/35/Tux.svg/960px-Tux.svg.png?_=20260427133119" alt="Linux Tux Logo" width="36" height="36"/></a><br/>
 <sub><strong>Linux</strong></sub>
 </td>
 <td width="28"></td>
@@ -41,13 +41,13 @@ Brave Music combines YouTube Music, Spotify Web, and an embedded native C++ audi
 <td width="20"></td>
 <td align="center"><strong>GPL-3.0</strong><br/><sub>License</sub></td>
 <td width="20"></td>
-<td align="center"><strong>v1.0.0</strong><br/><sub>Release</sub></td>
+<td align="center"><strong>v1.0.1</strong><br/><sub>Release</sub></td>
 </tr>
 </table>
 
 <br/>
 
-<a href="https://github.com/codemoteams/Brave-Music/releases/download/v1.0.0/brave-music_1.0.0_amd64.deb"><img src="src/assets/buttons/install-app.svg" alt="Install Debian Package" height="42"/></a><a href="#developer-portal"><img src="src/assets/buttons/developer-portal.svg" alt="Developer Portal" height="42"/></a><a href="docs/RELEASE.md"><img src="src/assets/buttons/release-notes.svg" alt="Release Notes" height="42"/></a><a href="docs/CONTRIBUTION.md"><img src="src/assets/buttons/contribute.svg" alt="Contribute" height="42"/></a>
+<a href="https://github.com/codemoteams/Brave-Music/releases/download/v1.0.1/brave-music_1.0.1_amd64.deb"><img src="src/assets/buttons/install-app.svg" alt="Install Debian Package" height="42"/></a><a href="#developer-portal"><img src="src/assets/buttons/developer-portal.svg" alt="Developer Portal" height="42"/></a><a href="docs/RELEASE.md"><img src="src/assets/buttons/release-notes.svg" alt="Release Notes" height="42"/></a><a href="docs/CONTRIBUTION.md"><img src="src/assets/buttons/contribute.svg" alt="Contribute" height="42"/></a>
 
 </div>
 
@@ -131,17 +131,17 @@ Brave Music currently provides a standalone Debian installation package for comp
 ### Install Using APT
 
 ```bash
-# 1. Download official v1.0.0 Debian package
-wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.0/brave-music_1.0.0_amd64.deb
+# 1. Download official v1.0.1 Debian package
+wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.1/brave-music_1.0.1_amd64.deb
 
 # 2. Install package via APT
-sudo apt install ./brave-music_1.0.0_amd64.deb
+sudo apt install ./brave-music_1.0.1_amd64.deb
 
 # 3. Launch from desktop application menu or terminal
 brave-music
 ```
 
-Direct binary download: [**brave-music_1.0.0_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.0/brave-music_1.0.0_amd64.deb)
+Direct binary download: [**brave-music_1.0.1_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.1/brave-music_1.0.1_amd64.deb)
 
 For complete installation steps, building from source, dependency management, and uninstallation, see [**docs/INSTALL.md**](docs/INSTALL.md).
 

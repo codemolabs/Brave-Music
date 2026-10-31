@@ -21,6 +21,13 @@ class LibraryController {
     return libraryService.deleteTrack(trackId);
   }
 
+  deleteTracks(event, trackIds) {
+    if (!Array.isArray(trackIds) || trackIds.length === 0) {
+      return { success: false, error: 'trackIds array is required', deletedCount: 0 };
+    }
+    return libraryService.deleteTracks(trackIds);
+  }
+
   createPlaylist(event, payload) {
     if (typeof payload === 'string') {
       return libraryService.createPlaylist(payload);

@@ -26,6 +26,27 @@ All official releases follow [Semantic Versioning 2.0.0](https://semver.org/):
 
 ## Release History
 
+### Release v1.0.1 (Playlist Downloader & Multi-Track Selection Fixes)
+- **Release Date**: November 1, 2026
+- **Release Tag**: `v1.0.1`
+- **Target Architecture**: Linux `x86_64` / `amd64`
+- **License**: GPL-3.0 (Codemo OSL)
+- **Direct Download**: [**brave-music_1.0.1_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.1/brave-music_1.0.1_amd64.deb)
+
+#### Package Checksums (SHA-256)
+```text
+f14d6ad9f6e69771c1c9e97b09857a1ece292972a76f02c5110c21aa73debb20  brave-music_1.0.1_amd64.deb
+```
+
+#### Highlights and Fixes
+- **Full Playlist Downloading**: YouTube Music and Spotify playlist URLs automatically batch-download all tracks and organize them into dedicated playlists.
+- **Genuine Original Titles Preserved**: Track titles are strictly maintained without filename hashes, video IDs, or mangled strings inside the application or database.
+- **Automatic Cover Art Assignment**: Extracts high-resolution playlist covers and track thumbnails from Spotify and YouTube streams.
+- **Multi-Track Select Mode & Bulk Delete**: Added "Select" toolbar toggle, Selection Action Bar, Select All toggle, individual row checkboxes, item counter badge, and bulk delete with disk file and database purge.
+- **Core Built-In Protection**: Built-in system tracks are guarded against accidental deletion or removal during bulk operations.
+
+---
+
 ### Release v1.0.0 (Initial Stable Release)
 - **Release Date**: October 31, 2026
 - **Release Tag**: `v1.0.0`

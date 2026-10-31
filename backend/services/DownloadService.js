@@ -9,12 +9,20 @@ const libraryService = require('./LibraryService');
 class DownloadService {
   constructor() {
     this.activeProcesses = new Map(); // downloadId -> ChildProcess
+    this.canceledDownloads = new Set();
   }
 
   // Check if URL is from Spotify
   isSpotifyUrl(url) {
     if (!url || typeof url !== 'string') return false;
     return /open\.spotify\.com\/(track|album|playlist|episode)\/|spotify:(track|album|playlist):/i.test(url.trim());
+  }
+
+  // Check if URL is a Spotify playlist or album
+  isSpotifyPlaylistUrl(url) {
+    if (!url || typeof url !== 'string') return false;
+    return /open\.spotify\.com\/(playlist|album)\/([a-zA-Z0-9]+)/i.test(url.trim()) ||
+           /spotify:(playlist|album):([a-zA-Z0-9]+)/i.test(url.trim());
   }
 
   // Check if Zotify has authenticated credentials saved
@@ -29,24 +37,163 @@ class DownloadService {
     return false;
   }
 
+  // Fetch full Spotify playlist or album metadata via public embed endpoint
+  async fetchSpotifyPlaylistMetadata(url) {
+    const trimmed = String(url || '').trim();
+    const match = trimmed.match(/open\.spotify\.com\/(playlist|album)\/([a-zA-Z0-9]+)/i) ||
+                  trimmed.match(/spotify:(playlist|album):([a-zA-Z0-9]+)/i);
+    if (!match) return null;
+    const type = match[1].toLowerCase();
+    const id = match[2];
+    const embedUrl = `https://open.spotify.com/embed/${type}/${id}`;
+
+    return new Promise((resolve) => {
+      const req = https.get(embedUrl, {
+        family: 4,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9'
+        }
+      }, (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          return resolve(null);
+        }
+        let html = '';
+        res.on('data', chunk => {
+          html += chunk;
+          if (html.length > 8 * 1024 * 1024) {
+            res.destroy();
+            resolve(null);
+          }
+        });
+        res.on('end', () => {
+          try {
+            const scriptMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+            if (!scriptMatch) return resolve(null);
+            const data = JSON.parse(scriptMatch[1]);
+            const entity = data?.props?.pageProps?.state?.data?.entity;
+            if (!entity) return resolve(null);
+
+            const name = entity.name || entity.title || 'Spotify Playlist';
+            const coverUrl = entity.coverArt?.sources?.[0]?.url ||
+                             entity.visualIdentity?.image?.[0]?.url || '';
+            const rawTracks = entity.trackList || [];
+            const tracks = rawTracks.map(t => ({
+              title: t.title || t.name,
+              artist: t.subtitle || (Array.isArray(t.artists) ? t.artists.map(a => a.name).join(', ') : 'Unknown Artist'),
+              duration: typeof t.duration === 'number' ? Math.round(t.duration / 1000) : 0,
+              thumbnail: coverUrl
+            })).filter(t => Boolean(t.title));
+
+            resolve({
+              name,
+              coverUrl,
+              type,
+              id,
+              tracks
+            });
+          } catch (e) {
+            resolve(null);
+          }
+        });
+      });
+
+      req.on('error', () => resolve(null));
+      req.setTimeout(12000, () => {
+        req.destroy();
+        resolve(null);
+      });
+    });
+  }
+
   // Resolve Spotify metadata if URL is from open.spotify.com
   async resolveUrl(inputUrl, isVideo = false) {
     const trimmed = String(inputUrl || '').trim();
     
     // Check if it's a Spotify track, album, or playlist
-    const spotifyMatch = trimmed.match(/open\.spotify\.com\/(track|album|playlist|episode)\/([a-zA-Z0-9]+)/i);
+    const spotifyMatch = trimmed.match(/open\.spotify\.com\/(track|album|playlist|episode)\/([a-zA-Z0-9]+)/i) ||
+                         trimmed.match(/spotify:(track|album|playlist):([a-zA-Z0-9]+)/i);
     if (!spotifyMatch) {
       return { url: trimmed, isSpotify: false };
     }
 
     const type = spotifyMatch[1].toLowerCase();
     const id = spotifyMatch[2];
+    const suffix = isVideo ? 'official music video' : 'official audio';
 
+    // 1. Try public embed endpoint for complete title, artists, and high-res cover art
     try {
-      // Use Spotify public oEmbed endpoint to retrieve track/artist name
+      const embedUrl = `https://open.spotify.com/embed/${type}/${id}`;
+      const embedEntity = await new Promise((resolve) => {
+        const req = https.get(embedUrl, {
+          family: 4,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9'
+          }
+        }, (res) => {
+          if (res.statusCode !== 200) {
+            res.resume();
+            return resolve(null);
+          }
+          let data = '';
+          res.on('data', chunk => {
+            data += chunk;
+            if (data.length > 5 * 1024 * 1024) {
+              res.destroy();
+              resolve(null);
+            }
+          });
+          res.on('end', () => {
+            try {
+              const scriptMatch = data.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+              if (!scriptMatch) return resolve(null);
+              const json = JSON.parse(scriptMatch[1]);
+              resolve(json?.props?.pageProps?.state?.data?.entity || null);
+            } catch (e) {
+              resolve(null);
+            }
+          });
+        });
+        req.on('error', () => resolve(null));
+        req.setTimeout(6000, () => {
+          req.destroy();
+          resolve(null);
+        });
+      });
+
+      if (embedEntity) {
+        const title = embedEntity.name || embedEntity.title || '';
+        let artist = '';
+        if (Array.isArray(embedEntity.artists) && embedEntity.artists.length > 0) {
+          artist = embedEntity.artists.map(a => a.name).join(', ');
+        } else if (embedEntity.subtitle) {
+          artist = embedEntity.subtitle;
+        }
+        const thumb = embedEntity.coverArt?.sources?.[0]?.url ||
+                      embedEntity.visualIdentity?.image?.[0]?.url || '';
+
+        if (title) {
+          const query = artist ? `${title} ${artist} ${suffix}` : `${title} ${suffix}`;
+          return {
+            url: `ytsearch1:${query}`,
+            isSpotify: true,
+            spotifyTitle: title,
+            spotifyArtist: artist,
+            thumbnail: thumb
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('[DownloadService] Spotify embed resolution note:', e.message);
+    }
+
+    // 2. Fallback to Spotify public oEmbed endpoint
+    try {
       const oEmbedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(trimmed)}`;
       const metadata = await new Promise((resolve) => {
-        const req = https.get(oEmbedUrl, (res) => {
+        const req = https.get(oEmbedUrl, { family: 4 }, (res) => {
           if (res.statusCode !== 200) {
             res.resume();
             return resolve(null);
@@ -75,7 +222,6 @@ class DownloadService {
       });
 
       if (metadata && metadata.title) {
-        const suffix = isVideo ? 'official music video' : 'official audio';
         const searchQuery = `ytsearch1:${metadata.title} ${suffix}`;
         return {
           url: searchQuery,
@@ -290,7 +436,169 @@ class DownloadService {
     return { sufficient: true };
   }
 
-  // Start download via auto-selected engine (Zotify for Spotify, yt-dlp for all else / fallback)
+  // Download entire Spotify playlist / album using embed metadata and high-performance audio engine
+  async downloadSpotifyPlaylist({ spotifyData, downloadId, formatOpts, playlistName, onProgress, originalUrl }) {
+    const effectivePlaylistName = (playlistName || spotifyData.name || 'Spotify Playlist').trim();
+    const coverUrl = spotifyData.coverUrl || '';
+
+    // Initialize playlist and cover in library
+    libraryService.createPlaylist(effectivePlaylistName, coverUrl);
+    if (coverUrl) {
+      libraryService.setPlaylistCover(effectivePlaylistName, coverUrl);
+    }
+
+    const totalTracks = spotifyData.tracks.length;
+    const addedTracks = [];
+    const downloadsDir = config.paths.downloadsDir;
+
+    for (let i = 0; i < totalTracks; i++) {
+      if (this.canceledDownloads.has(downloadId)) {
+        this.canceledDownloads.delete(downloadId);
+        return {
+          success: false,
+          downloadId,
+          canceled: true,
+          error: 'Download canceled by user',
+          count: addedTracks.length,
+          tracks: addedTracks
+        };
+      }
+
+      const track = spotifyData.tracks[i];
+      const currentPercent = Math.round((i / totalTracks) * 100);
+
+      if (typeof onProgress === 'function') {
+        onProgress({
+          downloadId,
+          percent: currentPercent,
+          itemIndex: i + 1,
+          itemTotal: totalTracks,
+          speed: 'Spotify Engine',
+          size: `${i + 1}/${totalTracks}`,
+          status: `Downloading ${i + 1} of ${totalTracks}: ${track.title} (${track.artist})…`
+        });
+      }
+
+      const suffix = formatOpts.isVideo ? 'official music video' : 'official audio';
+      const searchQuery = `ytsearch1:${track.title} ${track.artist} ${suffix}`;
+
+      const trackArgs = [
+        ...formatOpts.ytdlpArgs,
+        '--no-playlist',
+        '--no-warnings',
+        '--socket-timeout', String(config.audio.socketTimeout),
+        '--match-filter', '!is_live',
+        '-o', path.join(downloadsDir, '%(title).100B [%(id)s].%(ext)s'),
+        '--print', 'after_move:RECORD:%(filepath)s<DELIM>%(id)s<DELIM>%(title)s<DELIM>%(uploader)s<DELIM>%(duration)s<DELIM>%(thumbnail)s',
+        searchQuery
+      ];
+
+      try {
+        const savedTrack = await new Promise((resolveTrack) => {
+          let trackSettled = false;
+          const child = spawn(config.paths.ytdlpBin, trackArgs);
+          this.activeProcesses.set(downloadId, child);
+
+          let trackOutput = '';
+          child.stdout.on('data', chunk => {
+            const str = chunk.toString();
+            trackOutput += str;
+            const pctMatch = str.match(/\[download\]\s+([\d.]+)%/i);
+            if (pctMatch && typeof onProgress === 'function') {
+              const itemPct = parseFloat(pctMatch[1]);
+              const overallPct = Math.round((i / totalTracks) * 100 + (itemPct / totalTracks));
+              onProgress({
+                downloadId,
+                percent: Math.min(99, overallPct),
+                itemIndex: i + 1,
+                itemTotal: totalTracks,
+                status: `Downloading ${i + 1} of ${totalTracks}: ${track.title} (${Math.round(itemPct)}%)…`
+              });
+            }
+          });
+          child.stderr.on('data', chunk => trackOutput += chunk.toString());
+
+          child.on('close', (code) => {
+            this.activeProcesses.delete(downloadId);
+            if (trackSettled) return;
+            trackSettled = true;
+
+            const lines = trackOutput.split(/[\r\n]+/).map(s => s.trim());
+            const recordLine = lines.find(l => l.startsWith('RECORD:'));
+            if (recordLine) {
+              const parts = recordLine.substring(7).split('<DELIM>');
+              const filepath = parts[0]?.trim();
+              const ytId = parts[1] || `${Date.now()}_${i}`;
+              const ytDuration = parseInt(parts[4] || '0', 10);
+              const ytThumb = parts[5] || '';
+
+              if (filepath && fs.existsSync(filepath)) {
+                const filename = path.basename(filepath);
+                const trackData = {
+                  id: `${ytId}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+                  originalId: ytId,
+                  title: track.title, // Preserves genuine original title
+                  artist: track.artist, // Preserves genuine original artist
+                  album: effectivePlaylistName,
+                  duration: track.duration || ytDuration,
+                  thumbnail: coverUrl || ytThumb,
+                  filename,
+                  downloadUrl: originalUrl,
+                  addedAt: new Date().toISOString(),
+                  playlist: effectivePlaylistName
+                };
+                const saved = libraryService.addTrack(trackData);
+                if (saved) {
+                  libraryService.addTrackToPlaylist(saved.id, effectivePlaylistName);
+                  return resolveTrack(saved);
+                }
+              }
+            }
+            resolveTrack(null);
+          });
+
+          child.on('error', () => {
+            this.activeProcesses.delete(downloadId);
+            if (!trackSettled) {
+              trackSettled = true;
+              resolveTrack(null);
+            }
+          });
+        });
+
+        if (savedTrack) {
+          addedTracks.push(savedTrack);
+        }
+      } catch (err) {
+        console.warn(`[DownloadService] Failed downloading track ${track.title}:`, err.message);
+      }
+    }
+
+    if (coverUrl) {
+      libraryService.setPlaylistCover(effectivePlaylistName, coverUrl);
+    }
+
+    if (typeof onProgress === 'function') {
+      onProgress({
+        downloadId,
+        percent: 100,
+        itemIndex: totalTracks,
+        itemTotal: totalTracks,
+        status: `Completed playlist download (${addedTracks.length} tracks saved)`
+      });
+    }
+
+    return {
+      success: addedTracks.length > 0,
+      downloadId,
+      count: addedTracks.length,
+      tracks: addedTracks,
+      playlist: effectivePlaylistName,
+      error: addedTracks.length === 0 ? 'Could not download tracks from Spotify playlist' : null
+    };
+  }
+
+  // Start download via auto-selected engine (Spotify embed / Zotify / yt-dlp)
   async startDownload({ url, isPlaylist, playlistName, format = 'audio-mp3', onProgress }) {
     // Storage space pre-check
     const diskCheck = this.checkDiskSpace();
@@ -303,9 +611,35 @@ class DownloadService {
 
     const downloadId = Date.now().toString();
     const formatOpts = this.getFormatOptions(format);
+
+    // 1. Direct High-Resolution Spotify Playlist / Album handler
+    if (this.isSpotifyPlaylistUrl(url)) {
+      if (typeof onProgress === 'function') {
+        onProgress({
+          downloadId,
+          percent: 5,
+          speed: 'Spotify Engine',
+          size: 'Playlist',
+          status: 'Fetching Spotify playlist metadata and tracks…'
+        });
+      }
+
+      const spotifyData = await this.fetchSpotifyPlaylistMetadata(url);
+      if (spotifyData && Array.isArray(spotifyData.tracks) && spotifyData.tracks.length > 0) {
+        return this.downloadSpotifyPlaylist({
+          spotifyData,
+          downloadId,
+          formatOpts,
+          playlistName: playlistName || spotifyData.name,
+          onProgress,
+          originalUrl: url
+        });
+      }
+    }
+
     const isSpotify = this.isSpotifyUrl(url);
 
-    // 1. If Spotify audio download requested AND Zotify credentials exist, try Zotify first
+    // 2. If single Spotify track and Zotify credentials exist, try Zotify first
     if (isSpotify && !formatOpts.isVideo && this.hasZotifyCredentials()) {
       if (typeof onProgress === 'function') {
         onProgress({ downloadId, percent: 10, speed: 'Zotify', size: 'Audio', eta: 'Authenticating…' });
@@ -324,9 +658,9 @@ class DownloadService {
       console.log('[DownloadService] Zotify fallback triggered, continuing with yt-dlp engine…');
     }
 
-    // 2. Main High-Performance Engine (yt-dlp) with Spotify oEmbed & Format Resolution
+    // 3. Main Engine (yt-dlp) with Spotify embed resolution & YouTube Playlist Handling
     const resolved = await this.resolveUrl(url, formatOpts.isVideo);
-    const urlIsPlaylist = /[?&]list=[a-zA-Z0-9_-]+/i.test(url) || /\/playlist\/[a-zA-Z0-9]+/i.test(url) || /\/album\/[a-zA-Z0-9]+/i.test(url);
+    const urlIsPlaylist = /[?&]list=[a-zA-Z0-9_-]+/i.test(url) || /\/playlist\b/i.test(url) || /\/album\b/i.test(url);
     const effectiveIsPlaylist = Boolean(isPlaylist || urlIsPlaylist);
 
     const baseArgs = [
@@ -341,11 +675,12 @@ class DownloadService {
 
     if (!effectiveIsPlaylist) {
       baseArgs.push('--no-playlist');
-      baseArgs.push('-o', path.join(config.paths.downloadsDir, '%(id)s.%(ext)s'));
+      baseArgs.push('-o', path.join(config.paths.downloadsDir, '%(title).100B [%(id)s].%(ext)s'));
     } else {
       baseArgs.push('--yes-playlist');
-      const folderPrefix = (playlistName || 'Playlist').replace(/[/\\?%*:|"<>]/g, '_');
-      baseArgs.push('-o', path.join(config.paths.downloadsDir, `${folderPrefix}_%(playlist_index)s_%(id)s.%(ext)s`));
+      baseArgs.push('--ignore-errors');
+      baseArgs.push('--no-abort-on-error');
+      baseArgs.push('-o', path.join(config.paths.downloadsDir, '%(title).100B [%(id)s].%(ext)s'));
     }
 
     baseArgs.push(resolved.url);
@@ -385,7 +720,7 @@ class DownloadService {
       const handleProgressLine = (line) => {
         if (!line || typeof onProgress !== 'function') return;
 
-        // 1. Playlist item counter: "[download] Downloading item 2 of 10" or "video 2 of 10"
+        // 1. Playlist item counter
         const itemMatch = line.match(/\[download\]\s+Downloading\s+(?:item|video)\s+(\d+)\s+of\s+(\d+)/i);
         if (itemMatch) {
           const cur = parseInt(itemMatch[1], 10);
@@ -420,7 +755,7 @@ class DownloadService {
           return;
         }
 
-        // 3. Post-processing / FFmpeg merger (crucial for music video merge phase)
+        // 3. Post-processing / FFmpeg merger
         if (/\[(?:Merger|ffmpeg)\]/i.test(line)) {
           onProgress({
             downloadId,
@@ -442,20 +777,14 @@ class DownloadService {
           return;
         }
 
-        // 5. Real-time download progress percentage, speed and ETA (audio & video streams)
+        // 5. Real-time download progress percentage, speed and ETA
         const pctMatch = line.match(/\[download\]\s+([\d.]+)%/i);
         if (pctMatch) {
           const pct = parseFloat(pctMatch[1]);
-
-          // Extract size: "of ~ 150.25MiB" or "of 25.4MiB"
           const sizeMatch = line.match(/of\s+(?:~\s*)?([\d.]+\s*[a-zA-Z]+)/i);
           const size = sizeMatch ? sizeMatch[1].trim() : '';
-
-          // Extract speed: "at 1.5MiB/s" or "at ~2MiB/s" or "at Unknown speed"
           const speedMatch = line.match(/at\s+((?:~?\s*[\d.]+\s*[a-zA-Z/]+)|(?:Unknown(?:\s+speed)?))/i);
           const speed = speedMatch ? speedMatch[1].trim() : '';
-
-          // Extract ETA: "ETA 01:40"
           const etaMatch = line.match(/ETA\s+([\d:]+|Unknown)/i);
           const eta = etaMatch ? etaMatch[1].trim() : '';
 
@@ -474,7 +803,6 @@ class DownloadService {
       child.stdout.on('data', (chunk) => {
         resetActivityTimer();
         const text = chunk.toString();
-        // Support both newline and carriage return splits
         const lines = text.split(/[\r\n]+/).map(s => s.trim()).filter(Boolean);
         outputLines.push(...lines);
         for (const line of lines) {
@@ -499,9 +827,10 @@ class DownloadService {
         if (isSettled) return;
         isSettled = true;
 
-        if (code === 0) {
+        const recordLines = outputLines.filter(l => typeof l === 'string' && l.startsWith('RECORD:'));
+
+        if (code === 0 || (effectiveIsPlaylist && recordLines.length > 0)) {
           const addedTracks = [];
-          const recordLines = outputLines.filter(l => typeof l === 'string' && l.startsWith('RECORD:'));
 
           for (const line of recordLines) {
             const rawContent = line.substring(7); // strip 'RECORD:'
@@ -509,7 +838,7 @@ class DownloadService {
             const filepath = parts[0] ? parts[0].trim() : '';
             const id = parts[1] || downloadId;
             const title = parts[2] || resolved.spotifyTitle || 'Unknown Track';
-            const artist = parts[3] || 'Brave Music';
+            const artist = resolved.spotifyArtist || parts[3] || 'Brave Music';
             const duration = parseInt(parts[4] || '0', 10);
             const thumbnail = parts[5] || resolved.thumbnail || '';
             const extractedPlaylist = (parts[6] && parts[6] !== 'NA' && parts[6].trim()) ? parts[6].trim() : null;
@@ -521,7 +850,7 @@ class DownloadService {
               const trackData = {
                 id: `${id}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
                 originalId: id,
-                title,
+                title, // Genuine original title preserved!
                 artist,
                 album: targetPlaylistName || (effectiveIsPlaylist ? 'Downloaded Album' : 'Single'),
                 duration,
@@ -535,8 +864,9 @@ class DownloadService {
               const saved = libraryService.addTrack(trackData);
               if (saved) {
                 addedTracks.push(saved);
-                if (targetPlaylistName && thumbnail) {
-                  libraryService.setPlaylistCover(targetPlaylistName, thumbnail);
+                if (targetPlaylistName) {
+                  libraryService.createPlaylist(targetPlaylistName, thumbnail);
+                  libraryService.addTrackToPlaylist(saved.id, targetPlaylistName);
                 }
               }
             }
@@ -623,6 +953,7 @@ class DownloadService {
 
   // Cancel an active download by ID
   cancelDownload(downloadId) {
+    this.canceledDownloads.add(downloadId);
     const proc = this.activeProcesses.get(downloadId);
     if (proc) {
       try {
@@ -637,7 +968,7 @@ class DownloadService {
         return { success: false, error: e.message };
       }
     }
-    return { success: false, error: 'No active process found for download ID' };
+    return { success: true, downloadId };
   }
 }
 

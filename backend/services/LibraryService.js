@@ -150,11 +150,18 @@ class LibraryService {
       }
     }
 
-    // Remove existing if duplicate originalId exists
+    // Retain stable ID if track already exists to preserve playlist relationships
+    let existingTrack = null;
     if (track.originalId) {
-      this.db.tracks = this.db.tracks.filter(t => t.originalId !== track.originalId);
-    } else {
-      this.db.tracks = this.db.tracks.filter(t => t.id !== track.id);
+      existingTrack = this.db.tracks.find(t => t.originalId === track.originalId);
+    }
+    if (!existingTrack) {
+      existingTrack = this.db.tracks.find(t => t.id === track.id);
+    }
+
+    if (existingTrack) {
+      track.id = existingTrack.id;
+      this.db.tracks = this.db.tracks.filter(t => t.id !== existingTrack.id);
     }
 
     this.db.tracks.unshift(track);
@@ -200,6 +207,50 @@ class LibraryService {
     return { success: true, trackId };
   }
 
+  // Delete multiple tracks in bulk from disk and database
+  deleteTracks(trackIds = []) {
+    if (!Array.isArray(trackIds) || trackIds.length === 0) {
+      return { success: false, error: 'No track IDs provided', deletedCount: 0 };
+    }
+
+    const idsSet = new Set(trackIds);
+    let deletedCount = 0;
+    const deletedIds = [];
+
+    this.db.tracks = this.db.tracks.filter(track => {
+      if (idsSet.has(track.id)) {
+        if (this.isBuiltInTrack(track)) {
+          return true; // Keep built-in track protected
+        }
+        if (track.filename) {
+          const fullPath = path.join(this.downloadsDir, track.filename);
+          if (fs.existsSync(fullPath)) {
+            try {
+              fs.unlinkSync(fullPath);
+            } catch (e) {
+              console.error('[LibraryService] Error removing file during bulk delete:', fullPath, e.message);
+            }
+          }
+        }
+        deletedCount++;
+        deletedIds.push(track.id);
+        return false;
+      }
+      return true;
+    });
+
+    // Remove deleted track IDs from all playlists
+    const deletedSet = new Set(deletedIds);
+    for (const pName in this.db.playlists) {
+      if (Array.isArray(this.db.playlists[pName])) {
+        this.db.playlists[pName] = this.db.playlists[pName].filter(id => !deletedSet.has(id));
+      }
+    }
+
+    this.saveDatabase();
+    return { success: true, deletedCount, deletedIds };
+  }
+
   // Playlists Operations
   createPlaylist(name, cover = null) {
     const cleanName = String(name || '').trim();
@@ -208,7 +259,7 @@ class LibraryService {
     if (!this.db.playlists[cleanName]) {
       this.db.playlists[cleanName] = [];
     }
-    if (cover) {
+    if (cover && (!this.db.playlistCovers || !this.db.playlistCovers[cleanName])) {
       this.db.playlistCovers = this.db.playlistCovers || {};
       this.db.playlistCovers[cleanName] = cover;
     }
@@ -222,13 +273,17 @@ class LibraryService {
   }
 
   setPlaylistCover(name, cover) {
-    if (!name || !this.db.playlists[name]) {
-      return { success: false, error: 'Playlist not found' };
+    const cleanName = String(name || '').trim();
+    if (!cleanName) {
+      return { success: false, error: 'Playlist name is required' };
+    }
+    if (!this.db.playlists[cleanName]) {
+      this.db.playlists[cleanName] = [];
     }
     this.db.playlistCovers = this.db.playlistCovers || {};
-    this.db.playlistCovers[name] = cover;
+    this.db.playlistCovers[cleanName] = cover;
     this.saveDatabase();
-    return { success: true, name, cover };
+    return { success: true, name: cleanName, cover };
   }
 
   deletePlaylist(name, deleteFiles = false) {
@@ -402,6 +457,7 @@ class LibraryService {
       // Verify existing tracks exist on disk
       const existingTrackFilenames = new Set();
       this.db.tracks = this.db.tracks.filter(t => {
+        if (this.isBuiltInTrack(t)) return true;
         if (!t.filename) return false;
         const exists = fs.existsSync(path.join(this.downloadsDir, t.filename));
         if (exists) existingTrackFilenames.add(t.filename);
@@ -417,10 +473,13 @@ class LibraryService {
           const fullPath = path.join(this.downloadsDir, file);
           const stat = fs.statSync(fullPath);
 
+          let cleanTitle = baseName.replace(/_/g, ' ');
+          cleanTitle = cleanTitle.replace(/\s*\[[a-zA-Z0-9_-]{6,16}\]$/, '').trim() || cleanTitle;
+
           this.db.tracks.push({
             id: `local_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
             originalId: baseName,
-            title: baseName.replace(/_/g, ' '),
+            title: cleanTitle,
             artist: 'Offline Audio',
             album: 'Local Storage',
             duration: 0,
