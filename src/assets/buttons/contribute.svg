@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="145" height="42" viewBox="0 0 145 42">
+  <defs>
+    <filter id="shadow4" x="-5%" y="-10%" width="110%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.25" />
+    </filter>
+  </defs>
+  <rect x="2" y="2" width="141" height="38" rx="19" fill="#13141E" stroke="#5E35B1" stroke-width="1.5" filter="url(#shadow4)" />
+  <g fill="#B39DDB" transform="translate(18, 12)">
+    <path d="M14 6.5c0-1.93-1.57-3.5-3.5-3.5-1.55 0-2.88 1.01-3.34 2.41C6.27 5.17 5.37 5 4.5 5 2.01 5 0 7.01 0 9.5S2.01 14 4.5 14h9.5v-7.5zM4.5 12C3.12 12 2 10.88 2 9.5S3.12 7 4.5 7c.72 0 1.37.31 1.83.81L7.2 8.76 6.8 9.87C6.67 10.23 6.6 10.6 6.6 11H4.5v1zm6 0H8.5c0-.62.15-1.21.43-1.74l.43-.81.94.05c.07 0 .13.01.2.01 1.38 0 2.5 1.12 2.5 2.5z" />
+  </g>
+  <text x="44" y="25" fill="#F1F3F9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" letter-spacing="0.3">Contribute</text>
+</svg>

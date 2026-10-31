@@ -21,7 +21,7 @@
     </a>
     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
     <a href="#install-portal" title="Microsoft Windows Coming Soon">
-      <img src="src/assets/icons/microsoft.svg" alt="Microsoft" width="26" height="26" />
+      <img src="src/assets/icons/microsoft.svg" alt="Microsoft" width="28" height="28" />
     </a>
     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
     <a href="#install-portal" title="Android Target Milestone">
@@ -30,7 +30,7 @@
   </p>
 
   <!-- Metrics Bar -->
-  <table align="center" style="margin-top: 12px; margin-bottom: 20px;">
+  <table align="center" style="margin-top: 12px; margin-bottom: 22px;">
     <tr>
       <td align="center" width="140">
         <strong>119 MB</strong><br />
@@ -51,15 +51,23 @@
     </tr>
   </table>
 
-  <!-- Portal Action Links -->
-  <p align="center">
-    <a href="#install-portal"><strong>[ Install App (Linux .deb) ]</strong></a>
-    &nbsp;&nbsp;&nbsp;&nbsp;
-    <a href="#developer-portal"><strong>[ Developer Portal ]</strong></a>
-    &nbsp;&nbsp;&nbsp;&nbsp;
-    <a href="docs/RELEASE.md"><strong>[ Release Notes ]</strong></a>
-    &nbsp;&nbsp;&nbsp;&nbsp;
-    <a href="docs/CONTRIBUTION.md"><strong>[ Contribute ]</strong></a>
+  <!-- Play Store Theme Action Buttons in Codemo OSL Colors -->
+  <p align="center" style="margin-top: 16px; margin-bottom: 24px;">
+    <a href="#install-portal">
+      <img src="src/assets/buttons/install-app.svg" alt="Install App (Linux .deb)" height="42" />
+    </a>
+    &nbsp;&nbsp;
+    <a href="#developer-portal">
+      <img src="src/assets/buttons/developer-portal.svg" alt="Developer Portal" height="42" />
+    </a>
+    &nbsp;&nbsp;
+    <a href="docs/RELEASE.md">
+      <img src="src/assets/buttons/release-notes.svg" alt="Release Notes" height="42" />
+    </a>
+    &nbsp;&nbsp;
+    <a href="docs/CONTRIBUTION.md">
+      <img src="src/assets/buttons/contribute.svg" alt="Contribute" height="42" />
+    </a>
   </p>
 
 </div>
@@ -149,40 +157,6 @@ Brave Music is an open-source collaboration maintained under Codemo Open Source 
 <div align="center" style="margin-top: 14px; margin-bottom: 24px;">
   <img src="testimonials/Ads-Blocker.gif" alt="Brave Shields Protection Active" width="220" style="border-radius: 8px;" />
 </div>
-
----
-
-## Developer Motivation: The COSL Vision
-
-For developers building across the Codemo OSL ecosystem, we follow a unified standard of creative engineering, educational growth, and open-source excellence:
-
-```jsx
-import TextLoop from './src/components/TextLoop';
-
-<TextLoop
-  text="CODEMO OSL ✦ UNITE SOLUTIONS ✦ CREATIVITY AND EDUCATION ✦ PRO DEVELOPER ECOSYSTEM ✦ OPEN SOURCE FREEDOM"
-  shape="wave"
-  speed={90}
-  direction="forward"
-  separator="✦"
-  curviness={90}
-  tilt={0}
-  fontSize={46}
-  fontWeight={800}
-  letterSpacing={2}
-  uppercase
-  ribbon
-  ribbonColor="#4E2E8D"
-  ribbonWidth={86}
-  edgeFade={0}
-  cross={false}
-  crossAngle={16}
-  draggable={false}
-  scrollBoost={0}
-  outline={false}
-  pauseOnHover
-/>
-```
 
 ---
 

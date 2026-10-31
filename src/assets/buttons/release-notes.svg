@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="165" height="42" viewBox="0 0 165 42">
+  <defs>
+    <filter id="shadow3" x="-5%" y="-10%" width="110%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.25" />
+    </filter>
+  </defs>
+  <rect x="2" y="2" width="161" height="38" rx="19" fill="#13141E" stroke="#5E35B1" stroke-width="1.5" filter="url(#shadow3)" />
+  <g fill="#B39DDB" transform="translate(18, 12)">
+    <path d="M12.5 1.5H3.5C2.4 1.5 1.5 2.4 1.5 3.5v11c0 1.1.9 2 2 2h9c1.1 0 2-.9 2-2v-11c0-1.1-.9-2-2-2zm0 13h-9v-11h9v11zM5 5h6v1.5H5V5zm0 3h6v1.5H5V8zm0 3h4v1.5H5V11z" />
+  </g>
+  <text x="44" y="25" fill="#F1F3F9" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" font-weight="600" letter-spacing="0.3">Release Notes</text>
+</svg>

@@ -1,0 +1,52 @@
+name: Bug Report
+description: Report an issue, streaming error, playback failure, or packaging defect.
+title: "[BUG]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue to Brave Music. Please check existing issues before submitting.
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise explanation of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can maintainers reproduce the issue?
+      placeholder: |
+        1. Launch Brave Music desktop app
+        2. Select Spotify tab
+        3. Observe audio playback error
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      options:
+        - YouTube Music Webview
+        - Spotify Web Player / Widevine DRM
+        - Brave Shields Ad-Blocking
+        - Offline Downloader (yt-dlp)
+        - Embedded Musikcube Audio Engine
+        - Debian Package Installation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: System Environment
+      description: Linux distribution and versions.
+      placeholder: |
+        - OS: Ubuntu 24.04 LTS (x86_64)
+        - Sound Server: PipeWire
+        - Brave Music Version: v1.0.0
+    validations:
+      required: true
