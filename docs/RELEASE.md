@@ -31,10 +31,11 @@ All official releases follow [Semantic Versioning 2.0.0](https://semver.org/):
 - **Release Tag**: `v1.0.0`
 - **Target Architecture**: Linux `x86_64` / `amd64`
 - **License**: MIT (Codemo OSL)
+- **Direct Download**: [**brave-music_1.0.0_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.0/brave-music_1.0.0_amd64.deb)
 
 #### Package Checksums (SHA-256)
 ```text
-edb4eaf9b865fb84be011602f1e3e75035e200ad6ae44b28549116eae67fc0ef  brave-music_1.0.0_amd64.deb
+fdde5cbfc92f78bfa6d5b5462bd36f7f1c04dabee09280725fb73200e1244875  brave-music_1.0.0_amd64.deb
 ```
 
 #### Highlights and Major Features

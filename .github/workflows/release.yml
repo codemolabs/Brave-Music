@@ -1,0 +1,78 @@
+name: Release Brave Music
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev yt-dlp
+
+      - name: Install Node Dependencies
+        run: npm install
+
+      - name: Build Debian Package
+        run: bash build-deb.sh
+
+      - name: Generate Checksum
+        run: |
+          sha256sum brave-music_1.0.0_amd64.deb > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Brave Music ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: |
+            brave-music_1.0.0_amd64.deb
+            SHA256SUMS.txt
+          draft: false
+          prerelease: false
+          body: |
+            ## Brave Music ${{ github.ref_name }} Stable Release
+
+            Official open-source release of Brave Music for Linux.
+
+            ### Download & Direct Install
+
+            1. Download the Debian package:
+               ```bash
+               wget https://github.com/codemoteams/Brave-Music/releases/download/${{ github.ref_name }}/brave-music_1.0.0_amd64.deb
+               ```
+
+            2. Install via APT:
+               ```bash
+               sudo apt install ./brave-music_1.0.0_amd64.deb
+               ```
+
+            3. Launch:
+               ```bash
+               brave-music
+               ```
+
+            ### Package Information
+            - **Platform**: Linux x86_64 / amd64
+            - **Package**: `brave-music_1.0.0_amd64.deb`
+            - **License**: MIT (Codemo OSL)

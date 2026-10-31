@@ -46,7 +46,14 @@ sudo pacman -S --needed curl yt-dlp libnotify
 The official standalone Debian package installs Brave Music with all system menu entries, desktop shortcuts, native C++ audio shared libraries, and executable symlinks.
 
 ### Step 1: Download or Build the Package
-Download the latest verified package from the [Releases](RELEASE.md) channel, or build it locally:
+Download the latest verified package directly from GitHub Releases:
+```bash
+wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.0/brave-music_1.0.0_amd64.deb
+```
+
+Direct binary download: [**brave-music_1.0.0_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.0/brave-music_1.0.0_amd64.deb)
+
+Or build it locally from source:
 ```bash
 npm run build:deb
 ```
@@ -58,7 +65,7 @@ sha256sum brave-music_1.0.0_amd64.deb
 ```
 Expected output:
 ```text
-edb4eaf9b865fb84be011602f1e3e75035e200ad6ae44b28549116eae67fc0ef  brave-music_1.0.0_amd64.deb
+fdde5cbfc92f78bfa6d5b5462bd36f7f1c04dabee09280725fb73200e1244875  brave-music_1.0.0_amd64.deb
 ```
 
 ### Step 3: Install Package via APT
