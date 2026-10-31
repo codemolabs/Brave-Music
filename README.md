@@ -1,4 +1,4 @@
- <div align="center">
+<div align="center">
 
 <img src="src/assets/app-icon.svg" alt="Brave Music Application Icon" width="112" height="112" />
 
@@ -113,6 +113,8 @@ Explore the Brave Music interface and its primary application components.
 
 ## Installation
 
+<a id="platform-availability"></a>
+
 ### Linux Desktop
 
 <sub>AVAILABLE NOW · VERSION 1.0.0 · X86_64</sub>
@@ -128,6 +130,7 @@ Brave Music currently provides a standalone Debian installation package for comp
 
 ### Install Using APT
 
+```bash
 # 1. Download official v1.0.0 Debian package
 wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.0/brave-music_1.0.0_amd64.deb
 
