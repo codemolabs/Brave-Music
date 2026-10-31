@@ -65,7 +65,7 @@ sha256sum brave-music_1.0.0_amd64.deb
 ```
 Expected output:
 ```text
-fdde5cbfc92f78bfa6d5b5462bd36f7f1c04dabee09280725fb73200e1244875  brave-music_1.0.0_amd64.deb
+2ded16a43683b093598c843acd2f758998e39f8b2478ac1b85ea198de90c7387  brave-music_1.0.0_amd64.deb
 ```
 
 ### Step 3: Install Package via APT

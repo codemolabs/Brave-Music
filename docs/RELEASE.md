@@ -35,7 +35,7 @@ All official releases follow [Semantic Versioning 2.0.0](https://semver.org/):
 
 #### Package Checksums (SHA-256)
 ```text
-fdde5cbfc92f78bfa6d5b5462bd36f7f1c04dabee09280725fb73200e1244875  brave-music_1.0.0_amd64.deb
+2ded16a43683b093598c843acd2f758998e39f8b2478ac1b85ea198de90c7387  brave-music_1.0.0_amd64.deb
 ```
 
 #### Highlights and Major Features
