@@ -290,21 +290,3 @@ Codemo OSL retains its applicable organizational rights, product branding, and g
 The software codebase is distributed under the terms of the [MIT License](LICENSE).
 
 For complete organizational policies, ownership information, and developer requirements, refer to [docs/RULES.md](docs/RULES.md).
-
----
-
-<div align="center">
-
-<img src="src/assets/app-icon.svg" alt="Brave Music" width="54"/>
-
-## Built for Music. Engineered for Control.
-
-**Brave Music**
-
-An Open-Source Project by **Codemo Open Source Labs**
-
-[Official Website](https://codemoteams.org) · [Developer Portal](docs/DEV-GUIDE.md) · [Security](docs/SECURITY.md) · [Contribute](docs/CONTRIBUTION.md)
-
-<sub>© Codemo Open Source Labs. Software licensing is governed by the MIT License.</sub>
-
-</div>
