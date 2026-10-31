@@ -10,54 +10,41 @@
 
   # Brave Music
   
-  <p style="font-size: 16px; color: #8e97ab; margin-top: 4px; margin-bottom: 12px;">
-    A high-performance open-source music streaming platform combining ad-free YouTube Music and Spotify Web with an embedded C++ offline playback engine.<br />
-    Engineered for privacy, native Widevine DRM playback, and offline listening.
+  <p style="font-size: 15px; line-height: 1.6; color: #a0a5b5; max-width: 820px; margin: 12px auto 20px auto;">
+    A high-performance open-source music streaming platform combining ad-free YouTube Music and Spotify Web with an embedded C++ offline playback engine. Engineered for privacy, native Widevine DRM playback, and offline listening, Brave Music brings together the largest digital audio streaming libraries into a single unified desktop client free from commercial trackers, data harvesting, and intrusive interruptions. By pairing CastLabs Chromium media decryption with an embedded native Musikcube audio daemon, listeners enjoy instant lossless track indexing, automatic high-bitrate offline caching, and complete control over their local music collections.
   </p>
 
-  <p>
-    <strong>Codemo Open Source Labs</strong> &nbsp;•&nbsp; 
-    <span>Music and Audio</span> &nbsp;•&nbsp; 
-    <span>Free and Open Source</span> &nbsp;•&nbsp; 
-    <span>v1.0.0 Stable</span>
-  </p>
-
-  <!-- COSL Native Color Theme Platform Badges -->
-  <p>
-    <a href="#install-portal">
-      <img src="https://img.shields.io/badge/Linux_Desktop-Available%20v1.0.0-4E2E8D?style=for-the-badge&logo=linux&logoColor=white" alt="Linux Desktop Available" />
+  <!-- Original Platform Logos -->
+  <p align="center" style="margin-top: 14px; margin-bottom: 18px;">
+    <a href="#install-portal" title="Linux Desktop Available">
+      <img src="src/assets/icons/linux.svg" alt="Linux" width="30" height="30" />
     </a>
-    <a href="#install-portal">
-      <img src="https://img.shields.io/badge/Android_App-Next_Target_Milestone-5B32A8?style=for-the-badge&logo=android&logoColor=white" alt="Android Next Target" />
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    <a href="#install-portal" title="Microsoft Windows Coming Soon">
+      <img src="src/assets/icons/microsoft.svg" alt="Microsoft" width="26" height="26" />
     </a>
-    <a href="#install-portal">
-      <img src="https://img.shields.io/badge/Windows-Coming_Soon-241542?style=for-the-badge&logo=windows&logoColor=B8A9D9" alt="Windows Coming Soon" />
-    </a>
-    <a href="#install-portal">
-      <img src="https://img.shields.io/badge/macOS-Coming_Soon-241542?style=for-the-badge&logo=apple&logoColor=B8A9D9" alt="macOS Coming Soon" />
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    <a href="#install-portal" title="Android Target Milestone">
+      <img src="src/assets/icons/android.svg" alt="Android" width="30" height="30" />
     </a>
   </p>
 
   <!-- Metrics Bar -->
   <table align="center" style="margin-top: 12px; margin-bottom: 20px;">
     <tr>
-      <td align="center" width="130">
-        <strong>4.9 ★</strong><br />
-        <span style="font-size: 11px; color: #7f8699;">Community Rating</span>
-      </td>
-      <td align="center" width="130">
+      <td align="center" width="140">
         <strong>119 MB</strong><br />
         <span style="font-size: 11px; color: #7f8699;">Debian Package</span>
       </td>
-      <td align="center" width="130">
+      <td align="center" width="140">
         <strong>Zero Trackers</strong><br />
         <span style="font-size: 11px; color: #7f8699;">Brave Shields</span>
       </td>
-      <td align="center" width="130">
+      <td align="center" width="140">
         <strong>C++ Engine</strong><br />
         <span style="font-size: 11px; color: #7f8699;">Embedded Musikcube</span>
       </td>
-      <td align="center" width="130">
+      <td align="center" width="140">
         <strong>MIT License</strong><br />
         <span style="font-size: 11px; color: #7f8699;">Codemo OSL</span>
       </td>
@@ -65,14 +52,14 @@
   </table>
 
   <!-- Portal Action Links -->
-  <p>
-    <a href="#install-portal"><strong>[ 📥 Install App (Linux .deb) ]</strong></a>
+  <p align="center">
+    <a href="#install-portal"><strong>[ Install App (Linux .deb) ]</strong></a>
     &nbsp;&nbsp;&nbsp;&nbsp;
-    <a href="#developer-portal"><strong>[ 💻 Developer Portal ]</strong></a>
+    <a href="#developer-portal"><strong>[ Developer Portal ]</strong></a>
     &nbsp;&nbsp;&nbsp;&nbsp;
-    <a href="docs/RELEASE.md"><strong>[ 📋 Release Notes ]</strong></a>
+    <a href="docs/RELEASE.md"><strong>[ Release Notes ]</strong></a>
     &nbsp;&nbsp;&nbsp;&nbsp;
-    <a href="docs/CONTRIBUTION.md"><strong>[ 🤝 Contribute ]</strong></a>
+    <a href="docs/CONTRIBUTION.md"><strong>[ Contribute ]</strong></a>
   </p>
 
 </div>
@@ -162,6 +149,40 @@ Brave Music is an open-source collaboration maintained under Codemo Open Source 
 <div align="center" style="margin-top: 14px; margin-bottom: 24px;">
   <img src="testimonials/Ads-Blocker.gif" alt="Brave Shields Protection Active" width="220" style="border-radius: 8px;" />
 </div>
+
+---
+
+## Developer Motivation: The COSL Vision
+
+For developers building across the Codemo OSL ecosystem, we follow a unified standard of creative engineering, educational growth, and open-source excellence:
+
+```jsx
+import TextLoop from './src/components/TextLoop';
+
+<TextLoop
+  text="CODEMO OSL ✦ UNITE SOLUTIONS ✦ CREATIVITY AND EDUCATION ✦ PRO DEVELOPER ECOSYSTEM ✦ OPEN SOURCE FREEDOM"
+  shape="wave"
+  speed={90}
+  direction="forward"
+  separator="✦"
+  curviness={90}
+  tilt={0}
+  fontSize={46}
+  fontWeight={800}
+  letterSpacing={2}
+  uppercase
+  ribbon
+  ribbonColor="#4E2E8D"
+  ribbonWidth={86}
+  edgeFade={0}
+  cross={false}
+  crossAngle={16}
+  draggable={false}
+  scrollBoost={0}
+  outline={false}
+  pauseOnHover
+/>
+```
 
 ---
 
