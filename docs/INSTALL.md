@@ -1,137 +1,162 @@
-# Installation and Setup Guide: Brave Music
+# Installing Brave Music on Linux
 
-This guide covers all installation methods for Brave Music on Linux systems, including binary package installation, building from source, and distribution package generation.
+This guide provides official instructions for installing, configuring, verifying, and updating Brave Music on supported Linux distributions.
 
 ---
 
-## 1. System Requirements and Dependencies
+## Supported Linux Distributions
 
-Before installing, ensure your host system satisfies these prerequisites:
+Brave Music is tested and officially supported on 64-bit (`x86_64` / `amd64`) Linux distributions:
 
-- **Operating System**: Linux 64-bit (`x86_64` / `amd64`)
-  - Tested on: Ubuntu 22.04 LTS / 24.04 LTS, Debian 12 (Bookworm), Linux Mint 21+, Pop!_OS 22.04+, Fedora 39+, Arch Linux
-- **Audio Output**: Active PipeWire, PulseAudio, or ALSA daemon
-- **Hardware Acceleration**: OpenGL 2.0+ compatible GPU or software rendering fallback
+| Distribution | Minimum Version | Installation Package | Status |
+| :--- | :--- | :--- | :--- |
+| **Ubuntu** | 20.04 LTS, 22.04 LTS, 24.04 LTS | Debian Package (`.deb`) | Fully Supported |
+| **Debian** | 11 (Bullseye), 12 (Bookworm) | Debian Package (`.deb`) | Fully Supported |
+| **Linux Mint** | 20, 21, 22 | Debian Package (`.deb`) | Fully Supported |
+| **Pop!_OS** | 22.04 LTS+ | Debian Package (`.deb`) | Fully Supported |
+| **Fedora** | 38, 39, 40 | Source Build / Standalone | Supported via Source |
+| **Arch Linux / Manjaro** | Rolling | Source Build / Standalone | Supported via Source |
 
-### Required System Binaries
-Install `yt-dlp` (for high-bitrate offline audio extraction) and `curl`:
+---
 
-**Ubuntu / Debian / Linux Mint / Pop!_OS**:
+## 1. System Dependencies and Prerequisites
+
+Brave Music requires standard media extraction and sound playback utilities:
+
+### Ubuntu / Debian / Linux Mint / Pop!_OS
 ```bash
 sudo apt update
-sudo apt install -y curl yt-dlp
+sudo apt install -y curl yt-dlp libnotify-bin
 ```
 
-**Fedora / RHEL**:
+### Fedora / RHEL
 ```bash
-sudo dnf install -y curl yt-dlp
+sudo dnf install -y curl yt-dlp libnotify
 ```
 
-**Arch Linux / Manjaro**:
+### Arch Linux / Manjaro
 ```bash
-sudo pacman -S curl yt-dlp
+sudo pacman -S --needed curl yt-dlp libnotify
 ```
 
 ---
 
-## 2. Method A: Installing the Debian Package (Recommended)
+## 2. Installing via Debian Package (`.deb`)
 
-The easiest method for Ubuntu, Debian, and Debian-based distributions is using the pre-built `.deb` package.
+The official standalone Debian package installs Brave Music with all system menu entries, desktop shortcuts, native C++ audio shared libraries, and executable symlinks.
 
-### Step 1: Obtain the Package
-If you cloned the repository or have the built package locally:
-```bash
-# Verify the deb package exists
-ls -lh brave-music_1.0.0_amd64.deb
-```
-Or build a fresh package locally:
+### Step 1: Download or Build the Package
+Download the latest verified package from the [Releases](RELEASE.md) channel, or build it locally:
 ```bash
 npm run build:deb
 ```
 
-### Step 2: Install via APT
-Using `apt` automatically resolves any missing runtime dependencies:
+### Step 2: Verify Package Integrity (SHA-256)
+Before installing, verify that the package hash matches the official release record:
+```bash
+sha256sum brave-music_1.0.0_amd64.deb
+```
+Expected output:
+```text
+edb4eaf9b865fb84be011602f1e3e75035e200ad6ae44b28549116eae67fc0ef  brave-music_1.0.0_amd64.deb
+```
+
+### Step 3: Install Package via APT
+Use `apt install` so that any missing distribution dependencies are automatically resolved:
 ```bash
 sudo apt install ./brave-music_1.0.0_amd64.deb
 ```
 
-### Step 3: Launch Brave Music
-You can launch Brave Music in two ways:
-- **Desktop Application Launcher**: Open your application menu and search for **Brave Music**.
-- **Terminal Command**:
+### Step 4: Launch Brave Music
+- **From Application Menu**: Search for **Brave Music** in your desktop launcher (GNOME, KDE Plasma, XFCE, Cinnamon).
+- **From Terminal**:
   ```bash
   brave-music
   ```
 
-### What Gets Installed
-The Debian package installs the following system paths:
-- `/opt/brave-music/`: Complete application bundle, backend services, and embedded Musikcube engine.
-- `/usr/bin/brave-music`: System execution symlink script.
-- `/usr/share/applications/brave-music.desktop`: Desktop menu entry with category and metadata.
-- `/usr/share/icons/hicolor/scalable/apps/brave-music.svg`: High-resolution application icon.
+---
+
+## 3. Directory Layout and File System Placement
+
+When installed via package, Brave Music adheres to Linux Filesystem Hierarchy Standards (FHS):
+
+| Target Path | Function |
+| :--- | :--- |
+| `/opt/brave-music/` | Application root, main process, backend services, and embedded Musikcube binaries |
+| `/opt/brave-music/run.sh` | Hardened startup script configuring library paths and runtime flags |
+| `/usr/bin/brave-music` | System-wide execution symlink callable from any terminal |
+| `/usr/share/applications/brave-music.desktop` | Desktop entry file registering audio categories and system integration |
+| `/usr/share/icons/hicolor/scalable/apps/brave-music.svg` | Vector application icon |
+| `~/.config/brave-music/` | User application profile, persistent login cookies, and cache partition |
+| `~/.config/musikcube/` | Embedded C++ audio daemon database and library index files |
 
 ---
 
-## 3. Method B: Running from Source (Developer Installation)
+## 4. Running from Source (Developer Installation)
 
-If you prefer to run the application directly from source without installing it system-wide:
+If you are developing or testing without system installation:
 
 ### Step 1: Install Node.js
-Ensure Node.js v18 or v20 is installed on your machine:
+Ensure Node.js v18+ or v20+ is active:
 ```bash
-node -v # Should report v18.x or v20.x
+node -v
 npm -v
 ```
 
-### Step 2: Clone the Repository
+### Step 2: Clone Repository
 ```bash
 git clone git@github.com:codemoteams/Brave-Music.git
 cd Brave-Music
 ```
 
-### Step 3: Install NPM Dependencies
-This installs CastLabs Electron with verified Widevine CDM support:
+### Step 3: Install Dependencies
 ```bash
 npm install
 ```
 
-### Step 4: Run the Application
-Start the desktop application in development mode:
+### Step 4: Start Desktop Client
 ```bash
 npm start
 ```
-Or run the launcher script directly:
+Or execute the local launcher:
 ```bash
 ./run.sh
 ```
 
 ---
 
-## 4. Building the Standalone Debian Package
+## 5. Command-Line Options and Execution Flags
 
-If you modify source code and want to package a new release:
+The `brave-music` launcher accepts Chromium and Electron runtime flags:
 
-```bash
-npm run build:deb
-```
-The packaging script (`build-deb.sh`) handles:
-1. Creating Debian control metadata (`DEBIAN/control`).
-2. Packaging application files into `/opt/brave-music`.
-3. Provisioning Widevine CDM binaries if available on the host.
-4. Setting executable permissions on the native `musikcubed` daemon.
-5. Invoking `dpkg-deb --build` to output `brave-music_1.0.0_amd64.deb`.
+| Flag | Purpose | Usage Example |
+| :--- | :--- | :--- |
+| `--no-sandbox` | Disables Chromium sandbox (required in unprivileged Docker/LXC/WSL2) | `brave-music --no-sandbox` |
+| `--in-process-gpu` | Runs GPU process in main process thread for low-end graphics cards | `brave-music --in-process-gpu` |
+| `--disable-gpu` | Disables hardware acceleration if encountering visual tearing | `brave-music --disable-gpu` |
 
 ---
 
-## 5. Uninstallation
+## 6. Updating Brave Music
 
-To remove Brave Music from your system:
+To update to a new release when a new package is published:
+```bash
+sudo apt update
+sudo apt install --only-upgrade ./brave-music_<new_version>_amd64.deb
+```
 
+---
+
+## 7. Uninstallation and System Cleanup
+
+### Standard Removal
+To remove the application while retaining your local offline music downloads and playlists:
 ```bash
 sudo apt remove brave-music
 ```
 
-To purge application configuration and cached offline tracks:
+### Complete Purge
+To completely purge application files, configuration, and cache:
 ```bash
 sudo apt purge brave-music
 rm -rf ~/.config/brave-music
@@ -140,25 +165,11 @@ rm -rf ~/.config/musikcube
 
 ---
 
-## 6. Troubleshooting Installation Issues
+## 8. Troubleshooting Matrix
 
-### 1. Missing Widevine CDM / Protected Content Error
-If Spotify indicates that protected content cannot be played:
-- Verify that CastLabs Electron is installed:
-  ```bash
-  node test-widevine-ready.js
-  ```
-- If you have Google Chrome installed, CastLabs can borrow the host Widevine CDM from `/opt/google/chrome/WidevineCdm`.
-
-### 2. Sandbox Permission Errors on Linux
-If you are running in an unprivileged container, LXC, or WSL2 environment:
-```bash
-./run.sh --no-sandbox
-```
-
-### 3. Audio Playback Muted or Stalled
-- Check whether your sound server is active:
-  ```bash
-  pactl info || wpctl status
-  ```
-- Make sure ALSA or PulseAudio sink is unmuted in `alsamixer` or system sound settings.
+| Issue | Root Cause | Resolution |
+| :--- | :--- | :--- |
+| **Spotify displays "Enable Protected Content"** | Widevine CDM is uninitialized or missing | Run `node test-widevine-ready.js`. If Google Chrome is installed, CastLabs automatically borrows CDM from `/opt/google/chrome/WidevineCdm`. |
+| **Offline download button does not start** | Missing `yt-dlp` or out-of-date binary | Run `sudo apt install yt-dlp` or update with `sudo yt-dlp -U`. |
+| **No audio output from offline player** | Sound daemon sink muted or inactive | Verify sound server: `wpctl status` (PipeWire) or `pactl info` (PulseAudio). Ensure volume is above 0 in `alsamixer`. |
+| **Application fails to open in container** | SUID sandbox restriction | Launch with `brave-music --no-sandbox`. |

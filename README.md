@@ -70,7 +70,7 @@
     &nbsp;&nbsp;&nbsp;&nbsp;
     <a href="#developer-portal"><strong>[ 💻 Developer Portal ]</strong></a>
     &nbsp;&nbsp;&nbsp;&nbsp;
-    <a href="#architecture-specs"><strong>[ 🏛️ Architecture Specs ]</strong></a>
+    <a href="docs/RELEASE.md"><strong>[ 📋 Release Notes ]</strong></a>
     &nbsp;&nbsp;&nbsp;&nbsp;
     <a href="docs/CONTRIBUTION.md"><strong>[ 🤝 Contribute ]</strong></a>
   </p>
@@ -111,15 +111,6 @@
   </tr>
 </table>
 
-### Brave Shields Protection in Action
-
-<div align="center" style="margin-top: 18px; margin-bottom: 24px;">
-  <img src="testimonials/Ads-Blocker.gif" alt="Brave Shields Protection Active" width="220" style="border-radius: 8px;" />
-  <p style="color: #8e97ab; font-size: 13px; margin-top: 8px;">
-    Real-time Brave Shields network request blocking and cosmetic filter injection running silently during media playback.
-  </p>
-</div>
-
 ---
 
 ## Install Portal
@@ -156,141 +147,21 @@ Brave Music is an open-source collaboration maintained under Codemo Open Source 
 | Documentation | Primary Scope | Read When You Need To |
 | :--- | :--- | :--- |
 | [**docs/INSTALL.md**](docs/INSTALL.md) | Installation and Setup Guide | Install via deb package, compile from source, and configure system dependencies |
+| [**docs/RELEASE.md**](docs/RELEASE.md) | Release Notes and Changelogs | Track version tags, changelog history, SHA-256 checksums, and roadmap |
 | [**docs/RULES.md**](docs/RULES.md) | Legal Ownership and Governance | Understand Codemo OSL product ownership, legal rights, and developer rules |
 | [**docs/CONTRIBUTION.md**](docs/CONTRIBUTION.md) | Contributor Workflow and Android Milestone | Learn the PR submission process, Android development goals, and Discord perks |
-| [**docs/DEV-GUIDE.md**](docs/DEV-GUIDE.md) | Local Setup and Architecture Specs | Complete project architecture, Mermaid diagrams, DRM checks, and build pipeline |
+| [**docs/DEV-GUIDE.md**](docs/DEV-GUIDE.md) | Architecture Specs and Developer Guide | Complete project architecture, Mermaid diagrams, DRM checks, and build pipeline |
 | [**docs/DESIGN-GUIDE.md**](docs/DESIGN-GUIDE.md) | UI/UX Specs and Design Tokens | Follow the dark color palette, Ananda Black typography, and mobile touch targets |
 | [**docs/CREDITS.md**](docs/CREDITS.md) | Upstream Technologies and Authors | View acknowledgments for CastLabs, Musikcube, Brave, yt-dlp, and community devs |
 | [**docs/SECURITY.md**](docs/SECURITY.md) | Security Policy and Disclosure | Report vulnerabilities responsibly and inspect IPC sandbox isolation boundaries |
 
 ---
 
-## Architecture Specs
+### Brave Shields Protection in Action
 
-Brave Music organizes its runtime into three synchronized tiers:
-
-```mermaid
-graph TD
-    subgraph UI ["Frontend Interface Layer (HTML5 / CSS / Vanilla JS)"]
-        A[Brave Music Desktop Shell]
-        A1[Top Navigation Bar]
-        A2[YouTube Music Webview]
-        A3[Spotify Web Player Webview]
-        A4[Offline Library and Downloads View]
-        A5[Brave Shields Cosmetic Filter Engine]
-    end
-
-    subgraph IPC ["Electron Core Process and IPC Bridge"]
-        B[Electron Main Controller - main.js]
-        B1[Preload IPC Bridge - preload.js]
-        B2[CastLabs Chromium with Widevine CDM]
-        B3[Session and Cookie Manager persist:bravemusic]
-        B4[System Browser OAuth Fallback]
-    end
-
-    subgraph Backend ["Node.js Backend Service Layer"]
-        C[Backend Server Controller - backend/index.js]
-        C1[AdBlockService and BraveShieldsRules]
-        C2[AuthSyncService and YTMDevtoolsAuthService]
-        C3[DownloadService with yt-dlp Worker]
-        C4[LibraryService and Metadata Indexer]
-        C5[Local StreamServer HTTP Audio Proxy]
-    end
-
-    subgraph Engine ["Native C++ Audio Engine (backend/engine/musikcube)"]
-        D[musikcubed Native Daemon]
-        D1[libmusikcore.so Core Pipeline]
-        D2[libtag.so.2 Audio Tag Reader]
-        D3[libavcodec and libavformat FFmpeg Decoders]
-        D4[Audio Output Drivers - PipeWire / PulseAudio / ALSA]
-    end
-
-    A -->|User Actions and Tab Events| B1
-    B1 -->|Secure IPC Invoke / Send| B
-    B -->|Initialize and Manage| B2
-    B -->|Manage Cookie Jar and Auth| B3
-    B -->|Trigger External Login| B4
-    B -->|Dispatch Service Requests| C
-    A5 -->|Inject Cosmetic CSS and Scripts| A2
-    A5 -->|Inject Cosmetic CSS and Scripts| A3
-    C -->|Evaluate Request Blocking| C1
-    C -->|Extract Session State| C2
-    C -->|Spawn Audio Extraction Jobs| C3
-    C -->|Track Local Track Database| C4
-    C -->|Control Audio Daemon| D
-    C5 -->|Serve Local Audio Buffers| A4
-    D -->|Process Pipeline| D1
-    D1 -->|Parse File Metadata| D2
-    D1 -->|Decode Audio Streams| D3
-    D3 -->|Stream Decoded PCM| D4
-```
-
-<div align="center">
-  <p>
-    <a href="#architecture-specs"><strong>[ 🔍 Fit View / Reset ]</strong></a> &nbsp;&nbsp;|&nbsp;&nbsp;
-    <a href="https://mermaid.live" target="_blank" rel="noopener noreferrer"><strong>[ ↗ Open Interactive Mermaid Live Editor ]</strong></a>
-  </p>
+<div align="center" style="margin-top: 14px; margin-bottom: 24px;">
+  <img src="testimonials/Ads-Blocker.gif" alt="Brave Shields Protection Active" width="220" style="border-radius: 8px;" />
 </div>
-
-<details>
-<summary><strong>Click to View Raw Architecture Diagram Source Code</strong></summary>
-
-```text
-graph TD
-    subgraph UI ["Frontend Interface Layer (HTML5 / CSS / Vanilla JS)"]
-        A[Brave Music Desktop Shell]
-        A1[Top Navigation Bar]
-        A2[YouTube Music Webview]
-        A3[Spotify Web Player Webview]
-        A4[Offline Library and Downloads View]
-        A5[Brave Shields Cosmetic Filter Engine]
-    end
-
-    subgraph IPC ["Electron Core Process and IPC Bridge"]
-        B[Electron Main Controller - main.js]
-        B1[Preload IPC Bridge - preload.js]
-        B2[CastLabs Chromium with Widevine CDM]
-        B3[Session and Cookie Manager persist:bravemusic]
-        B4[System Browser OAuth Fallback]
-    end
-
-    subgraph Backend ["Node.js Backend Service Layer"]
-        C[Backend Server Controller - backend/index.js]
-        C1[AdBlockService and BraveShieldsRules]
-        C2[AuthSyncService and YTMDevtoolsAuthService]
-        C3[DownloadService with yt-dlp Worker]
-        C4[LibraryService and Metadata Indexer]
-        C5[Local StreamServer HTTP Audio Proxy]
-    end
-
-    subgraph Engine ["Native C++ Audio Engine (backend/engine/musikcube)"]
-        D[musikcubed Native Daemon]
-        D1[libmusikcore.so Core Pipeline]
-        D2[libtag.so.2 Audio Tag Reader]
-        D3[libavcodec and libavformat FFmpeg Decoders]
-        D4[Audio Output Drivers - PipeWire / PulseAudio / ALSA]
-    end
-
-    A --> B1
-    B1 --> B
-    B --> B2
-    B --> B3
-    B --> B4
-    B --> C
-    A5 --> A2
-    A5 --> A3
-    C --> C1
-    C --> C2
-    C --> C3
-    C --> C4
-    C --> D
-    C5 --> A4
-    D --> D1
-    D1 --> D2
-    D1 --> D3
-    D3 --> D4
-```
-</details>
 
 ---
 

@@ -250,3 +250,14 @@ sudo apt install ./brave-music_1.0.0_amd64.deb
   ```bash
   systemctl --user status pipewire pulse
   ```
+
+---
+
+## 7. Release Management and Documentation Hub
+
+- **Installation and System Deployment**: Detailed distribution instructions for users and system administrators are documented in [INSTALL.md](INSTALL.md).
+- **Release Tracking and Changelogs**: Version tags, SHA-256 checksums, and update notes are maintained in [RELEASE.md](RELEASE.md).
+- **UI/UX Design Standards**: Refer to [DESIGN-GUIDE.md](DESIGN-GUIDE.md) for styling and component guidelines.
+- **Security Policy**: Refer to [SECURITY.md](SECURITY.md) for disclosure guidelines and isolation rules.
+- **Project Governance**: Refer to [RULES.md](RULES.md) for ownership and contributor conduct.
+
