@@ -15,23 +15,18 @@ Brave Music combines YouTube Music, Spotify Web, and an embedded native C++ audi
 <table border="0" align="center">
 <tr>
 <td align="center">
-<a href="#installation"><img src="src/assets/icons/linux.svg" alt="Linux" width="34" height="34"/></a><br/>
+<a href="#installation"><img src="src/assets/icons/linux.svg" alt="Linux Tux Logo" width="36" height="36"/></a><br/>
 <sub><strong>Linux</strong></sub>
 </td>
-<td width="24"></td>
+<td width="28"></td>
 <td align="center">
-<a href="#platform-availability"><img src="src/assets/icons/microsoft.svg" alt="Windows" width="34" height="34"/></a><br/>
+<a href="#platform-availability"><img src="src/assets/icons/microsoft.svg" alt="Microsoft Windows Logo" width="36" height="36"/></a><br/>
 <sub><strong>Windows</strong></sub>
 </td>
-<td width="24"></td>
+<td width="28"></td>
 <td align="center">
-<a href="#platform-availability"><img src="src/assets/icons/android.svg" alt="Android" width="34" height="34"/></a><br/>
+<a href="#platform-availability"><img src="src/assets/icons/android.svg" alt="Android Logo" width="36" height="36"/></a><br/>
 <sub><strong>Android</strong></sub>
-</td>
-<td width="24"></td>
-<td align="center">
-<a href="#platform-availability"><img src="src/assets/icons/apple.svg" alt="macOS" width="34" height="34"/></a><br/>
-<sub><strong>macOS</strong></sub>
 </td>
 </tr>
 </table>
@@ -163,7 +158,7 @@ Brave Music is designed with a multi-platform roadmap.
 </tr>
 <tr>
 <td align="center">
-<img src="src/assets/icons/linux.svg" width="26" alt="Linux"/><br/>
+<img src="src/assets/icons/linux.svg" width="30" alt="Linux Tux"/><br/>
 <strong>Linux</strong>
 </td>
 <td align="center">Available</td>
@@ -171,7 +166,7 @@ Brave Music is designed with a multi-platform roadmap.
 </tr>
 <tr>
 <td align="center">
-<img src="src/assets/icons/microsoft.svg" width="26" alt="Windows"/><br/>
+<img src="src/assets/icons/microsoft.svg" width="30" alt="Windows"/><br/>
 <strong>Windows</strong>
 </td>
 <td align="center">Coming Soon</td>
@@ -179,19 +174,11 @@ Brave Music is designed with a multi-platform roadmap.
 </tr>
 <tr>
 <td align="center">
-<img src="src/assets/icons/android.svg" width="26" alt="Android"/><br/>
+<img src="src/assets/icons/android.svg" width="30" alt="Android"/><br/>
 <strong>Android</strong>
 </td>
 <td align="center">Planned</td>
 <td>Native Android APK</td>
-</tr>
-<tr>
-<td align="center">
-<img src="src/assets/icons/apple.svg" width="26" alt="macOS"/><br/>
-<strong>macOS</strong>
-</td>
-<td align="center">Coming Soon</td>
-<td>DMG Package</td>
 </tr>
 </table>
 
