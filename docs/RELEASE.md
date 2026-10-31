@@ -30,7 +30,7 @@ All official releases follow [Semantic Versioning 2.0.0](https://semver.org/):
 - **Release Date**: October 31, 2026
 - **Release Tag**: `v1.0.0`
 - **Target Architecture**: Linux `x86_64` / `amd64`
-- **License**: MIT (Codemo OSL)
+- **License**: GPL-3.0 (Codemo OSL)
 - **Direct Download**: [**brave-music_1.0.0_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.0/brave-music_1.0.0_amd64.deb)
 
 #### Package Checksums (SHA-256)

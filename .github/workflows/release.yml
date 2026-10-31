@@ -75,4 +75,4 @@ jobs:
             ### Package Information
             - **Platform**: Linux x86_64 / amd64
             - **Package**: `brave-music_1.0.0_amd64.deb`
-            - **License**: MIT (Codemo OSL)
+            - **License**: GPL-3.0 (Codemo OSL)

@@ -39,7 +39,7 @@ Brave Music combines YouTube Music, Spotify Web, and an embedded native C++ audi
 <td width="20"></td>
 <td align="center"><strong>C++</strong><br/><sub>Audio Engine</sub></td>
 <td width="20"></td>
-<td align="center"><strong>MIT</strong><br/><sub>License</sub></td>
+<td align="center"><strong>GPL-3.0</strong><br/><sub>License</sub></td>
 <td width="20"></td>
 <td align="center"><strong>v1.0.0</strong><br/><sub>Release</sub></td>
 </tr>
@@ -164,7 +164,7 @@ For complete installation steps, building from source, dependency management, an
 | Browser Protection | Brave Shields |
 | Distribution Format | Debian Package |
 | Supported Architecture | Linux x64 |
-| Software License | MIT |
+| Software License | GPL-3.0 |
 
 ### Privacy and Protection
 
@@ -246,7 +246,7 @@ Developers interested in contributing should review the official contribution do
 | Current Version | `v1.0.0` |
 | Product Organization | Codemo Open Source Labs |
 | Product Authority | Codemo OSL |
-| Software License | MIT |
+| Software License | GPL-3.0 |
 | Documentation Directory | `docs/` |
 
 ### Ownership and Intellectual Property
@@ -255,6 +255,6 @@ Brave Music is an official software product created and governed by Codemo Open 
 
 Codemo OSL retains its applicable organizational rights, product branding, and governance authority over official Brave Music releases and affiliated distribution channels.
 
-The software codebase is distributed under the terms of the [MIT License](LICENSE).
+The software codebase is distributed under the terms of the [GNU General Public License v3.0](LICENSE).
 
 For complete organizational policies, ownership information, and developer requirements, refer to [docs/RULES.md](docs/RULES.md).

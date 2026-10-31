@@ -7,7 +7,7 @@ Brave Music is an open-source product initiated, governed, and managed by Codemo
 - All repository contents, codebase architecture, core design assets, releases, and distribution packages remain the intellectual property and exclusive product of Codemo OSL.
 - The organization (Codemo OSL) retains sole authority to publish, license, re-license, redistribute, and monetize official releases on all application platforms and package repositories.
 - Community contributions merged into this codebase grant Codemo OSL a permanent, irrevocable, royalty-free license to use, modify, package, and distribute the contributed code across desktop, mobile, and web targets.
-- Forking this repository is permitted under the terms of the MIT License, provided all original copyright notices, contributor credits, and Codemo OSL ownership statements remain intact. Use of the official name "Brave Music" and official Codemo OSL trademarks for independent commercial releases requires prior written authorization.
+- Forking this repository is permitted under the terms of the GNU General Public License v3.0 (GPL-3.0), provided all original copyright notices, contributor credits, and Codemo OSL ownership statements remain intact. All derivative works and distributed copies must remain open-source under GPL-3.0. Use of the official name "Brave Music" and official Codemo OSL trademarks for independent commercial releases requires prior written authorization.
 
 ## 2. Developer Standards and Compliance
 
