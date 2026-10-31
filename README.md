@@ -1,59 +1,91 @@
 <div align="center">
 
-  <img src="src/assets/app-icon.svg" alt="Brave Music Logo" width="130" height="130" />
+  <table border="0" style="border-collapse: collapse; border: none;" align="center">
+    <tr style="border: none;">
+      <td align="center" style="border: none;">
+        <img src="src/assets/app-icon.svg" alt="Brave Music Icon" width="108" height="108" style="border-radius: 24px;" />
+      </td>
+    </tr>
+  </table>
 
   # Brave Music
-
-  <p>
-    <strong>A high-performance open-source music streaming platform combining ad-free YouTube Music and Spotify Web with an embedded C++ offline playback engine.</strong><br />
-    <strong>Engineered for privacy, native Widevine DRM playback, and offline listening.</strong>
+  
+  <p style="font-size: 16px; color: #8e97ab; margin-top: 4px; margin-bottom: 12px;">
+    A high-performance open-source music streaming platform combining ad-free YouTube Music and Spotify Web with an embedded C++ offline playback engine.<br />
+    Engineered for privacy, native Widevine DRM playback, and offline listening.
   </p>
 
   <p>
-    <a href="#supported-platforms">
-      <img src="https://img.shields.io/badge/Platform-Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux Support" />
+    <strong>Codemo Open Source Labs</strong> &nbsp;•&nbsp; 
+    <span>Music and Audio</span> &nbsp;•&nbsp; 
+    <span>Free and Open Source</span> &nbsp;•&nbsp; 
+    <span>v1.0.0 Stable</span>
+  </p>
+
+  <!-- COSL Native Color Theme Platform Badges -->
+  <p>
+    <a href="#install-portal">
+      <img src="https://img.shields.io/badge/Linux_Desktop-Available%20v1.0.0-4E2E8D?style=for-the-badge&logo=linux&logoColor=white" alt="Linux Desktop Available" />
     </a>
-    <a href="#supported-platforms">
-      <img src="https://img.shields.io/badge/Windows-Coming%20Soon-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows Coming Soon" />
+    <a href="#install-portal">
+      <img src="https://img.shields.io/badge/Android_App-Next_Target_Milestone-5B32A8?style=for-the-badge&logo=android&logoColor=white" alt="Android Next Target" />
     </a>
-    <a href="#supported-platforms">
-      <img src="https://img.shields.io/badge/macOS-Coming%20Soon-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Coming Soon" />
+    <a href="#install-portal">
+      <img src="https://img.shields.io/badge/Windows-Coming_Soon-241542?style=for-the-badge&logo=windows&logoColor=B8A9D9" alt="Windows Coming Soon" />
     </a>
-    <a href="#supported-platforms">
-      <img src="https://img.shields.io/badge/Android-Target%20Milestone-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android Next Target" />
-    </a>
-    <a href="#supported-platforms">
-      <img src="https://img.shields.io/badge/iOS-Coming%20Soon-grey?style=for-the-badge&logo=apple&logoColor=white" alt="iOS Coming Soon" />
+    <a href="#install-portal">
+      <img src="https://img.shields.io/badge/macOS-Coming_Soon-241542?style=for-the-badge&logo=apple&logoColor=B8A9D9" alt="macOS Coming Soon" />
     </a>
   </p>
 
+  <!-- Metrics Bar -->
+  <table align="center" style="margin-top: 12px; margin-bottom: 20px;">
+    <tr>
+      <td align="center" width="130">
+        <strong>4.9 ★</strong><br />
+        <span style="font-size: 11px; color: #7f8699;">Community Rating</span>
+      </td>
+      <td align="center" width="130">
+        <strong>119 MB</strong><br />
+        <span style="font-size: 11px; color: #7f8699;">Debian Package</span>
+      </td>
+      <td align="center" width="130">
+        <strong>Zero Trackers</strong><br />
+        <span style="font-size: 11px; color: #7f8699;">Brave Shields</span>
+      </td>
+      <td align="center" width="130">
+        <strong>C++ Engine</strong><br />
+        <span style="font-size: 11px; color: #7f8699;">Embedded Musikcube</span>
+      </td>
+      <td align="center" width="130">
+        <strong>MIT License</strong><br />
+        <span style="font-size: 11px; color: #7f8699;">Codemo OSL</span>
+      </td>
+    </tr>
+  </table>
+
+  <!-- Portal Action Links -->
   <p>
-    <img src="https://img.shields.io/badge/Version-v1.0.0-blue?style=flat-square" alt="Version 1.0.0" />
-    <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License" />
-    <img src="https://img.shields.io/badge/Governance-Codemo%20OSL-orange?style=flat-square" alt="Codemo OSL" />
-    <img src="https://img.shields.io/badge/Engine-Musikcube%20C%2B%2B-purple?style=flat-square" alt="Musikcube Engine" />
+    <a href="#install-portal"><strong>[ 📥 Install App (Linux .deb) ]</strong></a>
+    &nbsp;&nbsp;&nbsp;&nbsp;
+    <a href="#developer-portal"><strong>[ 💻 Developer Portal ]</strong></a>
+    &nbsp;&nbsp;&nbsp;&nbsp;
+    <a href="#architecture-specs"><strong>[ 🏛️ Architecture Specs ]</strong></a>
+    &nbsp;&nbsp;&nbsp;&nbsp;
+    <a href="docs/CONTRIBUTION.md"><strong>[ 🤝 Contribute ]</strong></a>
   </p>
 
 </div>
 
 ---
 
-## Showcase and Demonstration
-
-### Brave Shields Ad-Blocking in Action
-
-<div align="center">
-  <img src="testimonials/Ads-Blocker.gif" alt="Brave Shields Ad Blocker Demo" width="92%" />
-  <p><em>Real-time Brave Shields network filtering and cosmetic ad blocking during media playback</em></p>
-</div>
-
-### Product Screenshots
+## App Screenshots and Interface
 
 <table width="100%">
   <tr>
-    <th width="33%">YouTube Music Web Player</th>
-    <th width="33%">Spotify Web Player</th>
-    <th width="33%">Offline Library and Downloads</th>
+    <th width="33%" align="center">YouTube Music Streaming</th>
+    <th width="33%" align="center">Spotify Web Player</th>
+    <th width="33%" align="center">Offline Downloads and Engine</th>
   </tr>
   <tr>
     <td>
@@ -73,44 +105,80 @@
     </td>
   </tr>
   <tr>
-    <td align="center">Ad-free streaming with persistent session caching</td>
-    <td align="center">Widevine DRM-enabled Web Playback API</td>
-    <td align="center">Embedded 320kbps offline downloader via yt-dlp</td>
+    <td align="center"><small>Ad-free streaming with persistent session caching</small></td>
+    <td align="center"><small>Widevine DRM-enabled Web Playback API</small></td>
+    <td align="center"><small>Embedded 320kbps offline downloader via yt-dlp</small></td>
   </tr>
 </table>
 
+### Brave Shields Protection in Action
+
+<div align="center" style="margin-top: 18px; margin-bottom: 24px;">
+  <img src="testimonials/Ads-Blocker.gif" alt="Brave Shields Protection Active" width="220" style="border-radius: 8px;" />
+  <p style="color: #8e97ab; font-size: 13px; margin-top: 8px;">
+    Real-time Brave Shields network request blocking and cosmetic filter injection running silently during media playback.
+  </p>
+</div>
+
 ---
 
-## Supported Operating Systems
+## Install Portal
 
-| Operating System | Support Status | Distribution Format | Architecture |
+### Option A: Install via Standalone Debian Package (Recommended for Linux)
+
+Download and install the verified Debian package on Ubuntu, Debian, Linux Mint, or Pop!_OS:
+
+```bash
+# 1. Download package or build locally
+npm run build:deb
+
+# 2. Install package
+sudo apt install ./brave-music_1.0.0_amd64.deb
+
+# 3. Launch from desktop application menu or terminal
+brave-music
+```
+
+### Option B: Quick Terminal One-Liner (Source Run)
+
+Run directly from source without installing system-wide packages:
+
+```bash
+git clone git@github.com:codemoteams/Brave-Music.git
+cd Brave-Music
+npm install
+npm start
+```
+
+### Supported Operating Systems Matrix
+
+| Platform | Availability Status | Distribution Type | Details |
 | :--- | :--- | :--- | :--- |
-| **Linux** | **Available Now** | Standalone Debian Package (`.deb`) and source build | `amd64` |
-| **Android** | **Next Roadmap Target** | Native APK and Background Service | `arm64-v8a`, `armeabi-v7a` |
-| **Windows** | Coming Soon | MSI / NSIS Installer | `x64` |
-| **macOS** | Coming Soon | DMG / Universal Binary | `Apple Silicon`, `Intel` |
-| **iOS** | Coming Soon | IPA / TestFlight | `arm64` |
+| **Linux (x64)** | **Available Now (v1.0.0)** | Debian Package (`.deb`) and Source Run | Full hardware acceleration, Widevine DRM, embedded audio daemon |
+| **Android** | **Next Roadmap Milestone** | Native Android APK | Mobile port planned with background audio service and touch navigation |
+| **Windows** | Coming Soon | Portable EXE and MSI Installer | Port in progress using Windows CastLabs runtime |
+| **macOS** | Coming Soon | DMG Package | Universal binary for Apple Silicon and Intel |
 
 ---
 
-## Project Documentation
+## Developer Portal
 
-Review the dedicated documentation guides before developing, designing, or contributing:
+Brave Music is an open-source collaboration maintained under Codemo Open Source Labs. Review the modular guides in the `docs/` directory before building or submitting code:
 
-| Document | Purpose | Target Audience | Primary Focus |
-| :--- | :--- | :--- | :--- |
-| [**RULES.md**](RULES.md) | Legal ownership, governance, non-negotiable rules | All Developers, Forkers | Product ownership rights, compliance standards, behavioral conduct |
-| [**CONTRIBUTION.md**](CONTRIBUTION.md) | Contribution guide, Android roadmap, contributor perks | Contributors, Maintainers | Android target milestone, PR workflow, Discord perk requirements |
-| [**DEV-GUIDE.md**](DEV-GUIDE.md) | Technical setup, architecture, and build scripts | Core Developers, Packagers | Environment setup, CastLabs DRM checks, Musikcube engine, Debian build |
-| [**DESIGN-GUIDE.md**](DESIGN-GUIDE.md) | Visual language, design tokens, component rules | UI/UX Designers, Developers | Dark palette, Ananda Black typography, webview shields, mobile layouts |
-| [**CREDITS.md**](CREDITS.md) | Acknowledgments of upstream tools and authors | Public, Community | CastLabs, Musikcube, Brave Software, yt-dlp, and community credits |
-| [**SECURITY.md**](SECURITY.md) | Vulnerability disclosure and security posture | Security Researchers, Devs | Disclosure email, IPC isolation boundaries, DRM integrity, audit policy |
+| Documentation | Primary Scope | Read When You Need To |
+| :--- | :--- | :--- |
+| [**docs/RULES.md**](docs/RULES.md) | Legal Ownership and Governance | Understand Codemo OSL product ownership, legal rights, and developer rules |
+| [**docs/CONTRIBUTION.md**](docs/CONTRIBUTION.md) | Contributor Workflow and Android Milestone | Learn the PR submission process, Android development goals, and Discord perks |
+| [**docs/DEV-GUIDE.md**](docs/DEV-GUIDE.md) | Local Setup and Architecture Guide | Set up dependencies, debug Widevine DRM, run tests, and build deb packages |
+| [**docs/DESIGN-GUIDE.md**](docs/DESIGN-GUIDE.md) | UI/UX Specs and Design Tokens | Follow the dark color palette, Ananda Black typography, and mobile touch targets |
+| [**docs/CREDITS.md**](docs/CREDITS.md) | Upstream Technologies and Authors | View acknowledgments for CastLabs, Musikcube, Brave, yt-dlp, and community devs |
+| [**docs/SECURITY.md**](docs/SECURITY.md) | Security Policy and Disclosure | Report vulnerabilities responsibly and inspect IPC sandbox isolation boundaries |
 
 ---
 
-## Project Architecture
+## Architecture Specs
 
-The following diagram illustrates the interaction between the Electron desktop shell, the backend microservices, the browser webviews, and the embedded native C++ audio engine:
+Brave Music organizes its runtime into three synchronized tiers:
 
 ```mermaid
 graph TD
@@ -170,7 +238,7 @@ graph TD
 
 <div align="center">
   <p>
-    <a href="#project-architecture"><strong>[ 🔍 Fit View / Reset ]</strong></a> &nbsp;&nbsp;|&nbsp;&nbsp;
+    <a href="#architecture-specs"><strong>[ 🔍 Fit View / Reset ]</strong></a> &nbsp;&nbsp;|&nbsp;&nbsp;
     <a href="https://mermaid.live" target="_blank" rel="noopener noreferrer"><strong>[ ↗ Open Interactive Mermaid Live Editor ]</strong></a>
   </p>
 </div>
@@ -237,39 +305,6 @@ graph TD
 
 ---
 
-## Quick Start: Local Setup
-
-### 1. Prerequisites
-Install required runtime binaries:
-```bash
-sudo apt update
-sudo apt install -y nodejs npm yt-dlp curl dpkg
-```
-
-### 2. Clone and Install
-```bash
-git clone git@github.com:codemoteams/Brave-Music.git
-cd Brave-Music
-npm install
-```
-
-### 3. Launch Development Server
-```bash
-npm start
-```
-Or execute directly:
-```bash
-./run.sh
-```
-
-### 4. Build Standalone Debian Package
-```bash
-npm run build:deb
-```
-The compiled package `brave-music_1.0.0_amd64.deb` will be output to the root directory.
-
----
-
 ## Organization and Governance
 
 <div align="center">
@@ -292,4 +327,4 @@ Codemo Open Source Labs builds united solutions, creativity, and technical educa
 - **App Version**: `v1.0.0`
 - **Product Authority**: Brave Music is an official open-source product created and governed by **Codemo Open Source Labs**.
 - **Intellectual Property**: Codemo OSL retains exclusive organizational ownership, trademark rights, and distribution governance over the Brave Music product name, official releases, and affiliated packages.
-- **License**: The codebase is distributed under the terms of the [MIT License](LICENSE). Refer to [RULES.md](RULES.md) for complete organizational policies and contributor agreements.
+- **License**: The codebase is distributed under the terms of the [MIT License](LICENSE). Refer to [docs/RULES.md](docs/RULES.md) for complete organizational policies and contributor agreements.
