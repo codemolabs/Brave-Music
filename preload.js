@@ -74,7 +74,14 @@ contextBridge.exposeInMainWorld('braveApi', {
   getAuthStatus: () => ipcRenderer.invoke('auth-get-status'),
   logoutProvider: (provider) => ipcRenderer.invoke('auth-logout-provider', { provider }),
 
-  // YouTube Music Controlled CDP Login & cookies.txt
+  // General Service Login & Cookie JSON Import (YouTube Music & Spotify)
+  startServiceLogin: (service = 'youtube', browser = 'auto') => ipcRenderer.invoke('auth-start-service-login', { service, browser }),
+  cancelServiceLogin: () => ipcRenderer.invoke('auth-cancel-service-login'),
+  importCookiesJson: (service = 'youtube', cookies) => ipcRenderer.invoke('auth-import-cookies-json', { service, cookies }),
+  saveUserAccount: (service, accountData) => ipcRenderer.invoke('auth-save-user-account', { service, accountData }),
+  getSavedAccounts: () => ipcRenderer.invoke('auth-get-saved-accounts'),
+
+  // YouTube Music Controlled CDP Login & cookies.txt (Backwards Compatibility)
   startYtmCdpLogin: (browser = 'auto') => ipcRenderer.invoke('auth-start-ytm-cdp', { browser }),
   cancelYtmCdpLogin: () => ipcRenderer.invoke('auth-cancel-ytm-cdp'),
   importCookiesText: (text) => ipcRenderer.invoke('auth-import-cookies-text', { text }),

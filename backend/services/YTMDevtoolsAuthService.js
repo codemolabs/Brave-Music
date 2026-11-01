@@ -25,8 +25,12 @@ class YTMDevtoolsAuthService {
       try { fs.mkdirSync(this.userDataPath, { recursive: true }); } catch (e) {}
     }
 
-    this.profileDir = path.join(this.userDataPath, 'ytm-auth-profile');
-    this.savedSessionPath = path.join(this.userDataPath, 'ytmusic_session.json');
+    this.ytmProfileDir = path.join(this.userDataPath, 'ytm-auth-profile');
+    this.spotifyProfileDir = path.join(this.userDataPath, 'spotify-auth-profile');
+    this.ytmSessionPath = path.join(this.userDataPath, 'ytmusic_session.json');
+    this.spotifySessionPath = path.join(this.userDataPath, 'spotify_session.json');
+    this.accountsPath = path.join(this.userDataPath, 'user_accounts.json');
+    this.savedSessionPath = this.ytmSessionPath; // Backwards-compatible alias
 
     this.activeProcess = null;
     this.activeWs = null;
@@ -128,29 +132,44 @@ class YTMDevtoolsAuthService {
   // CONTROLLED CDP (Chrome DevTools Protocol) AUTHENTICATION FLOW
   // =========================================================================
 
-  async startCdpLogin(preferredBrowser = 'auto') {
+  async startCdpLogin(service = 'youtube', preferredBrowser = 'auto') {
     this.cancelCdpLogin();
 
+    // Support legacy argument where service was browser string
+    if (service === 'auto' || service === 'chrome' || service === 'brave' || service === 'chromium') {
+      preferredBrowser = service;
+      service = 'youtube';
+    }
+
+    const normalizedService = (service || 'youtube').toLowerCase() === 'spotify' ? 'spotify' : 'youtube';
+    const isSpotify = normalizedService === 'spotify';
+    const serviceName = isSpotify ? 'Spotify' : 'YouTube Music';
+    const targetUrl = isSpotify 
+      ? 'https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F'
+      : 'https://music.youtube.com';
+
+    const profileDir = isSpotify ? this.spotifyProfileDir : this.ytmProfileDir;
     const browser = this.resolveBrowserBinary(preferredBrowser);
     const port = await this.getFreePort();
 
-    if (!fs.existsSync(this.profileDir)) {
-      try { fs.mkdirSync(this.profileDir, { recursive: true }); } catch (e) {}
+    if (!fs.existsSync(profileDir)) {
+      try { fs.mkdirSync(profileDir, { recursive: true }); } catch (e) {}
     }
 
     this._notify('status', {
+      service: normalizedService,
       state: 'launching',
-      message: `Launching authentic ${browser.name} process on port ${port}...`
+      message: `Opening browser for ${serviceName} sign-in...`
     });
 
     const args = [
       `--remote-debugging-port=${port}`,
-      `--user-data-dir=${this.profileDir}`,
+      `--user-data-dir=${profileDir}`,
       '--no-first-run',
       '--no-default-browser-check',
       '--disable-sync',
       '--disable-background-networking',
-      '--app=https://music.youtube.com'
+      `--app=${targetUrl}`
     ];
 
     // Brave-specific flags to allow standard Google extension signin and unblock auth cookies
@@ -159,7 +178,7 @@ class YTMDevtoolsAuthService {
       args.push('--disable-brave-shields');
     }
 
-    console.log(`[YTM-CDP] Spawning ${browser.name} with args:`, args.join(' '));
+    console.log(`[CDP-Auth] Spawning ${browser.name} for ${serviceName} with port ${port}`);
 
     const proc = spawn(browser.path, args, {
       detached: false,
@@ -169,7 +188,7 @@ class YTMDevtoolsAuthService {
     this.activeProcess = proc;
 
     proc.on('exit', (code, signal) => {
-      console.log(`[YTM-CDP] Browser process exited with code ${code}, signal ${signal}`);
+      console.log(`[CDP-Auth] Browser process exited with code ${code}, signal ${signal}`);
       if (this.activeProcess === proc) {
         this.activeProcess = null;
       }
@@ -182,12 +201,13 @@ class YTMDevtoolsAuthService {
     }
 
     this._notify('status', {
+      service: normalizedService,
       state: 'waiting_login',
-      message: `Browser opened at YouTube Music. Please click 'Sign in' and enter your Google account. Authenticating in real browser...`
+      message: `Browser opened. Sign in to your ${serviceName} account...`
     });
 
     // Connect WebSocket to page target
-    return this._connectAndPollCookies(pageTarget.webSocketDebuggerUrl, port);
+    return this._connectAndPollCookies(pageTarget.webSocketDebuggerUrl, port, normalizedService);
   }
 
   async _waitForCdpTarget(port, timeoutMs = 20000) {
@@ -221,7 +241,7 @@ class YTMDevtoolsAuthService {
     return null;
   }
 
-  _connectAndPollCookies(wsUrl, port) {
+  _connectAndPollCookies(wsUrl, port, service = 'youtube') {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(wsUrl);
       this.activeWs = ws;
@@ -242,16 +262,16 @@ class YTMDevtoolsAuthService {
       };
 
       ws.on('open', () => {
-        console.log('[YTM-CDP] WebSocket connected to Chrome target:', wsUrl);
+        console.log(`[CDP-Auth] WebSocket connected for ${service}:`, wsUrl);
         // Enable Network agent
         ws.send(JSON.stringify({ id: msgId++, method: 'Network.enable' }));
 
-        // Poll Network.getAllCookies every 1500ms
+        // Poll Network.getAllCookies every 1200ms
         this.activePollInterval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ id: 100, method: 'Network.getAllCookies' }));
           }
-        }, 1500);
+        }, 1200);
       });
 
       ws.on('message', async (data) => {
@@ -259,38 +279,50 @@ class YTMDevtoolsAuthService {
           const msg = JSON.parse(data.toString());
           if (msg.id === 100 && msg.result && Array.isArray(msg.result.cookies)) {
             const cookies = msg.result.cookies;
-            const hasSecure3PAPISID = cookies.some(c => c.name === '__Secure-3PAPISID');
-            const hasLoginInfo = cookies.some(c => c.name === 'LOGIN_INFO');
-            const hasSapisid = cookies.some(c => c.name === 'SAPISID');
-            const hasSid = cookies.some(c => c.name === 'SID');
+            let isAuthenticated = false;
 
-            const isAuthenticated = hasSecure3PAPISID || hasLoginInfo || (hasSapisid && hasSid);
+            if (service === 'spotify') {
+              const hasSpDc = cookies.some(c => c.name === 'sp_dc');
+              const hasSpKey = cookies.some(c => c.name === 'sp_key');
+              const hasSpT = cookies.some(c => c.name === 'sp_t');
+              isAuthenticated = hasSpDc || (hasSpKey && hasSpT);
+            } else {
+              // YouTube Music
+              const hasSecure3PAPISID = cookies.some(c => c.name === '__Secure-3PAPISID');
+              const hasLoginInfo = cookies.some(c => c.name === 'LOGIN_INFO');
+              const hasSapisid = cookies.some(c => c.name === 'SAPISID');
+              const hasSid = cookies.some(c => c.name === 'SID');
+              isAuthenticated = hasSecure3PAPISID || hasLoginInfo || (hasSapisid && hasSid);
+            }
 
             if (isAuthenticated && !isResolved) {
               isResolved = true;
               this._notify('status', {
+                service,
                 state: 'syncing',
-                message: `Authentication detected (__Secure-3PAPISID / LOGIN_INFO)! Synchronizing session...`
+                message: `Authentication detected! Applying session...`
               });
 
-              const result = await this._injectCdpCookies(cookies);
+              const result = await this._injectCdpCookies(cookies, service);
               cleanup();
 
               this._notify('status', {
+                service,
                 state: 'complete',
-                message: `Successfully synchronized ${result.count} cookies into Brave Music!`
+                count: result.count,
+                message: `✓ Sign-in complete! Session applied.`
               });
 
               resolve(result);
             }
           }
         } catch (e) {
-          console.warn('[YTM-CDP] Error processing WebSocket message:', e.message);
+          console.warn('[CDP-Auth] Error processing WebSocket message:', e.message);
         }
       });
 
       ws.on('error', (err) => {
-        console.warn('[YTM-CDP] WebSocket error:', err.message);
+        console.warn('[CDP-Auth] WebSocket error:', err.message);
         if (!isResolved) {
           cleanup();
           reject(err);
@@ -328,37 +360,69 @@ class YTMDevtoolsAuthService {
   // COOKIE INJECTION & PERSISTENCE
   // =========================================================================
 
-  async _injectCdpCookies(cdpCookies) {
+  async _injectCdpCookies(cdpCookies, targetService = 'youtube') {
+    let service = targetService;
+    // Auto-detect service from cookies if not clearly specified
+    const hasSpotifyCookies = cdpCookies.some(c => {
+      const d = (c.domain || '').toLowerCase();
+      return d.includes('spotify.com') || c.name === 'sp_dc';
+    });
+    if (hasSpotifyCookies) {
+      service = 'spotify';
+    }
+
+    const isSpotify = service === 'spotify';
     const relevantCookies = [];
 
     for (const c of cdpCookies) {
       const d = (c.domain || '').toLowerCase();
-      if (
-        d.includes('youtube.com') ||
-        d.includes('google.com') ||
-        d.includes('googleusercontent.com') ||
-        d.includes('gstatic.com') ||
-        d.includes('doubleclick.net')
-      ) {
-        relevantCookies.push(c);
+      if (isSpotify) {
+        if (
+          d.includes('spotify.com') ||
+          d.includes('spotifycdn.com') ||
+          d.includes('scdn.co')
+        ) {
+          relevantCookies.push(c);
+        }
+      } else {
+        if (
+          d.includes('youtube.com') ||
+          d.includes('google.com') ||
+          d.includes('googleusercontent.com') ||
+          d.includes('gstatic.com') ||
+          d.includes('doubleclick.net')
+        ) {
+          relevantCookies.push(c);
+        }
       }
     }
 
-    const partitions = [
-      session.fromPartition(SHARED_PARTITION),
-      session.defaultSession
-    ];
+    const partitions = [];
+    if (session) {
+      partitions.push(session.fromPartition(SHARED_PARTITION));
+      if (session.defaultSession) partitions.push(session.defaultSession);
+    }
 
     let injectedCount = 0;
 
     for (const c of relevantCookies) {
       const isDomain = c.domain && c.domain.startsWith('.');
-      const cleanDomain = isDomain ? c.domain.substring(1) : (c.domain || 'music.youtube.com');
-      const isHostPrefix = c.name.startsWith('__Host-');
-      const isSecurePrefix = c.name.startsWith('__Secure-');
+      const cleanDomain = isDomain 
+        ? c.domain.substring(1) 
+        : (c.domain || (isSpotify ? 'open.spotify.com' : 'music.youtube.com'));
+      const isHostPrefix = c.name && c.name.startsWith('__Host-');
+      const isSecurePrefix = c.name && c.name.startsWith('__Secure-');
       const isSecure = c.secure || isHostPrefix || isSecurePrefix;
       const protocol = isSecure ? 'https://' : 'http://';
       const cookieUrl = `${protocol}${cleanDomain}${c.path || '/'}`;
+
+      let sameSite = 'unspecified';
+      const rawSameSite = (c.sameSite || '').toLowerCase();
+      if (rawSameSite === 'strict') sameSite = 'strict';
+      else if (rawSameSite === 'lax') sameSite = 'lax';
+      else if (rawSameSite === 'no_restriction' || rawSameSite === 'none') {
+        sameSite = isSecure ? 'no_restriction' : 'unspecified';
+      }
 
       const cookieObj = {
         url: cookieUrl,
@@ -367,7 +431,7 @@ class YTMDevtoolsAuthService {
         path: isHostPrefix ? '/' : (c.path || '/'),
         secure: isSecure,
         httpOnly: !!c.httpOnly,
-        sameSite: c.sameSite === 'Strict' ? 'strict' : c.sameSite === 'Lax' ? 'lax' : 'no_restriction'
+        sameSite: sameSite
       };
 
       if (!isHostPrefix && isDomain) {
@@ -376,60 +440,296 @@ class YTMDevtoolsAuthService {
 
       if (c.expires && c.expires > 0) {
         cookieObj.expirationDate = Math.min(Math.floor(c.expires), 2147483647);
+      } else if (c.expirationDate && c.expirationDate > 0) {
+        cookieObj.expirationDate = Math.min(Math.floor(c.expirationDate), 2147483647);
       }
 
       for (const s of partitions) {
         try {
           await s.cookies.set(cookieObj);
         } catch (setErr) {
-          if (cookieObj.domain) {
-            try {
-              const fallback = { ...cookieObj };
-              delete fallback.domain;
-              await s.cookies.set(fallback);
-            } catch (e2) {}
-          }
+          try {
+            const fallback = {
+              url: cookieUrl,
+              name: c.name,
+              value: c.value,
+              path: c.path || '/',
+              secure: isSecure
+            };
+            await s.cookies.set(fallback);
+          } catch (e2) {}
         }
       }
       injectedCount++;
     }
 
     // Save persistent backup snapshot for instant startup loading
+    const sessionFilePath = isSpotify ? this.spotifySessionPath : this.ytmSessionPath;
     try {
-      fs.writeFileSync(this.savedSessionPath, JSON.stringify(relevantCookies, null, 2), { mode: 0o600 });
+      fs.writeFileSync(sessionFilePath, JSON.stringify(relevantCookies, null, 2), { mode: 0o600 });
+      console.log(`[CDP-Auth] Saved ${relevantCookies.length} cookies snapshot to ${sessionFilePath}`);
     } catch (e) {
-      console.warn('[YTM-CDP] Error saving session snapshot:', e.message);
+      console.warn('[CDP-Auth] Error saving session snapshot:', e.message);
     }
+
+    // Automatically record and persist the saved user account
+    try {
+      this.saveUserAccount(service, {
+        name: isSpotify ? 'Spotify Account' : 'YouTube Music Account',
+        email: isSpotify ? 'Active Spotify Session' : 'Active Google Session',
+        authenticated: true,
+        source: 'cdp'
+      });
+    } catch (e) {}
 
     return {
       success: true,
+      service,
       count: injectedCount,
       hasLogin: true,
-      message: `Successfully synchronized ${injectedCount} session cookies into Brave Music!`
+      message: `Successfully applied ${injectedCount} session cookies!`
     };
+  }
+
+  // Get all saved user accounts (with automatic session cookie backfill)
+  getSavedAccounts() {
+    let accounts = {};
+    try {
+      if (fs.existsSync(this.accountsPath)) {
+        accounts = JSON.parse(fs.readFileSync(this.accountsPath, 'utf8')) || {};
+      }
+    } catch (e) {
+      console.warn('[CDP-Auth] Error reading user_accounts.json:', e.message);
+      accounts = {};
+    }
+
+    // Auto-detect and synthesize saved accounts if session cookies exist but no account record was written
+    let needsSave = false;
+    const hasYtmSession = fs.existsSync(this.ytmSessionPath);
+    if (hasYtmSession && (!accounts.youtube || !accounts.youtube.authenticated)) {
+      accounts.youtube = {
+        service: 'youtube',
+        name: accounts.youtube?.name || 'YouTube Music Account',
+        email: accounts.youtube?.email || 'Active Google Session',
+        avatar: accounts.youtube?.avatar || '',
+        authenticated: true,
+        lastLogin: accounts.youtube?.lastLogin || Date.now(),
+        source: 'session'
+      };
+      needsSave = true;
+    }
+
+    const hasSpotifySession = fs.existsSync(this.spotifySessionPath);
+    if (hasSpotifySession && (!accounts.spotify || !accounts.spotify.authenticated)) {
+      accounts.spotify = {
+        service: 'spotify',
+        name: accounts.spotify?.name || 'Spotify Account',
+        email: accounts.spotify?.email || 'Active Spotify Session',
+        avatar: accounts.spotify?.avatar || '',
+        authenticated: true,
+        lastLogin: accounts.spotify?.lastLogin || Date.now(),
+        source: 'session'
+      };
+      needsSave = true;
+    }
+
+    if (needsSave) {
+      try {
+        fs.writeFileSync(this.accountsPath, JSON.stringify(accounts, null, 2), { mode: 0o600 });
+      } catch (e) {}
+    }
+
+    return accounts;
+  }
+
+  // Save / Update a user account record persistently
+  saveUserAccount(service, data = {}) {
+    if (!service) return { success: false, error: 'No service specified' };
+    const svc = (service === 'ytmusic' || service === 'youtube') ? 'youtube' : 'spotify';
+    const accounts = this.getSavedAccounts();
+
+    const current = accounts[svc] || {};
+    accounts[svc] = {
+      ...current,
+      service: svc,
+      name: (data.name && data.name.trim()) ? data.name.trim() : (current.name || (svc === 'youtube' ? 'YouTube Music Account' : 'Spotify Account')),
+      email: (data.email && data.email.trim()) ? data.email.trim() : (current.email || (svc === 'youtube' ? 'Active Google Session' : 'Active Spotify Session')),
+      avatar: (data.avatar && data.avatar.trim()) ? data.avatar.trim() : (current.avatar || ''),
+      authenticated: data.authenticated !== undefined ? !!data.authenticated : true,
+      lastLogin: Date.now(),
+      source: data.source || current.source || 'user'
+    };
+
+    try {
+      fs.writeFileSync(this.accountsPath, JSON.stringify(accounts, null, 2), { mode: 0o600 });
+      console.log(`[CDP-Auth] Successfully saved account record for ${svc} to ${this.accountsPath}`);
+      this._notify('account-saved', { service: svc, account: accounts[svc] });
+      return { success: true, service: svc, account: accounts[svc] };
+    } catch (e) {
+      console.warn('[CDP-Auth] Failed to write user_accounts.json:', e.message);
+      return { success: false, error: e.message };
+    }
+  }
+
+  // Remove a saved user account on signout
+  removeUserAccount(service = 'all') {
+    const accounts = this.getSavedAccounts();
+    if (service === 'all') {
+      accounts.youtube = { authenticated: false };
+      accounts.spotify = { authenticated: false };
+    } else {
+      const svc = (service === 'ytmusic' || service === 'youtube') ? 'youtube' : 'spotify';
+      accounts[svc] = { authenticated: false };
+    }
+
+    try {
+      fs.writeFileSync(this.accountsPath, JSON.stringify(accounts, null, 2), { mode: 0o600 });
+      console.log(`[CDP-Auth] Cleared saved account for ${service}`);
+    } catch (e) {}
+    return { success: true, service };
   }
 
   // Load saved session on application launch so user stays logged in
   async loadPersistedSession() {
-    if (!fs.existsSync(this.savedSessionPath)) return false;
-    try {
-      const raw = fs.readFileSync(this.savedSessionPath, 'utf8');
-      const cookies = JSON.parse(raw);
-      if (Array.isArray(cookies) && cookies.length > 0) {
-        await this._injectCdpCookies(cookies);
-        console.log(`[YTM-CDP] Restored ${cookies.length} persisted session cookies on startup.`);
-        return true;
+    let ytmRestored = false;
+    let spotifyRestored = false;
+
+    // 1. YouTube Music
+    if (fs.existsSync(this.ytmSessionPath)) {
+      try {
+        const raw = fs.readFileSync(this.ytmSessionPath, 'utf8');
+        const cookies = JSON.parse(raw);
+        if (Array.isArray(cookies) && cookies.length > 0) {
+          await this._injectCdpCookies(cookies, 'youtube');
+          console.log(`[CDP-Auth] Restored ${cookies.length} persisted YouTube Music cookies on startup.`);
+          ytmRestored = true;
+        }
+      } catch (e) {
+        console.warn('[CDP-Auth] Error restoring YouTube session:', e.message);
       }
-    } catch (e) {
-      console.warn('[YTM-CDP] Error loading persisted session:', e.message);
     }
-    return false;
+
+    // 2. Spotify
+    if (fs.existsSync(this.spotifySessionPath)) {
+      try {
+        const raw = fs.readFileSync(this.spotifySessionPath, 'utf8');
+        const cookies = JSON.parse(raw);
+        if (Array.isArray(cookies) && cookies.length > 0) {
+          await this._injectCdpCookies(cookies, 'spotify');
+          console.log(`[CDP-Auth] Restored ${cookies.length} persisted Spotify cookies on startup.`);
+          spotifyRestored = true;
+        }
+      } catch (e) {
+        console.warn('[CDP-Auth] Error restoring Spotify session:', e.message);
+      }
+    }
+
+    // Ensure user_accounts.json is consistent
+    this.getSavedAccounts();
+
+    return { ytm: ytmRestored, spotify: spotifyRestored };
+  }
+
+  // Check live cookie authentication status for both services
+  async getServiceAuthStatus() {
+    let hasYtm = fs.existsSync(this.ytmSessionPath);
+    let hasSpotify = fs.existsSync(this.spotifySessionPath);
+
+    try {
+      if (session) {
+        const s = session.fromPartition(SHARED_PARTITION);
+        const ytmCookies = await s.cookies.get({ domain: '.youtube.com' });
+        if (ytmCookies && ytmCookies.some(c => c.name === '__Secure-3PAPISID' || c.name === 'LOGIN_INFO')) {
+          hasYtm = true;
+        }
+        const spotifyCookies = await s.cookies.get({ domain: '.spotify.com' });
+        if (spotifyCookies && spotifyCookies.some(c => c.name === 'sp_dc')) {
+          hasSpotify = true;
+        }
+      }
+    } catch (e) {}
+
+    const savedAccounts = this.getSavedAccounts();
+
+    return {
+      youtube: { authenticated: hasYtm, account: savedAccounts.youtube },
+      ytmusic: { authenticated: hasYtm, account: savedAccounts.youtube },
+      spotify: { authenticated: hasSpotify, account: savedAccounts.spotify }
+    };
+  }
+
+  // Logout / clear session
+  async logoutService(service = 'all') {
+    const s = session ? session.fromPartition(SHARED_PARTITION) : null;
+
+    if (service === 'youtube' || service === 'ytmusic' || service === 'all') {
+      try {
+        if (fs.existsSync(this.ytmSessionPath)) fs.unlinkSync(this.ytmSessionPath);
+        this.removeUserAccount('youtube');
+        if (s) {
+          const cookies = await s.cookies.get({});
+          for (const c of cookies) {
+            const d = (c.domain || '').toLowerCase();
+            if (d.includes('youtube.com') || d.includes('google.com')) {
+              const url = `${c.secure ? 'https://' : 'http://'}${c.domain.startsWith('.') ? c.domain.slice(1) : c.domain}${c.path || '/'}`;
+              await s.cookies.remove(url, c.name).catch(() => {});
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (service === 'spotify' || service === 'all') {
+      try {
+        if (fs.existsSync(this.spotifySessionPath)) fs.unlinkSync(this.spotifySessionPath);
+        this.removeUserAccount('spotify');
+        if (s) {
+          const cookies = await s.cookies.get({});
+          for (const c of cookies) {
+            const d = (c.domain || '').toLowerCase();
+            if (d.includes('spotify.com') || d.includes('scdn.co') || d.includes('spotifycdn.com')) {
+              const url = `${c.secure ? 'https://' : 'http://'}${c.domain.startsWith('.') ? c.domain.slice(1) : c.domain}${c.path || '/'}`;
+              await s.cookies.remove(url, c.name).catch(() => {});
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    return { success: true, service };
   }
 
   // =========================================================================
-  // GUIDED COOKIES.TXT IMPORT (FALLBACK)
+  // JSON COOKIES IMPORT (CLEAN FILE IMPORT)
   // =========================================================================
 
+  async importCookiesJson(service = 'youtube', rawInput) {
+    if (!rawInput) {
+      throw new Error('Please select a valid cookies.json file.');
+    }
+
+    let parsed = [];
+    if (typeof rawInput === 'string') {
+      try {
+        const json = JSON.parse(rawInput);
+        parsed = Array.isArray(json) ? json : (json.cookies || [json]);
+      } catch (e) {
+        throw new Error('Could not parse JSON cookies file: ' + e.message);
+      }
+    } else if (Array.isArray(rawInput)) {
+      parsed = rawInput;
+    } else if (rawInput && Array.isArray(rawInput.cookies)) {
+      parsed = rawInput.cookies;
+    }
+
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      throw new Error('No cookie items found in the selected JSON file.');
+    }
+
+    return this._injectCdpCookies(parsed, service);
+  }
+
+  // Backwards-compatible Netscape format parser
   parseNetscapeCookies(content) {
     const lines = content.split('\n');
     const cookies = [];
@@ -474,31 +774,15 @@ class YTMDevtoolsAuthService {
     const trimmed = rawText.trim();
 
     if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-      // JSON format
-      try {
-        const json = JSON.parse(trimmed);
-        parsed = Array.isArray(json) ? json : [json];
-      } catch (e) {
-        throw new Error('Invalid JSON cookie format: ' + e.message);
-      }
-    } else {
-      // Netscape cookies.txt format
-      parsed = this.parseNetscapeCookies(trimmed);
+      return this.importCookiesJson('youtube', trimmed);
     }
 
+    parsed = this.parseNetscapeCookies(trimmed);
     if (parsed.length === 0) {
-      throw new Error('No valid cookies found in provided text. Make sure you paste Netscape or JSON format.');
+      throw new Error('No valid cookies found in provided text.');
     }
 
-    const hasSecure3PAPISID = parsed.some(c => c.name === '__Secure-3PAPISID');
-    const hasLoginInfo = parsed.some(c => c.name === 'LOGIN_INFO');
-    const hasSapisid = parsed.some(c => c.name === 'SAPISID');
-
-    if (!hasSecure3PAPISID && !hasLoginInfo && !hasSapisid) {
-      console.warn('[YTM-CDP] Warning: cookies.txt did not contain __Secure-3PAPISID or LOGIN_INFO.');
-    }
-
-    return this._injectCdpCookies(parsed);
+    return this._injectCdpCookies(parsed, 'youtube');
   }
 }
 

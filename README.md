@@ -41,7 +41,7 @@ Brave Music combines YouTube Music, Spotify Web, and an embedded native C++ audi
 <td width="20"></td>
 <td align="center"><strong>GPL-3.0</strong><br/><sub>License</sub></td>
 <td width="20"></td>
-<td align="center"><strong>v1.0.4</strong><br/><sub>Release</sub></td>
+<td align="center"><strong>v1.0.6</strong><br/><sub>Release</sub></td>
 </tr>
 </table>
 
@@ -117,7 +117,7 @@ Explore the Brave Music interface and its primary application components.
 
 ### Linux Desktop
 
-<sub>AVAILABLE NOW · VERSION 1.0.4 · X86_64</sub>
+<sub>AVAILABLE NOW · VERSION 1.0.6 · X86_64</sub>
 
 Brave Music currently provides a standalone Debian installation package for compatible Linux distributions.
 
@@ -131,17 +131,17 @@ Brave Music currently provides a standalone Debian installation package for comp
 ### Install Using APT
 
 ```bash
-# 1. Download official v1.0.4 Debian package
-wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.4/brave-music_1.0.4_amd64.deb
+# 1. Download official v1.0.6 Debian package
+wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.6/brave-music_1.0.6_amd64.deb
 
 # 2. Install package via APT
-sudo apt install ./brave-music_1.0.4_amd64.deb
+sudo apt install ./brave-music_1.0.6_amd64.deb
 
 # 3. Launch from desktop application menu or terminal
 brave-music
 ```
 
-Direct binary download: [**brave-music_1.0.4_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.4/brave-music_1.0.4_amd64.deb)
+Direct binary download: [**brave-music_1.0.6_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.6/brave-music_1.0.6_amd64.deb)
 
 For complete installation steps, building from source, dependency management, and uninstallation, see [**docs/INSTALL.md**](docs/INSTALL.md).
 
@@ -246,7 +246,7 @@ Developers interested in contributing should review the official contribution do
 | Property | Information |
 | :--- | :--- |
 | Product Name | Brave Music |
-| Current Version | `v1.0.4` |
+| Current Version | `v1.0.6` |
 | Product Organization | Codemo Open Source Labs |
 | Product Authority | Codemo OSL |
 | Software License | GPL-3.0 |

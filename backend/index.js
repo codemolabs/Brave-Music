@@ -120,7 +120,14 @@ class Backend {
     ipcMain.handle('auth-get-status', () => authController.getAuthStatus());
     ipcMain.handle('auth-logout-provider', (event, payload) => authController.logoutProvider(event, payload));
 
-    // YouTube Music Controlled CDP handlers
+    // General Service Login & Cookie JSON Import (YouTube Music & Spotify)
+    ipcMain.handle('auth-start-service-login', (event, payload) => authController.startServiceLogin(event, payload));
+    ipcMain.handle('auth-cancel-service-login', () => authController.cancelServiceLogin());
+    ipcMain.handle('auth-import-cookies-json', (event, payload) => authController.importCookiesJson(event, payload));
+    ipcMain.handle('auth-save-user-account', (event, payload) => authController.saveUserAccount(event, payload));
+    ipcMain.handle('auth-get-saved-accounts', () => authController.getSavedAccounts());
+
+    // YouTube Music Controlled CDP handlers (Backwards Compatibility)
     ipcMain.handle('auth-start-ytm-cdp', (event, payload) => authController.startYtmCdpLogin(event, payload));
     ipcMain.handle('auth-cancel-ytm-cdp', () => authController.cancelYtmCdpLogin());
     ipcMain.handle('auth-import-cookies-text', (event, payload) => authController.importCookiesText(event, payload));

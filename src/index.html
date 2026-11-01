@@ -57,14 +57,22 @@
       <!-- Ads blocked text label near refresh (no icon) -->
       <span class="ads-blocked-label" id="shield-count-label">0 ads blocked</span>
 
-      <button class="icon-action-btn" id="btn-auth-sync" title="Sign In / Sync Account from Browser">
-        <svg class="auth-sync-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-          <circle cx="12" cy="7" r="4"></circle>
-        </svg>
+      <!-- User Account / Login Button (Pill with Person Icon + Label) -->
+      <button class="header-account-btn" id="btn-auth-sync" title="Sign In & Account" aria-label="Sign In or Manage Account">
+        <div class="header-user-avatar-wrap" id="header-user-avatar-wrap">
+          <svg class="auth-sync-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <img class="header-user-avatar-img" id="header-avatar-img" src="" alt="Avatar" style="display: none;">
+        </div>
+        <span class="header-user-label" id="header-user-label">Sign In</span>
+        <span class="auth-header-dot" id="auth-header-dot"></span>
       </button>
 
-      <button class="icon-action-btn" id="btn-reload" title="Refresh current tab">
+      <div class="header-action-divider"></div>
+
+      <button class="icon-action-btn" id="btn-reload" title="Refresh current tab" aria-label="Refresh current tab">
         <svg class="reload-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="23 4 23 10 17 10"></polyline>
           <polyline points="1 20 1 14 7 14"></polyline>
@@ -72,7 +80,7 @@
         </svg>
       </button>
 
-      <button class="icon-action-btn" id="btn-about" title="About Developer & Credits">
+      <button class="icon-action-btn btn-about-info" id="btn-about" title="About Developer & Credits" aria-label="About Developer & Credits">
         <svg class="info-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"></circle>
           <line x1="12" y1="16" x2="12" y2="12"></line>
@@ -843,171 +851,212 @@
         </div>
       </div>
     </div>
-  <!-- Capability-Based Authentication & Session Sync Modal -->
+  <!-- Clean Professional Login Modal (White Theme) -->
   <div class="modal-backdrop" id="auth-sync-modal" style="display: none;">
-    <div class="modal-dialog auth-sync-dialog">
-      <div class="modal-header">
-        <div class="auth-sync-header-left">
-          <div class="auth-sync-badge-icon">
+    <div class="modal-dialog login-modal-white">
+      <!-- Modal Header -->
+      <div class="login-modal-header">
+        <div class="login-header-brand">
+          <div class="login-header-avatar">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
               <circle cx="12" cy="7" r="4"></circle>
             </svg>
           </div>
           <div>
-            <h3 class="modal-title">Authentication & Account Sync</h3>
-            <p class="modal-subtitle">Capability-based sign-in for YouTube Music & Spotify</p>
+            <h3 class="login-modal-title">Sign In</h3>
+            <p class="login-modal-subtitle">Connect your music account for playlists & favorites</p>
           </div>
         </div>
-        <button class="modal-close-btn" id="btn-close-auth-sync" title="Close">&times;</button>
+        <button class="login-modal-close" id="btn-close-auth-sync" title="Close" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
       </div>
 
-      <!-- Navigation Tabs -->
-      <div class="auth-nav-tabs">
-        <button class="auth-tab-btn active" data-tab="ytm" id="tab-btn-ytm">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+      <!-- Navigation Tabs (Clean Pill Switcher) -->
+      <div class="login-tabs-bar">
+        <button class="login-tab-pill active" data-tab="ytm" id="tab-btn-ytm">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
           <span>YouTube Music</span>
         </button>
-        <button class="auth-tab-btn" data-tab="spotify" id="tab-btn-spotify">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
-          <span>Spotify (OAuth)</span>
-        </button>
-        <button class="auth-tab-btn" data-tab="google" id="tab-btn-google">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"/></svg>
-          <span>Google App (OAuth)</span>
+        <button class="login-tab-pill" data-tab="spotify" id="tab-btn-spotify">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+          <span>Spotify</span>
         </button>
       </div>
 
-      <div class="modal-body auth-sync-body">
-        <!-- TAB 1: YOUTUBE MUSIC (CDP Flow + cookies.txt fallback) -->
-        <div class="auth-tab-content active" id="auth-tab-ytm">
-          <div class="auth-capability-card">
-            <div class="auth-capability-badge">
-              <span class="badge-tag">Dedicated Browser Protocol (CDP)</span>
-            </div>
-            <h4>Authentic YouTube Music Session Synchronization</h4>
-            <p class="auth-card-desc">
-              YouTube Music uses authentic session synchronization. We launch a dedicated, isolated external browser window via Chrome DevTools Protocol (CDP) so you can sign into Google normally without embedded app blocks. Once authenticated, cookies (<code class="code-pill">__Secure-3PAPISID</code>, <code class="code-pill">LOGIN_INFO</code>) are automatically captured and injected into your player.
-            </p>
-
-            <div class="auth-action-box">
-              <label class="auth-field-label">Target Browser Binary:</label>
-              <div class="sync-controls-row">
-                <select id="select-ytm-browser" class="browser-sync-select">
-                  <option value="auto">★ Auto-Detect (Google Chrome / Brave)</option>
-                </select>
-                <button class="btn-execute-sync" id="btn-start-ytm-cdp">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                  </svg>
-                  <span id="btn-ytm-cdp-label">Launch Dedicated Browser Sign-In</span>
-                </button>
-                <button class="btn-step-action secondary" id="btn-cancel-ytm-cdp" style="display: none;">
-                  <span>Cancel</span>
-                </button>
+      <!-- Modal Body -->
+      <div class="login-modal-body">
+        <!-- TAB 1: YOUTUBE MUSIC -->
+        <div class="login-tab-panel active" id="auth-tab-ytm">
+          <!-- Saved User Account Card (Shows persistently when user is logged in) -->
+          <div class="saved-account-card" id="ytm-saved-account-card" style="display: none;">
+            <div class="saved-account-header">
+              <div class="saved-account-avatar-wrap">
+                <img class="saved-account-avatar-img" id="ytm-account-avatar" src="" alt="User Avatar" style="display: none;">
+                <div class="saved-account-avatar-fallback" id="ytm-account-initials">YM</div>
               </div>
-
-              <!-- Live Status Message -->
-              <div class="sync-status-msg" id="ytm-cdp-status" style="display: none;"></div>
-            </div>
-
-            <!-- Fallback cookies.txt import accordion -->
-            <div class="auth-fallback-box">
-              <button class="btn-toggle-fallback" id="btn-toggle-cookies-import" type="button">
-                <span id="label-toggle-cookies">▸ Alternative: Guided cookies.txt Import Fallback</span>
-              </button>
-              <div class="fallback-content" id="cookies-import-section" style="display: none;">
-                <p class="fallback-note">If your system prevents browser debugging, paste your exported Netscape <code>cookies.txt</code> or JSON cookies from music.youtube.com below:</p>
-                <textarea id="textarea-cookies-import" class="cookies-textarea" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;1780000000&#9;__Secure-3PAPISID&#9;..."></textarea>
-                <div class="fallback-actions">
-                  <button class="btn-execute-sync" id="btn-submit-cookies-text">Import & Apply Cookies</button>
+              <div class="saved-account-info">
+                <div class="saved-account-name-row">
+                  <span class="saved-account-name" id="ytm-account-name">YouTube Music Account</span>
+                  <span class="saved-account-badge">
+                    <span class="badge-dot"></span> Saved &amp; Active
+                  </span>
                 </div>
+                <span class="saved-account-email" id="ytm-account-email">Active Google Session</span>
+                <span class="saved-account-time" id="ytm-account-time">Saved on this device</span>
               </div>
+            </div>
+            <div class="saved-account-actions">
+              <button class="btn-account-action btn-account-refresh" id="btn-ytm-resync" title="Refresh session and player">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                <span>Refresh Player</span>
+              </button>
+              <button class="btn-account-action btn-account-signout" id="btn-ytm-signout-card" title="Sign out this account">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Section title for Sign In / Re-auth -->
+          <div class="login-subheading" id="ytm-signin-header" style="display: none;">
+            <span>Or Switch / Re-authenticate Account</span>
+          </div>
+
+          <!-- Status Row (used when not logged in or during sync) -->
+          <div class="login-status-row" id="ytm-status-row">
+            <div class="login-status-chip" id="ytm-status-chip">
+              <span class="status-indicator-dot" id="ytm-status-dot"></span>
+              <span class="status-text" id="ytm-status-label">Not logged in</span>
+            </div>
+            <button class="btn-login-signout" id="btn-ytm-signout" style="display: none;">Sign Out</button>
+          </div>
+
+          <!-- Primary Action Box -->
+          <div class="login-action-card" id="ytm-login-action-card">
+            <div class="login-step-instruction">
+              <span class="login-step-badge">1</span>
+              <div>
+                <p class="login-step-title">Click to Sign In with Browser</p>
+                <p class="login-step-desc">Log into Google normally. We will automatically detect your login, save your account, and refresh your player.</p>
+              </div>
+            </div>
+
+            <button class="btn-primary-login btn-ytm-brand" id="btn-start-ytm-cdp">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+              <span id="btn-ytm-cdp-label">Login to YouTube Music</span>
+            </button>
+
+            <!-- Active feedback & cancel -->
+            <div class="login-live-feedback" id="ytm-cdp-status" style="display: none;"></div>
+            <button class="btn-login-cancel" id="btn-cancel-ytm-cdp" style="display: none;">Cancel Sign-In</button>
+          </div>
+
+          <!-- Clean JSON Cookie File Import -->
+          <div class="login-file-import-card" id="ytm-file-import-card">
+            <div class="file-import-header">
+              <span class="file-import-title">Or Import Cookies File (.json)</span>
+            </div>
+            <p class="file-import-hint">Select a cookies JSON file exported from your browser to sync manually.</p>
+            <div class="file-import-action">
+              <label for="input-ytm-cookies-file" class="btn-choose-json">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                <span>Choose JSON File</span>
+              </label>
+              <input type="file" id="input-ytm-cookies-file" accept=".json" class="hidden-file-input">
+              <span class="file-chosen-name" id="ytm-file-name">No file selected</span>
             </div>
           </div>
         </div>
 
-        <!-- TAB 2: SPOTIFY (OAuth 2.0 PKCE with 127.0.0.1 Loopback) -->
-        <div class="auth-tab-content" id="auth-tab-spotify" style="display: none;">
-          <div class="auth-capability-card">
-            <div class="auth-capability-badge">
-              <span class="badge-tag">OAuth 2.0 PKCE Loopback</span>
-            </div>
-            <h4>Official Spotify Desktop Authorization</h4>
-            <p class="auth-card-desc">
-              Connect Spotify cleanly via RFC 7636 PKCE in your default web browser.
-              Tokens are returned to a secure ephemeral loopback server on <code>127.0.0.1</code> and stored encrypted via Electron <code>safeStorage</code>.
-            </p>
-
-            <div class="account-status-card">
-              <div class="status-indicator-row">
-                <span class="status-dot" id="spotify-status-dot"></span>
-                <span class="status-label" id="spotify-status-label">Checking connection...</span>
+        <!-- TAB 2: SPOTIFY -->
+        <div class="login-tab-panel" id="auth-tab-spotify" style="display: none;">
+          <!-- Saved User Account Card (Shows persistently when Spotify is logged in) -->
+          <div class="saved-account-card" id="spotify-saved-account-card" style="display: none;">
+            <div class="saved-account-header">
+              <div class="saved-account-avatar-wrap">
+                <img class="saved-account-avatar-img" id="spotify-account-avatar" src="" alt="User Avatar" style="display: none;">
+                <div class="saved-account-avatar-fallback spotify-fallback" id="spotify-account-initials">SP</div>
               </div>
-              <div class="token-scopes-info">
-                <span>Requested Scopes: user-read-private, user-library-read, playlist-read-private, streaming</span>
+              <div class="saved-account-info">
+                <div class="saved-account-name-row">
+                  <span class="saved-account-name" id="spotify-account-name">Spotify Account</span>
+                  <span class="saved-account-badge spotify-badge">
+                    <span class="badge-dot"></span> Saved &amp; Active
+                  </span>
+                </div>
+                <span class="saved-account-email" id="spotify-account-email">Active Spotify Session</span>
+                <span class="saved-account-time" id="spotify-account-time">Saved on this device</span>
               </div>
             </div>
-
-            <div class="step-actions" style="margin-top: 16px;">
-              <button class="btn-step-action" id="btn-spotify-pkce-connect">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
-                  <polyline points="10 17 15 12 10 7"></polyline>
-                  <line x1="15" y1="12" x2="3" y2="12"></line>
-                </svg>
-                <span id="label-spotify-btn">Connect with Spotify in Default Browser</span>
+            <div class="saved-account-actions">
+              <button class="btn-account-action btn-account-refresh" id="btn-spotify-resync" title="Refresh Spotify player">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                <span>Refresh Player</span>
               </button>
-              <button class="btn-step-action secondary" id="btn-spotify-pkce-disconnect" style="display: none;">
-                <span>Disconnect Account</span>
+              <button class="btn-account-action btn-account-signout" id="btn-spotify-signout-card" title="Sign out Spotify">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                <span>Sign Out</span>
               </button>
             </div>
-            <div class="sync-status-msg" id="spotify-pkce-status" style="display: none;"></div>
           </div>
-        </div>
 
-        <!-- TAB 3: GOOGLE APP (OAuth 2.0 PKCE with 127.0.0.1 Loopback) -->
-        <div class="auth-tab-content" id="auth-tab-google" style="display: none;">
-          <div class="auth-capability-card">
-            <div class="auth-capability-badge">
-              <span class="badge-tag">OAuth 2.0 PKCE Loopback</span>
+          <!-- Section title for Sign In / Re-auth -->
+          <div class="login-subheading" id="spotify-signin-header" style="display: none;">
+            <span>Or Switch / Re-authenticate Account</span>
+          </div>
+
+          <!-- Status Row -->
+          <div class="login-status-row" id="spotify-status-row">
+            <div class="login-status-chip" id="spotify-status-chip">
+              <span class="status-indicator-dot" id="spotify-status-dot"></span>
+              <span class="status-text" id="spotify-status-label">Not logged in</span>
             </div>
-            <h4>Official Google App Sign-In</h4>
-            <p class="auth-card-desc">
-              Sign in with your Google account via system browser OAuth 2.0 PKCE.
-              Google authorization code is captured by <code>127.0.0.1</code> loopback redirect without embedded browser blocks.
-            </p>
+            <button class="btn-login-signout" id="btn-spotify-signout" style="display: none;">Sign Out</button>
+          </div>
 
-            <div class="account-status-card">
-              <div class="status-indicator-row">
-                <span class="status-dot" id="google-status-dot"></span>
-                <span class="status-label" id="google-status-label">Checking connection...</span>
+          <!-- Primary Action Box -->
+          <div class="login-action-card" id="spotify-login-action-card">
+            <div class="login-step-instruction">
+              <span class="login-step-badge">1</span>
+              <div>
+                <p class="login-step-title">Click to Sign In with Browser</p>
+                <p class="login-step-desc">Log into Spotify in browser. Your session will be automatically detected and synchronized.</p>
               </div>
-              <div class="token-scopes-info">
-                <span>Identity Scopes: OpenID Connect, Profile, Email</span>
-              </div>
             </div>
 
-            <div class="step-actions" style="margin-top: 16px;">
-              <button class="btn-step-action" id="btn-google-pkce-connect">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
-                  <polyline points="10 17 15 12 10 7"></polyline>
-                  <line x1="15" y1="12" x2="3" y2="12"></line>
-                </svg>
-                <span id="label-google-btn">Sign In with Google in Default Browser</span>
-              </button>
-              <button class="btn-step-action secondary" id="btn-google-pkce-disconnect" style="display: none;">
-                <span>Disconnect Account</span>
-              </button>
+            <button class="btn-primary-login btn-spotify-brand" id="btn-start-spotify-login">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+              <span id="btn-spotify-login-label">Login to Spotify</span>
+            </button>
+
+            <!-- Active feedback & cancel -->
+            <div class="login-live-feedback" id="spotify-login-status" style="display: none;"></div>
+            <button class="btn-login-cancel" id="btn-cancel-spotify-login" style="display: none;">Cancel Sign-In</button>
+          </div>
+
+          <!-- Clean JSON Cookie File Import -->
+          <div class="login-file-import-card" id="spotify-file-import-card">
+            <div class="file-import-header">
+              <span class="file-import-title">Or Import Cookies File (.json)</span>
             </div>
-            <div class="sync-status-msg" id="google-pkce-status" style="display: none;"></div>
+            <p class="file-import-hint">Select a cookies JSON file exported from your browser to sync manually.</p>
+            <div class="file-import-action">
+              <label for="input-spotify-cookies-file" class="btn-choose-json">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                <span>Choose JSON File</span>
+              </label>
+              <input type="file" id="input-spotify-cookies-file" accept=".json" class="hidden-file-input">
+              <span class="file-chosen-name" id="spotify-file-name">No file selected</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="modal-footer auth-sync-footer">
-        <button class="btn-modal-cancel" id="btn-cancel-auth-sync">Close</button>
+      <!-- Modal Footer -->
+      <div class="login-modal-footer">
+        <button class="btn-login-done" id="btn-cancel-auth-sync">Done</button>
       </div>
     </div>
   </div>

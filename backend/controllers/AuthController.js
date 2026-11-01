@@ -21,6 +21,75 @@ class AuthController {
     return authSyncService.openInDefaultBrowser(url);
   }
 
+  // Unified Service Login (YouTube Music or Spotify via authentic browser CDP)
+  async startServiceLogin(event, { service, browser } = {}) {
+    try {
+      return await ytmDevtoolsAuthService.startCdpLogin(service || 'youtube', browser || 'auto');
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  cancelServiceLogin() {
+    ytmDevtoolsAuthService.cancelCdpLogin();
+    return { success: true };
+  }
+
+  // Import cookies from JSON string or object
+  async importCookiesJson(event, { service, cookies } = {}) {
+    try {
+      return await ytmDevtoolsAuthService.importCookiesJson(service || 'youtube', cookies);
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  // Status check for all services
+  async getAuthStatus() {
+    const serviceStatus = await ytmDevtoolsAuthService.getServiceAuthStatus();
+    const oauthStatus = oauthPKCEService.getAuthStatus();
+    const savedAccounts = ytmDevtoolsAuthService.getSavedAccounts();
+    return {
+      youtube: {
+        ...serviceStatus.youtube,
+        account: savedAccounts.youtube || null
+      },
+      ytmusic: {
+        ...serviceStatus.youtube,
+        account: savedAccounts.youtube || null
+      },
+      spotify: {
+        authenticated: serviceStatus.spotify.authenticated || oauthStatus.spotify.authenticated,
+        account: savedAccounts.spotify || null,
+        user: oauthStatus.spotify.user || (serviceStatus.spotify.authenticated ? { display_name: savedAccounts.spotify?.name || 'Spotify User' } : null)
+      },
+      google: oauthStatus.google,
+      accounts: savedAccounts
+    };
+  }
+
+  // Save / Update user account profile
+  saveUserAccount(event, { service, accountData } = {}) {
+    return ytmDevtoolsAuthService.saveUserAccount(service, accountData);
+  }
+
+  // Get all saved user accounts
+  getSavedAccounts() {
+    return ytmDevtoolsAuthService.getSavedAccounts();
+  }
+
+  async logoutProvider(event, { provider } = {}) {
+    if (provider === 'spotify' || provider === 'all') {
+      oauthPKCEService.clearTokens('spotify');
+      await ytmDevtoolsAuthService.logoutService('spotify');
+    }
+    if (provider === 'youtube' || provider === 'ytmusic' || provider === 'all') {
+      oauthPKCEService.clearTokens('google');
+      await ytmDevtoolsAuthService.logoutService('youtube');
+    }
+    return { success: true, provider };
+  }
+
   // Capability 1: OAuth 2.0 PKCE with Loopback Redirect (Spotify)
   async startSpotifyPkce(event, { clientId } = {}) {
     try {
@@ -55,48 +124,16 @@ class AuthController {
     }
   }
 
-  getAuthStatus() {
-    const oauthStatus = oauthPKCEService.getAuthStatus();
-    return {
-      ...oauthStatus,
-      ytmusic: {
-        authenticated: require('fs').existsSync(ytmDevtoolsAuthService.savedSessionPath)
-      }
-    };
-  }
-
-  async logoutProvider(event, { provider } = {}) {
-    if (provider === 'spotify' || provider === 'google') {
-      oauthPKCEService.clearTokens(provider);
-    }
-    if (provider === 'ytmusic' || provider === 'all') {
-      try {
-        const s = session.fromPartition('persist:bravemusic');
-        await s.clearStorageData({ storages: ['cookies', 'localstorage'] });
-        const fs = require('fs');
-        if (fs.existsSync(ytmDevtoolsAuthService.savedSessionPath)) {
-          fs.unlinkSync(ytmDevtoolsAuthService.savedSessionPath);
-        }
-      } catch (e) {}
-    }
-    return { success: true, provider };
-  }
-
-  // Capability 2: YouTube Music Controlled CDP Login
+  // YouTube Music Controlled CDP Login (Backwards Compatibility)
   async startYtmCdpLogin(event, { browser } = {}) {
-    try {
-      return await ytmDevtoolsAuthService.startCdpLogin(browser || 'auto');
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
+    return this.startServiceLogin(event, { service: 'youtube', browser });
   }
 
   cancelYtmCdpLogin() {
-    ytmDevtoolsAuthService.cancelCdpLogin();
-    return { success: true };
+    return this.cancelServiceLogin();
   }
 
-  // Capability 2: Guided cookies.txt Import Fallback
+  // Guided cookies.txt Import Fallback (Backwards Compatibility)
   async importCookiesText(event, { text } = {}) {
     try {
       return await ytmDevtoolsAuthService.importCookiesText(text);

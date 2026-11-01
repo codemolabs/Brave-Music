@@ -1,6 +1,6 @@
 {
   "name": "brave-music",
-  "version": "1.0.4",
+  "version": "1.0.6",
   "description": "Brave Music OTT Platform - Ad-free YouTube, Spotify and Built-in Offline Music Engine",
   "main": "main.js",
   "scripts": {

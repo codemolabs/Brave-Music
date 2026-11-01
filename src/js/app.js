@@ -318,61 +318,81 @@ Observed Behavior:
 
   // ==========================================================================
   // ==========================================================================
-  // CAPABILITY-BASED AUTHENTICATION & SESSION MANAGEMENT
+  // AUTHENTICATION & SESSION MANAGEMENT (CLEAN MINIMAL WHITE THEME)
   // ==========================================================================
   const btnAuthSync = document.getElementById('btn-auth-sync');
+  const headerUserLabel = document.getElementById('header-user-label');
+  const headerAvatarImg = document.getElementById('header-avatar-img');
+  const authHeaderDot = document.getElementById('auth-header-dot');
   const authSyncModal = document.getElementById('auth-sync-modal');
   const btnCloseAuthSync = document.getElementById('btn-close-auth-sync');
   const btnCancelAuthSync = document.getElementById('btn-cancel-auth-sync');
 
-  // Tabs
-  const authTabBtns = document.querySelectorAll('.auth-tab-btn');
-  const authTabContents = {
+  // Navigation Tabs
+  const loginTabPills = document.querySelectorAll('.login-tab-pill');
+  const loginTabPanels = {
     ytm: document.getElementById('auth-tab-ytm'),
-    spotify: document.getElementById('auth-tab-spotify'),
-    google: document.getElementById('auth-tab-google')
+    spotify: document.getElementById('auth-tab-spotify')
   };
 
   // YouTube Music Elements
-  const selectYtmBrowser = document.getElementById('select-ytm-browser');
+  const ytmSavedAccountCard = document.getElementById('ytm-saved-account-card');
+  const ytmAccountAvatar = document.getElementById('ytm-account-avatar');
+  const ytmAccountInitials = document.getElementById('ytm-account-initials');
+  const ytmAccountName = document.getElementById('ytm-account-name');
+  const ytmAccountEmail = document.getElementById('ytm-account-email');
+  const ytmAccountTime = document.getElementById('ytm-account-time');
+  const btnYtmResync = document.getElementById('btn-ytm-resync');
+  const btnYtmSignoutCard = document.getElementById('btn-ytm-signout-card');
+  const ytmSigninHeader = document.getElementById('ytm-signin-header');
+  const ytmStatusRow = document.getElementById('ytm-status-row');
+  const ytmStatusChip = document.getElementById('ytm-status-chip');
+  const ytmStatusDot = document.getElementById('ytm-status-dot');
+  const ytmStatusLabel = document.getElementById('ytm-status-label');
+  const btnYtmSignout = document.getElementById('btn-ytm-signout');
   const btnStartYtmCdp = document.getElementById('btn-start-ytm-cdp');
-  const btnCancelYtmCdp = document.getElementById('btn-cancel-ytm-cdp');
   const btnYtmCdpLabel = document.getElementById('btn-ytm-cdp-label');
   const ytmCdpStatus = document.getElementById('ytm-cdp-status');
-  const btnToggleCookiesImport = document.getElementById('btn-toggle-cookies-import');
-  const labelToggleCookies = document.getElementById('label-toggle-cookies');
-  const cookiesImportSection = document.getElementById('cookies-import-section');
-  const textareaCookiesImport = document.getElementById('textarea-cookies-import');
-  const btnSubmitCookiesText = document.getElementById('btn-submit-cookies-text');
+  const btnCancelYtmCdp = document.getElementById('btn-cancel-ytm-cdp');
+  const inputYtmCookiesFile = document.getElementById('input-ytm-cookies-file');
+  const ytmFileName = document.getElementById('ytm-file-name');
 
   // Spotify Elements
+  const spotifySavedAccountCard = document.getElementById('spotify-saved-account-card');
+  const spotifyAccountAvatar = document.getElementById('spotify-account-avatar');
+  const spotifyAccountInitials = document.getElementById('spotify-account-initials');
+  const spotifyAccountName = document.getElementById('spotify-account-name');
+  const spotifyAccountEmail = document.getElementById('spotify-account-email');
+  const spotifyAccountTime = document.getElementById('spotify-account-time');
+  const btnSpotifyResync = document.getElementById('btn-spotify-resync');
+  const btnSpotifySignoutCard = document.getElementById('btn-spotify-signout-card');
+  const spotifySigninHeader = document.getElementById('spotify-signin-header');
+  const spotifyStatusRow = document.getElementById('spotify-status-row');
+  const spotifyStatusChip = document.getElementById('spotify-status-chip');
   const spotifyStatusDot = document.getElementById('spotify-status-dot');
   const spotifyStatusLabel = document.getElementById('spotify-status-label');
-  const btnSpotifyPkceConnect = document.getElementById('btn-spotify-pkce-connect');
-  const btnSpotifyPkceDisconnect = document.getElementById('btn-spotify-pkce-disconnect');
-  const spotifyPkceStatus = document.getElementById('spotify-pkce-status');
-
-  // Google Elements
-  const googleStatusDot = document.getElementById('google-status-dot');
-  const googleStatusLabel = document.getElementById('google-status-label');
-  const btnGooglePkceConnect = document.getElementById('btn-google-pkce-connect');
-  const btnGooglePkceDisconnect = document.getElementById('btn-google-pkce-disconnect');
-  const googlePkceStatus = document.getElementById('google-pkce-status');
+  const btnSpotifySignout = document.getElementById('btn-spotify-signout');
+  const btnStartSpotifyLogin = document.getElementById('btn-start-spotify-login');
+  const btnSpotifyLoginLabel = document.getElementById('btn-spotify-login-label');
+  const spotifyLoginStatus = document.getElementById('spotify-login-status');
+  const btnCancelSpotifyLogin = document.getElementById('btn-cancel-spotify-login');
+  const inputSpotifyCookiesFile = document.getElementById('input-spotify-cookies-file');
+  const spotifyFileName = document.getElementById('spotify-file-name');
 
   let activeAuthTab = 'ytm';
 
   function switchAuthTab(tabId) {
     activeAuthTab = tabId;
-    authTabBtns.forEach(b => {
-      if (b.dataset.tab === tabId) {
-        b.classList.add('active');
+    loginTabPills.forEach(pill => {
+      if (pill.dataset.tab === tabId) {
+        pill.classList.add('active');
       } else {
-        b.classList.remove('active');
+        pill.classList.remove('active');
       }
     });
 
-    Object.keys(authTabContents).forEach(key => {
-      const panel = authTabContents[key];
+    Object.keys(loginTabPanels).forEach(key => {
+      const panel = loginTabPanels[key];
       if (panel) {
         if (key === tabId) {
           panel.style.display = 'block';
@@ -385,60 +405,209 @@ Observed Behavior:
     });
   }
 
-  authTabBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      switchAuthTab(btn.dataset.tab);
+  loginTabPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+      switchAuthTab(pill.dataset.tab);
     });
   });
-
-  async function populateDetectedBrowsers() {
-    if (!selectYtmBrowser || !window.braveApi?.getAvailableBrowsers) return;
-    try {
-      const browsers = await window.braveApi.getAvailableBrowsers();
-      if (Array.isArray(browsers) && browsers.length > 0) {
-        selectYtmBrowser.innerHTML = '<option value="auto">★ Auto-Detect (Recommended)</option>';
-        browsers.forEach(b => {
-          const opt = document.createElement('option');
-          opt.value = b.id;
-          opt.textContent = `${b.name} (${b.path})`;
-          selectYtmBrowser.appendChild(opt);
-        });
-      }
-    } catch (e) {
-      console.warn('[Auth] Error querying available browsers:', e);
-    }
-  }
 
   async function refreshAuthStatusUI() {
     if (!window.braveApi?.getAuthStatus) return;
     try {
       const status = await window.braveApi.getAuthStatus();
+      const accounts = status.accounts || (window.braveApi.getSavedAccounts ? await window.braveApi.getSavedAccounts() : {});
 
-      // Spotify Status
-      if (status.spotify?.authenticated) {
-        spotifyStatusDot.className = 'status-dot connected';
-        const name = status.spotify.user?.display_name || 'Spotify User';
-        spotifyStatusLabel.textContent = `Connected as ${name}`;
-        if (btnSpotifyPkceDisconnect) btnSpotifyPkceDisconnect.style.display = 'inline-flex';
+      // YouTube Music Status & Saved Account Card
+      const isYtmAuth = !!(status.youtube?.authenticated || status.ytmusic?.authenticated);
+      const ytmAcc = accounts.youtube || status.youtube?.account;
+
+      if (isYtmAuth && ytmAcc && ytmAcc.authenticated !== false) {
+        if (ytmStatusChip) ytmStatusChip.classList.add('connected');
+        if (ytmStatusLabel) ytmStatusLabel.textContent = `Connected (${ytmAcc.name || 'Logged in'})`;
+        if (btnYtmSignout) btnYtmSignout.style.display = 'inline-flex';
+
+        // Populate Saved Account Card
+        if (ytmSavedAccountCard) {
+          ytmSavedAccountCard.style.display = 'block';
+          if (ytmAccountName) ytmAccountName.textContent = ytmAcc.name || 'YouTube Music Account';
+          if (ytmAccountEmail) ytmAccountEmail.textContent = ytmAcc.email || 'Active Google Session';
+          if (ytmAccountTime) {
+            const dateStr = ytmAcc.lastLogin ? new Date(ytmAcc.lastLogin).toLocaleDateString() : 'Active';
+            ytmAccountTime.textContent = `Saved & Active • ${dateStr}`;
+          }
+          if (ytmAcc.avatar && ytmAccountAvatar) {
+            ytmAccountAvatar.src = ytmAcc.avatar;
+            ytmAccountAvatar.style.display = 'block';
+            if (ytmAccountInitials) ytmAccountInitials.style.display = 'none';
+          } else {
+            if (ytmAccountAvatar) ytmAccountAvatar.style.display = 'none';
+            if (ytmAccountInitials) {
+              ytmAccountInitials.style.display = 'flex';
+              const initial = (ytmAcc.name || 'Y').charAt(0).toUpperCase();
+              ytmAccountInitials.textContent = initial || 'YM';
+            }
+          }
+        }
+        if (ytmSigninHeader) ytmSigninHeader.style.display = 'flex';
       } else {
-        spotifyStatusDot.className = 'status-dot disconnected';
-        spotifyStatusLabel.textContent = 'Not Connected';
-        if (btnSpotifyPkceDisconnect) btnSpotifyPkceDisconnect.style.display = 'none';
+        if (ytmStatusChip) ytmStatusChip.classList.remove('connected');
+        if (ytmStatusLabel) ytmStatusLabel.textContent = 'Not logged in';
+        if (btnYtmSignout) btnYtmSignout.style.display = 'none';
+        if (ytmSavedAccountCard) ytmSavedAccountCard.style.display = 'none';
+        if (ytmSigninHeader) ytmSigninHeader.style.display = 'none';
       }
 
-      // Google Status
-      if (status.google?.authenticated) {
-        googleStatusDot.className = 'status-dot connected';
-        const email = status.google.user?.email || status.google.user?.name || 'Google Account';
-        googleStatusLabel.textContent = `Connected as ${email}`;
-        if (btnGooglePkceDisconnect) btnGooglePkceDisconnect.style.display = 'inline-flex';
+      // Spotify Status & Saved Account Card
+      const isSpotifyAuth = !!status.spotify?.authenticated;
+      const spotifyAcc = accounts.spotify || status.spotify?.account;
+
+      if (isSpotifyAuth && spotifyAcc && spotifyAcc.authenticated !== false) {
+        if (spotifyStatusChip) spotifyStatusChip.classList.add('connected');
+        const spName = spotifyAcc.name || status.spotify.user?.display_name || 'Spotify User';
+        if (spotifyStatusLabel) spotifyStatusLabel.textContent = `Connected (${spName})`;
+        if (btnSpotifySignout) btnSpotifySignout.style.display = 'inline-flex';
+
+        // Populate Saved Account Card
+        if (spotifySavedAccountCard) {
+          spotifySavedAccountCard.style.display = 'block';
+          if (spotifyAccountName) spotifyAccountName.textContent = spName;
+          if (spotifyAccountEmail) spotifyAccountEmail.textContent = spotifyAcc.email || 'Active Spotify Session';
+          if (spotifyAccountTime) {
+            const dateStr = spotifyAcc.lastLogin ? new Date(spotifyAcc.lastLogin).toLocaleDateString() : 'Active';
+            spotifyAccountTime.textContent = `Saved & Active • ${dateStr}`;
+          }
+          if (spotifyAcc.avatar && spotifyAccountAvatar) {
+            spotifyAccountAvatar.src = spotifyAcc.avatar;
+            spotifyAccountAvatar.style.display = 'block';
+            if (spotifyAccountInitials) spotifyAccountInitials.style.display = 'none';
+          } else {
+            if (spotifyAccountAvatar) spotifyAccountAvatar.style.display = 'none';
+            if (spotifyAccountInitials) {
+              spotifyAccountInitials.style.display = 'flex';
+              const initial = (spName || 'S').charAt(0).toUpperCase();
+              spotifyAccountInitials.textContent = initial || 'SP';
+            }
+          }
+        }
+        if (spotifySigninHeader) spotifySigninHeader.style.display = 'flex';
       } else {
-        googleStatusDot.className = 'status-dot disconnected';
-        googleStatusLabel.textContent = 'Not Connected';
-        if (btnGooglePkceDisconnect) btnGooglePkceDisconnect.style.display = 'none';
+        if (spotifyStatusChip) spotifyStatusChip.classList.remove('connected');
+        if (spotifyStatusLabel) spotifyStatusLabel.textContent = 'Not logged in';
+        if (btnSpotifySignout) btnSpotifySignout.style.display = 'none';
+        if (spotifySavedAccountCard) spotifySavedAccountCard.style.display = 'none';
+        if (spotifySigninHeader) spotifySigninHeader.style.display = 'none';
+      }
+
+      // Header button indicator dot & label
+      const isAnyAuth = isYtmAuth || isSpotifyAuth;
+      if (btnAuthSync) {
+        if (isAnyAuth) {
+          btnAuthSync.classList.add('connected');
+          authHeaderDot?.classList.add('connected');
+
+          // Pick display name based on current view or active account
+          let activeName = '';
+          let activeAvatar = '';
+          if (state.currentTab === 'spotify-view' && isSpotifyAuth && spotifyAcc?.name) {
+            activeName = spotifyAcc.name;
+            activeAvatar = spotifyAcc.avatar || '';
+          } else if (isYtmAuth && ytmAcc?.name) {
+            activeName = ytmAcc.name;
+            activeAvatar = ytmAcc.avatar || '';
+          } else if (isSpotifyAuth && spotifyAcc?.name) {
+            activeName = spotifyAcc.name;
+            activeAvatar = spotifyAcc.avatar || '';
+          }
+
+          // Clean display name for the pill button
+          const shortName = activeName ? activeName.split(' ')[0] : 'Account';
+          if (headerUserLabel) headerUserLabel.textContent = shortName;
+          btnAuthSync.title = `Account: ${activeName || 'Connected'} (Click to manage)`;
+
+          if (activeAvatar && headerAvatarImg) {
+            headerAvatarImg.src = activeAvatar;
+            headerAvatarImg.style.display = 'block';
+            const defaultSvg = document.querySelector('.header-account-btn .auth-sync-icon');
+            if (defaultSvg) defaultSvg.style.display = 'none';
+          } else {
+            if (headerAvatarImg) headerAvatarImg.style.display = 'none';
+            const defaultSvg = document.querySelector('.header-account-btn .auth-sync-icon');
+            if (defaultSvg) defaultSvg.style.display = 'block';
+          }
+        } else {
+          btnAuthSync.classList.remove('connected');
+          authHeaderDot?.classList.remove('connected');
+          if (headerUserLabel) headerUserLabel.textContent = 'Sign In';
+          btnAuthSync.title = 'Sign In / Account';
+          if (headerAvatarImg) headerAvatarImg.style.display = 'none';
+          const defaultSvg = document.querySelector('.header-account-btn .auth-sync-icon');
+          if (defaultSvg) defaultSvg.style.display = 'block';
+        }
       }
     } catch (e) {
-      console.warn('[Auth] Error refreshing auth status:', e);
+      console.warn('[Auth] Error querying auth status:', e);
+    }
+  }
+
+  // Background Webview User Profile Extractor
+  async function inspectAndSaveWebviewUser(service = 'youtube') {
+    if (!window.braveApi?.saveUserAccount) return;
+    try {
+      if (service === 'youtube' && ytWebview) {
+        const data = await ytWebview.executeJavaScript(`
+          (() => {
+            try {
+              const cfg = window.ytcfg;
+              const name = (cfg && cfg.get && cfg.get('USER_NAME')) || 
+                           document.querySelector('ytmusic-settings-button img')?.getAttribute('alt') ||
+                           document.querySelector('button#avatar-btn img')?.getAttribute('alt') || '';
+              const email = (cfg && cfg.get && cfg.get('USER_EMAIL')) || '';
+              const avatar = document.querySelector('button#avatar-btn img, ytmusic-settings-button img, img.ytmusic-settings-button, #avatar img')?.src || '';
+              const loggedIn = !!(cfg && cfg.get && cfg.get('LOGGED_IN')) || !!name || !!email || !!avatar;
+              return { name, email, avatar, loggedIn };
+            } catch (e) {
+              return null;
+            }
+          })()
+        `);
+        if (data && (data.loggedIn || data.name || data.email)) {
+          await window.braveApi.saveUserAccount('youtube', {
+            name: data.name || 'YouTube Music Account',
+            email: data.email || 'Active Google Session',
+            avatar: data.avatar || '',
+            authenticated: true,
+            source: 'webview'
+          });
+          refreshAuthStatusUI();
+        }
+      } else if (service === 'spotify' && spotifyWebview) {
+        const data = await spotifyWebview.executeJavaScript(`
+          (() => {
+            try {
+              const nameEl = document.querySelector('[data-testid="user-widget-link"] span, button[data-testid="user-widget-link"] span, [data-testid="username-first-letter"]');
+              const imgEl = document.querySelector('button[data-testid="user-widget-link"] img, [data-testid="user-widget-avatar"] img, figure[data-testid="user-widget-avatar"] img');
+              const name = nameEl?.textContent?.trim() || '';
+              const avatar = imgEl?.src || '';
+              const loggedIn = !!name || !!avatar;
+              return { name, avatar, loggedIn };
+            } catch (e) {
+              return null;
+            }
+          })()
+        `);
+        if (data && (data.loggedIn || data.name)) {
+          await window.braveApi.saveUserAccount('spotify', {
+            name: data.name || 'Spotify Account',
+            email: 'Active Spotify Session',
+            avatar: data.avatar || '',
+            authenticated: true,
+            source: 'webview'
+          });
+          refreshAuthStatusUI();
+        }
+      }
+    } catch (e) {
+      // Non-critical background inspection
     }
   }
 
@@ -446,7 +615,6 @@ Observed Behavior:
     if (authSyncModal) {
       authSyncModal.style.display = 'flex';
       switchAuthTab(initialTab);
-      populateDetectedBrowsers();
       refreshAuthStatusUI();
       btnCloseAuthSync?.focus();
     }
@@ -458,9 +626,57 @@ Observed Behavior:
     }
   }
 
-  btnAuthSync?.addEventListener('click', () => {
+  // Bulletproof click handler for Top User Person Button
+  btnAuthSync?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     const defaultTab = state.currentTab === 'spotify-view' ? 'spotify' : 'ytm';
     openAuthSyncModal(defaultTab);
+  });
+
+  // Saved Account Card Action Buttons
+  btnYtmResync?.addEventListener('click', () => {
+    showToast('Refreshing YouTube Music player...');
+    reloadActiveWebview(ytWebview, 'YouTube Music');
+    setTimeout(() => inspectAndSaveWebviewUser('youtube'), 2500);
+  });
+
+  btnYtmSignoutCard?.addEventListener('click', async () => {
+    try {
+      await window.braveApi.logoutProvider('youtube');
+      showToast('Signed out of YouTube Music.');
+      refreshAuthStatusUI();
+      reloadActiveWebview(ytWebview, 'YouTube Music');
+      if (ytmCdpStatus) {
+        ytmCdpStatus.className = 'login-live-feedback';
+        ytmCdpStatus.style.display = 'block';
+        ytmCdpStatus.textContent = 'Account removed and signed out.';
+      }
+    } catch (err) {
+      showToast('Error signing out: ' + err.message);
+    }
+  });
+
+  btnSpotifyResync?.addEventListener('click', () => {
+    showToast('Refreshing Spotify player...');
+    reloadActiveWebview(spotifyWebview, 'Spotify');
+    setTimeout(() => inspectAndSaveWebviewUser('spotify'), 2500);
+  });
+
+  btnSpotifySignoutCard?.addEventListener('click', async () => {
+    try {
+      await window.braveApi.logoutProvider('spotify');
+      showToast('Signed out of Spotify.');
+      refreshAuthStatusUI();
+      reloadActiveWebview(spotifyWebview, 'Spotify');
+      if (spotifyLoginStatus) {
+        spotifyLoginStatus.className = 'login-live-feedback';
+        spotifyLoginStatus.style.display = 'block';
+        spotifyLoginStatus.textContent = 'Account removed and signed out.';
+      }
+    } catch (err) {
+      showToast('Error signing out: ' + err.message);
+    }
   });
 
   btnCloseAuthSync?.addEventListener('click', closeAuthSyncModal);
@@ -470,247 +686,287 @@ Observed Behavior:
   });
 
   // =========================================================================
-  // TAB 1: YOUTUBE MUSIC (CDP & COOKIES.TXT)
+  // 1. YOUTUBE MUSIC SIGN-IN & JSON COOKIE FILE IMPORT
   // =========================================================================
+
   btnStartYtmCdp?.addEventListener('click', async () => {
-    const selectedBrowser = selectYtmBrowser?.value || 'auto';
     btnStartYtmCdp.disabled = true;
-    if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Browser Running...';
-    if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'inline-flex';
+    if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Browser Open...';
+    if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'inline-block';
 
     if (ytmCdpStatus) {
-      ytmCdpStatus.className = 'sync-status-msg loading';
+      ytmCdpStatus.className = 'login-live-feedback loading';
       ytmCdpStatus.style.display = 'block';
-      ytmCdpStatus.innerHTML = 'Launching browser at <strong>music.youtube.com</strong> with remote debugging...';
+      ytmCdpStatus.textContent = 'Opening browser... Sign in normally, we will detect your login.';
     }
 
     try {
-      const res = await window.braveApi.startYtmCdpLogin(selectedBrowser);
+      const res = await window.braveApi.startServiceLogin('youtube', 'auto');
       if (res && res.success) {
         if (ytmCdpStatus) {
-          ytmCdpStatus.className = 'sync-status-msg success';
+          ytmCdpStatus.className = 'login-live-feedback success';
           ytmCdpStatus.style.display = 'block';
-          ytmCdpStatus.textContent = `✓ ${res.message}`;
+          ytmCdpStatus.textContent = '✓ Login complete! Applying session...';
         }
-        showToast('YouTube Music session synced! Reloading player...');
+        showToast('YouTube Music signed in! Refreshing player...');
+        refreshAuthStatusUI();
         reloadActiveWebview(ytWebview, 'YouTube Music');
-        setTimeout(() => closeAuthSyncModal(), 1800);
+        setTimeout(() => inspectAndSaveWebviewUser('youtube'), 1500);
+        setTimeout(() => closeAuthSyncModal(), 2200);
       } else {
         if (ytmCdpStatus) {
-          ytmCdpStatus.className = 'sync-status-msg error';
+          ytmCdpStatus.className = 'login-live-feedback error';
           ytmCdpStatus.style.display = 'block';
-          ytmCdpStatus.textContent = `⚠ ${res.error || 'Failed to complete sign-in.'}`;
+          ytmCdpStatus.textContent = `⚠ ${res?.error || 'Sign-in cancelled or failed.'}`;
         }
       }
     } catch (err) {
       if (ytmCdpStatus) {
-        ytmCdpStatus.className = 'sync-status-msg error';
+        ytmCdpStatus.className = 'login-live-feedback error';
         ytmCdpStatus.style.display = 'block';
         ytmCdpStatus.textContent = `⚠ Sign-in error: ${err.message}`;
       }
     } finally {
       btnStartYtmCdp.disabled = false;
-      if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Launch Dedicated Browser Sign-In';
+      if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Login to YouTube Music';
       if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
     }
   });
 
   btnCancelYtmCdp?.addEventListener('click', async () => {
     try {
-      await window.braveApi.cancelYtmCdpLogin();
+      await window.braveApi.cancelServiceLogin();
       btnStartYtmCdp.disabled = false;
-      if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Launch Dedicated Browser Sign-In';
+      if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Login to YouTube Music';
       if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
       if (ytmCdpStatus) {
-        ytmCdpStatus.className = 'sync-status-msg';
+        ytmCdpStatus.className = 'login-live-feedback';
         ytmCdpStatus.textContent = 'Sign-in cancelled.';
       }
     } catch (e) {}
   });
 
-  // Live CDP status callback
-  window.braveApi?.onAuthCdpStatus?.((status) => {
-    if (!ytmCdpStatus) return;
-    ytmCdpStatus.style.display = 'block';
-    if (status.state === 'complete') {
-      ytmCdpStatus.className = 'sync-status-msg success';
-      ytmCdpStatus.textContent = `✓ ${status.message}`;
-    } else if (status.state === 'error' || status.state === 'cancelled') {
-      ytmCdpStatus.className = 'sync-status-msg error';
-      ytmCdpStatus.textContent = status.message;
-    } else {
-      ytmCdpStatus.className = 'sync-status-msg loading';
-      ytmCdpStatus.textContent = status.message;
-    }
-  });
+  // YouTube Music JSON Cookies File Import
+  inputYtmCookiesFile?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
-  // Fallback cookies.txt accordion toggle
-  btnToggleCookiesImport?.addEventListener('click', () => {
-    if (cookiesImportSection) {
-      const isHidden = cookiesImportSection.style.display === 'none';
-      cookiesImportSection.style.display = isHidden ? 'block' : 'none';
-      if (labelToggleCookies) {
-        labelToggleCookies.textContent = isHidden 
-          ? '▾ Hide Alternative: Guided cookies.txt Import Fallback'
-          : '▸ Alternative: Guided cookies.txt Import Fallback';
-      }
-    }
-  });
+    if (ytmFileName) ytmFileName.textContent = file.name;
 
-  // cookies.txt import submission
-  btnSubmitCookiesText?.addEventListener('click', async () => {
-    const text = textareaCookiesImport?.value?.trim();
-    if (!text) {
-      showToast('Please paste your cookies text first.');
-      return;
-    }
-
-    btnSubmitCookiesText.disabled = true;
     if (ytmCdpStatus) {
-      ytmCdpStatus.className = 'sync-status-msg loading';
+      ytmCdpStatus.className = 'login-live-feedback loading';
       ytmCdpStatus.style.display = 'block';
-      ytmCdpStatus.textContent = 'Parsing and injecting cookies...';
+      ytmCdpStatus.textContent = `Reading ${file.name} and importing cookies...`;
     }
 
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = e.target.result;
+        const res = await window.braveApi.importCookiesJson('youtube', content);
+        if (res && res.success) {
+          if (ytmCdpStatus) {
+            ytmCdpStatus.className = 'login-live-feedback success';
+            ytmCdpStatus.style.display = 'block';
+            ytmCdpStatus.textContent = `✓ Successfully applied ${res.count || ''} cookies!`;
+          }
+          showToast('YouTube Music cookies applied! Refreshing player...');
+          refreshAuthStatusUI();
+          reloadActiveWebview(ytWebview, 'YouTube Music');
+          setTimeout(() => inspectAndSaveWebviewUser('youtube'), 1500);
+          setTimeout(() => closeAuthSyncModal(), 2200);
+        } else {
+          if (ytmCdpStatus) {
+            ytmCdpStatus.className = 'login-live-feedback error';
+            ytmCdpStatus.style.display = 'block';
+            ytmCdpStatus.textContent = `⚠ ${res?.error || 'Failed to import cookies.'}`;
+          }
+        }
+      } catch (err) {
+        if (ytmCdpStatus) {
+          ytmCdpStatus.className = 'login-live-feedback error';
+          ytmCdpStatus.style.display = 'block';
+          ytmCdpStatus.textContent = `⚠ Import error: ${err.message}`;
+        }
+      } finally {
+        event.target.value = '';
+      }
+    };
+    reader.onerror = () => {
+      if (ytmCdpStatus) {
+        ytmCdpStatus.className = 'login-live-feedback error';
+        ytmCdpStatus.textContent = 'Failed to read selected file.';
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // YouTube Music Sign Out
+  btnYtmSignout?.addEventListener('click', async () => {
     try {
-      const res = await window.braveApi.importCookiesText(text);
-      if (res && res.success) {
-        if (ytmCdpStatus) {
-          ytmCdpStatus.className = 'sync-status-msg success';
-          ytmCdpStatus.style.display = 'block';
-          ytmCdpStatus.textContent = `✓ ${res.message}`;
-        }
-        showToast('Cookies applied! Reloading YouTube Music...');
-        reloadActiveWebview(ytWebview, 'YouTube Music');
-        if (textareaCookiesImport) textareaCookiesImport.value = '';
-        setTimeout(() => closeAuthSyncModal(), 1800);
-      } else {
-        if (ytmCdpStatus) {
-          ytmCdpStatus.className = 'sync-status-msg error';
-          ytmCdpStatus.style.display = 'block';
-          ytmCdpStatus.textContent = `⚠ ${res.error || 'Failed to import cookies.'}`;
-        }
+      await window.braveApi.logoutProvider('youtube');
+      showToast('Signed out of YouTube Music.');
+      refreshAuthStatusUI();
+      reloadActiveWebview(ytWebview, 'YouTube Music');
+      if (ytmCdpStatus) {
+        ytmCdpStatus.className = 'login-live-feedback';
+        ytmCdpStatus.style.display = 'block';
+        ytmCdpStatus.textContent = 'Signed out successfully.';
       }
     } catch (err) {
-      if (ytmCdpStatus) {
-        ytmCdpStatus.className = 'sync-status-msg error';
-        ytmCdpStatus.style.display = 'block';
-        ytmCdpStatus.textContent = `⚠ Import error: ${err.message}`;
-      }
-    } finally {
-      btnSubmitCookiesText.disabled = false;
+      showToast('Error signing out: ' + err.message);
     }
   });
 
   // =========================================================================
-  // TAB 2: SPOTIFY (OAuth 2.0 PKCE Loopback)
+  // 2. SPOTIFY SIGN-IN & JSON COOKIE FILE IMPORT
   // =========================================================================
-  btnSpotifyPkceConnect?.addEventListener('click', async () => {
-    btnSpotifyPkceConnect.disabled = true;
-    if (spotifyPkceStatus) {
-      spotifyPkceStatus.className = 'sync-status-msg loading';
-      spotifyPkceStatus.style.display = 'block';
-      spotifyPkceStatus.innerHTML = 'Starting loopback server on <strong>127.0.0.1</strong> and opening Spotify in your default browser...';
+
+  btnStartSpotifyLogin?.addEventListener('click', async () => {
+    btnStartSpotifyLogin.disabled = true;
+    if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Browser Open...';
+    if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'inline-block';
+
+    if (spotifyLoginStatus) {
+      spotifyLoginStatus.className = 'login-live-feedback loading';
+      spotifyLoginStatus.style.display = 'block';
+      spotifyLoginStatus.textContent = 'Opening browser... Sign in to Spotify, we will detect your login.';
     }
 
     try {
-      const res = await window.braveApi.startSpotifyPkce();
+      const res = await window.braveApi.startServiceLogin('spotify', 'auto');
       if (res && res.success) {
-        if (spotifyPkceStatus) {
-          spotifyPkceStatus.className = 'sync-status-msg success';
-          spotifyPkceStatus.style.display = 'block';
-          spotifyPkceStatus.textContent = `✓ Connected to Spotify as ${res.user?.display_name || 'User'}!`;
+        if (spotifyLoginStatus) {
+          spotifyLoginStatus.className = 'login-live-feedback success';
+          spotifyLoginStatus.style.display = 'block';
+          spotifyLoginStatus.textContent = '✓ Login complete! Applying session...';
         }
-        showToast('Spotify authorization complete! Reloading...');
+        showToast('Spotify signed in! Refreshing player...');
         refreshAuthStatusUI();
         reloadActiveWebview(spotifyWebview, 'Spotify');
-        setTimeout(() => closeAuthSyncModal(), 1800);
+        setTimeout(() => inspectAndSaveWebviewUser('spotify'), 1500);
+        setTimeout(() => closeAuthSyncModal(), 2200);
       } else {
-        if (spotifyPkceStatus) {
-          spotifyPkceStatus.className = 'sync-status-msg error';
-          spotifyPkceStatus.style.display = 'block';
-          spotifyPkceStatus.textContent = `⚠ ${res.error || 'Spotify authorization cancelled.'}`;
+        if (spotifyLoginStatus) {
+          spotifyLoginStatus.className = 'login-live-feedback error';
+          spotifyLoginStatus.style.display = 'block';
+          spotifyLoginStatus.textContent = `⚠ ${res?.error || 'Spotify sign-in cancelled or failed.'}`;
         }
       }
     } catch (err) {
-      if (spotifyPkceStatus) {
-        spotifyPkceStatus.className = 'sync-status-msg error';
-        spotifyPkceStatus.style.display = 'block';
-        spotifyPkceStatus.textContent = `⚠ Spotify error: ${err.message}`;
+      if (spotifyLoginStatus) {
+        spotifyLoginStatus.className = 'login-live-feedback error';
+        spotifyLoginStatus.style.display = 'block';
+        spotifyLoginStatus.textContent = `⚠ Sign-in error: ${err.message}`;
       }
     } finally {
-      btnSpotifyPkceConnect.disabled = false;
+      btnStartSpotifyLogin.disabled = false;
+      if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Login to Spotify';
+      if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
     }
   });
 
-  btnSpotifyPkceDisconnect?.addEventListener('click', async () => {
+  btnCancelSpotifyLogin?.addEventListener('click', async () => {
+    try {
+      await window.braveApi.cancelServiceLogin();
+      btnStartSpotifyLogin.disabled = false;
+      if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Login to Spotify';
+      if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
+      if (spotifyLoginStatus) {
+        spotifyLoginStatus.className = 'login-live-feedback';
+        spotifyLoginStatus.textContent = 'Sign-in cancelled.';
+      }
+    } catch (e) {}
+  });
+
+  // Spotify JSON Cookies File Import
+  inputSpotifyCookiesFile?.addEventListener('change', async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (spotifyFileName) spotifyFileName.textContent = file.name;
+
+    if (spotifyLoginStatus) {
+      spotifyLoginStatus.className = 'login-live-feedback loading';
+      spotifyLoginStatus.style.display = 'block';
+      spotifyLoginStatus.textContent = `Reading ${file.name} and importing cookies...`;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = e.target.result;
+        const res = await window.braveApi.importCookiesJson('spotify', content);
+        if (res && res.success) {
+          if (spotifyLoginStatus) {
+            spotifyLoginStatus.className = 'login-live-feedback success';
+            spotifyLoginStatus.style.display = 'block';
+            spotifyLoginStatus.textContent = `✓ Successfully applied ${res.count || ''} cookies!`;
+          }
+          showToast('Spotify cookies applied! Refreshing player...');
+          refreshAuthStatusUI();
+          reloadActiveWebview(spotifyWebview, 'Spotify');
+          setTimeout(() => inspectAndSaveWebviewUser('spotify'), 1500);
+          setTimeout(() => closeAuthSyncModal(), 2200);
+        } else {
+          if (spotifyLoginStatus) {
+            spotifyLoginStatus.className = 'login-live-feedback error';
+            spotifyLoginStatus.style.display = 'block';
+            spotifyLoginStatus.textContent = `⚠ ${res?.error || 'Failed to import cookies.'}`;
+          }
+        }
+      } catch (err) {
+        if (spotifyLoginStatus) {
+          spotifyLoginStatus.className = 'login-live-feedback error';
+          spotifyLoginStatus.style.display = 'block';
+          spotifyLoginStatus.textContent = `⚠ Import error: ${err.message}`;
+        }
+      } finally {
+        event.target.value = '';
+      }
+    };
+    reader.onerror = () => {
+      if (spotifyLoginStatus) {
+        spotifyLoginStatus.className = 'login-live-feedback error';
+        spotifyLoginStatus.textContent = 'Failed to read selected file.';
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // Spotify Sign Out
+  btnSpotifySignout?.addEventListener('click', async () => {
     try {
       await window.braveApi.logoutProvider('spotify');
-      showToast('Disconnected Spotify account.');
+      showToast('Signed out of Spotify.');
       refreshAuthStatusUI();
-      if (spotifyPkceStatus) {
-        spotifyPkceStatus.className = 'sync-status-msg';
-        spotifyPkceStatus.style.display = 'block';
-        spotifyPkceStatus.textContent = 'Account disconnected.';
-      }
       reloadActiveWebview(spotifyWebview, 'Spotify');
+      if (spotifyLoginStatus) {
+        spotifyLoginStatus.className = 'login-live-feedback';
+        spotifyLoginStatus.style.display = 'block';
+        spotifyLoginStatus.textContent = 'Signed out successfully.';
+      }
     } catch (err) {
-      showToast('Error disconnecting: ' + err.message);
+      showToast('Error signing out: ' + err.message);
     }
   });
 
-  // =========================================================================
-  // TAB 3: GOOGLE APP (OAuth 2.0 PKCE Loopback)
-  // =========================================================================
-  btnGooglePkceConnect?.addEventListener('click', async () => {
-    btnGooglePkceConnect.disabled = true;
-    if (googlePkceStatus) {
-      googlePkceStatus.className = 'sync-status-msg loading';
-      googlePkceStatus.style.display = 'block';
-      googlePkceStatus.innerHTML = 'Starting loopback server on <strong>127.0.0.1</strong> and opening Google in your default browser...';
-    }
+  // Real-time CDP status listener from backend
+  window.braveApi?.onAuthCdpStatus?.((status) => {
+    const isSpotify = status.service === 'spotify';
+    const targetStatusEl = isSpotify ? spotifyLoginStatus : ytmCdpStatus;
+    if (!targetStatusEl) return;
 
-    try {
-      const res = await window.braveApi.startGooglePkce();
-      if (res && res.success) {
-        if (googlePkceStatus) {
-          googlePkceStatus.className = 'sync-status-msg success';
-          googlePkceStatus.style.display = 'block';
-          googlePkceStatus.textContent = `✓ Connected to Google as ${res.user?.email || res.user?.name || 'User'}!`;
-        }
-        showToast('Google account connected!');
-        refreshAuthStatusUI();
-        setTimeout(() => closeAuthSyncModal(), 1800);
-      } else {
-        if (googlePkceStatus) {
-          googlePkceStatus.className = 'sync-status-msg error';
-          googlePkceStatus.style.display = 'block';
-          googlePkceStatus.textContent = `⚠ ${res.error || 'Google authorization cancelled.'}`;
-        }
-      }
-    } catch (err) {
-      if (googlePkceStatus) {
-        googlePkceStatus.className = 'sync-status-msg error';
-        googlePkceStatus.style.display = 'block';
-        googlePkceStatus.textContent = `⚠ Google error: ${err.message}`;
-      }
-    } finally {
-      btnGooglePkceConnect.disabled = false;
-    }
-  });
-
-  btnGooglePkceDisconnect?.addEventListener('click', async () => {
-    try {
-      await window.braveApi.logoutProvider('google');
-      showToast('Disconnected Google account.');
-      refreshAuthStatusUI();
-      if (googlePkceStatus) {
-        googlePkceStatus.className = 'sync-status-msg';
-        googlePkceStatus.style.display = 'block';
-        googlePkceStatus.textContent = 'Account disconnected.';
-      }
-    } catch (err) {
-      showToast('Error disconnecting: ' + err.message);
+    targetStatusEl.style.display = 'block';
+    if (status.state === 'complete') {
+      targetStatusEl.className = 'login-live-feedback success';
+      targetStatusEl.textContent = `✓ ${status.message}`;
+    } else if (status.state === 'error' || status.state === 'cancelled') {
+      targetStatusEl.className = 'login-live-feedback error';
+      targetStatusEl.textContent = status.message;
+    } else {
+      targetStatusEl.className = 'login-live-feedback loading';
+      targetStatusEl.textContent = status.message;
     }
   });
 
@@ -760,6 +1016,8 @@ Observed Behavior:
     if (targetId === 'downloads-view') {
       loadLibrary();
     }
+
+    refreshAuthStatusUI();
   }
 
   tabs.forEach(tab => {
@@ -825,6 +1083,12 @@ Observed Behavior:
 
   setupWebviewShields(ytWebview, 'YouTube Music');
   setupWebviewShields(spotifyWebview, 'Spotify');
+
+  // Automatically inspect and sync signed-in user profiles
+  ytWebview?.addEventListener('dom-ready', () => inspectAndSaveWebviewUser('youtube'));
+  ytWebview?.addEventListener('did-navigate', () => inspectAndSaveWebviewUser('youtube'));
+  spotifyWebview?.addEventListener('dom-ready', () => inspectAndSaveWebviewUser('spotify'));
+  spotifyWebview?.addEventListener('did-navigate', () => inspectAndSaveWebviewUser('spotify'));
 
   // ==========================================================================
   // DOWNLOAD CONTROLS (OFFLINE AUDIO ENGINE)
@@ -2551,4 +2815,5 @@ Observed Behavior:
   // Initial setup & data load
   setupCustomDropdowns();
   loadLibrary();
+  refreshAuthStatusUI();
 });

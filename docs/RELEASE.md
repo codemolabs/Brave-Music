@@ -24,7 +24,57 @@ All official releases follow [Semantic Versioning 2.0.0](https://semver.org/):
 
 ---
 
-## Release History
+### Release v1.0.6 (Dedicated Header Account Pill, Saved User Account Profiles & Unambiguous Login Logic)
+- **Release Date**: November 1, 2026
+- **Release Tag**: `v1.0.6`
+- **Target Architecture**: Linux `x86_64` / `amd64`
+- **License**: GPL-3.0 (Codemo OSL)
+- **Direct Download**: [**brave-music_1.0.6_amd64.deb**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.6/brave-music_1.0.6_amd64.deb)
+
+#### Package Checksums (SHA-256)
+```text
+711b3a8c8533ce7c1f0a1d4fd2bf81bd85e7e07fb1bbbeb8850a87af43596a77  brave-music_1.0.6_amd64.deb
+```
+
+#### Highlights and Fixes
+- **Dedicated Header Account Pill Button (`#btn-auth-sync`)**:
+  - Transformed the header user person button into an unmistakable pill with avatar/icon, dynamic user name label ("Sign In" when logged out, user's name when logged in), and emerald active dot.
+  - Added `-webkit-app-region: no-drag !important` and `pointer-events: none` on inner elements to ensure reliable click handling without window drag interference.
+  - Completely isolated from the Information icon (`#btn-about`), eliminating any UX confusion between Login and About.
+- **Persistent Saved User Accounts (`user_accounts.json`)**:
+  - Automatically records and persists user profile metadata (`name`, `email`, `avatar`, `authenticated`, `lastLogin`) to `user_accounts.json`.
+  - Automatically backfills existing session cookie caches on startup.
+- **Saved User Account Cards**:
+  - Displays a clean profile card inside the login modal showing avatar image/initials, full name, email, "Saved & Active" badge, "Refresh Player", and "Sign Out" actions.
+- **Dynamic Webview User Profile Syncing**:
+  - Proactively extracts logged-in Google / YouTube Music and Spotify usernames and avatars directly from active webview sessions.
+
+---
+
+### Release v1.0.5 (Minimal White Login UI, One-Click Auto-Sync & JSON Cookie File Import)
+- **Release Date**: November 1, 2026
+- **Release Tag**: `v1.0.5`
+- **Target Architecture**: Linux `x86_64` / `amd64`
+- **License**: GPL-3.0 (Codemo OSL)
+- **Direct Download**: [**brave-music_1.0.5_amd64.deb**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.5/brave-music_1.0.5_amd64.deb)
+
+#### Package Checksums (SHA-256)
+```text
+bd6a1f084797fa6005ad9c0644d26c716b4b17dfe28e158aa7bda346215471dc  brave-music_1.0.5_amd64.deb
+```
+
+#### Highlights and Fixes
+- **Minimal Professional White Login Modal**:
+  - Replaced technical-heavy modal with a sleek, minimalist white card design.
+  - Simple 2-tab layout for YouTube Music and Spotify with status indicators.
+- **Top Header Person Icon Integration**:
+  - Integrated header Person icon with real-time status indicator dot (`.connected`).
+  - Automatically opens the relevant login tab based on active view.
+- **One-Click Real-Time Auto Detection**:
+  - YouTube Music & Spotify browser login with real-time cookie polling (`sp_dc`, `__Secure-3PAPISID`, `LOGIN_INFO`).
+  - Injects cookies immediately into player partition and triggers in-place refresh without closing or restarting the app.
+- **JSON File Cookie Import**:
+  - Added clean JSON file picker (`.json`) for manual cookie imports from extensions like Cookie-Editor / EditThisCookie, replacing raw text pasting.
 
 ### Release v1.0.4 (YouTube & Spotify Playlist Auto-Creation, Audio-Only Streams, Clean Metadata & Live Auto-Update)
 - **Release Date**: November 1, 2026
