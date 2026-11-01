@@ -864,12 +864,23 @@ Observed Behavior:
     progressFillBar.style.width = '0%';
     progressPercentVal.textContent = '0%';
     progressSpeed.textContent = '0.0 MB/s';
-    const isPlaylistUrl = /[?&]list=[a-zA-Z0-9_-]+/i.test(url) || /\/playlist\/[a-zA-Z0-9_-]+/i.test(url) || /\/album\/[a-zA-Z0-9_-]+/i.test(url);
+    const isPlaylistUrl = /[?&]list=[a-zA-Z0-9_-]+/i.test(url) ||
+                          /\/playlist\/[a-zA-Z0-9_-]+/i.test(url) ||
+                          /\/album\/[a-zA-Z0-9_-]+/i.test(url) ||
+                          /\/playlist\?list=/i.test(url);
     const shouldDownloadAsPlaylist = state.downloadType === 'playlist' || isPlaylistUrl;
+    if (isPlaylistUrl && state.downloadType !== 'playlist') {
+      state.downloadType = 'playlist';
+      if (togglePlaylist && toggleSong) {
+        togglePlaylist.classList.add('active');
+        toggleSong.classList.remove('active');
+        inputDownloadUrl.placeholder = 'Paste YouTube / Spotify playlist URL…';
+      }
+    }
 
     progressStatusLabel.textContent = isVideo
       ? (shouldDownloadAsPlaylist ? 'Resolving & downloading video playlist…' : 'Resolving & downloading music video…')
-      : (shouldDownloadAsPlaylist ? 'Fetching playlist information…' : 'Resolving audio stream…');
+      : (shouldDownloadAsPlaylist ? 'Fetching playlist information & cover art…' : 'Resolving audio stream…');
 
     btnExecuteDownload.disabled = true;
 
@@ -877,7 +888,7 @@ Observed Behavior:
       const result = await window.braveApi.startDownload({
         url,
         isPlaylist: shouldDownloadAsPlaylist,
-        playlistName: '', // Let yt-dlp automatically extract and name genuine playlist title
+        playlistName: '', // Let backend extract genuine playlist title & cover
         format
       });
 
@@ -928,6 +939,23 @@ Observed Behavior:
       }
       if (data.speed) {
         progressSpeed.textContent = data.speed;
+      }
+      // Reactive auto-update as tracks finish
+      if (data.trackSaved || data.playlistCreated) {
+        loadLibrary();
+      }
+    });
+  }
+
+  // Real-time backend library update event listener (no app reopening needed)
+  if (window.braveApi?.onLibraryUpdated) {
+    window.braveApi.onLibraryUpdated(async (data) => {
+      await loadLibrary();
+      if (activeDetailPlaylist) {
+        const pName = typeof data?.playlist === 'object' ? data.playlist?.name : data?.playlist;
+        if (!pName || pName === activeDetailPlaylist) {
+          openPlaylistDetail(activeDetailPlaylist);
+        }
       }
     });
   }
@@ -1422,9 +1450,12 @@ Observed Behavior:
     const playlistCovers = state.library.playlistCovers || {};
     const trackIds = playlists[playlistName] || [];
     const allTracks = state.library.tracks || [];
+    const trackMap = new Map(allTracks.map(t => [t.id, t]));
 
-    // Filter tracks belonging to this playlist, strictly excluding built-in music
-    const playlistTracks = allTracks.filter(t => trackIds.includes(t.id) && !isBuiltInTrack(t));
+    // Strictly preserve playlist insertion order: 1, 2, 3, 4, 5...
+    const playlistTracks = trackIds
+      .map(id => trackMap.get(id))
+      .filter(t => t && !isBuiltInTrack(t));
 
     // Cover art setup
     const customCover = playlistCovers[playlistName];
@@ -1574,7 +1605,10 @@ Observed Behavior:
     if (!activeDetailPlaylist) return;
     const playlistTrackIds = (state.library.playlists || {})[activeDetailPlaylist] || [];
     const allTracks = state.library.tracks || [];
-    const playlistTracks = allTracks.filter(t => playlistTrackIds.includes(t.id) && !isBuiltInTrack(t));
+    const trackMap = new Map(allTracks.map(t => [t.id, t]));
+    const playlistTracks = playlistTrackIds
+      .map(id => trackMap.get(id))
+      .filter(t => t && !isBuiltInTrack(t));
     if (playlistTracks.length === 0) {
       showToast('This playlist has no songs yet');
       return;
@@ -1590,7 +1624,10 @@ Observed Behavior:
     if (!activeDetailPlaylist) return;
     const playlistTrackIds = (state.library.playlists || {})[activeDetailPlaylist] || [];
     const allTracks = state.library.tracks || [];
-    const playlistTracks = allTracks.filter(t => playlistTrackIds.includes(t.id) && !isBuiltInTrack(t));
+    const trackMap = new Map(allTracks.map(t => [t.id, t]));
+    const playlistTracks = playlistTrackIds
+      .map(id => trackMap.get(id))
+      .filter(t => t && !isBuiltInTrack(t));
     if (playlistTracks.length === 0) {
       showToast('This playlist has no songs yet');
       return;
@@ -1607,7 +1644,10 @@ Observed Behavior:
     if (!activeDetailPlaylist) return;
     const playlistTrackIds = (state.library.playlists || {})[activeDetailPlaylist] || [];
     const allTracks = state.library.tracks || [];
-    const playlistTracks = allTracks.filter(t => playlistTrackIds.includes(t.id) && !isBuiltInTrack(t));
+    const trackMap = new Map(allTracks.map(t => [t.id, t]));
+    const playlistTracks = playlistTrackIds
+      .map(id => trackMap.get(id))
+      .filter(t => t && !isBuiltInTrack(t));
     if (playlistTracks.length === 0) {
       showToast('This playlist has no songs yet');
       return;
@@ -1657,7 +1697,10 @@ Observed Behavior:
     const activePlaylist = state.player.lockedPlaylist || state.selectedPlaylist;
     if (activePlaylist) {
       const playlistTrackIds = (state.library.playlists || {})[activePlaylist] || [];
-      tracks = tracks.filter(t => playlistTrackIds.includes(t.id) && !isBuiltInTrack(t));
+      const trackMap = new Map(tracks.map(t => [t.id, t]));
+      tracks = playlistTrackIds
+        .map(id => trackMap.get(id))
+        .filter(t => t && !isBuiltInTrack(t));
     }
 
     // Filter by search query

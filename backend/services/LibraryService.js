@@ -46,12 +46,10 @@ class LibraryService {
         const activePlaylistNames = new Set(Object.keys(playlists));
         for (const track of tracks) {
           if (track.playlist && !activePlaylistNames.has(track.playlist)) {
-            delete track.playlist;
-          }
-          if (track.album) {
-            if (track.album === 'Downloaded Playlist' || track.album === 'Downloaded Album' || (!activePlaylistNames.has(track.album) && track.playlist === track.album)) {
+            if (track.album === track.playlist) {
               track.album = 'Single';
             }
+            delete track.playlist;
           }
         }
         return {
@@ -94,12 +92,10 @@ class LibraryService {
     const activePlaylistNames = new Set(Object.keys(this.db.playlists || {}));
     for (const track of this.db.tracks) {
       if (track.playlist && !activePlaylistNames.has(track.playlist)) {
-        delete track.playlist;
-      }
-      if (track.album) {
-        if (track.album === 'Downloaded Playlist' || track.album === 'Downloaded Album' || (!activePlaylistNames.has(track.album) && track.playlist === track.album)) {
+        if (track.album === track.playlist) {
           track.album = 'Single';
         }
+        delete track.playlist;
       }
     }
     return {
@@ -259,9 +255,11 @@ class LibraryService {
     if (!this.db.playlists[cleanName]) {
       this.db.playlists[cleanName] = [];
     }
-    if (cover && (!this.db.playlistCovers || !this.db.playlistCovers[cleanName])) {
+    if (cover) {
       this.db.playlistCovers = this.db.playlistCovers || {};
-      this.db.playlistCovers[cleanName] = cover;
+      if (!this.db.playlistCovers[cleanName] || this.db.playlistCovers[cleanName].startsWith('linear-gradient')) {
+        this.db.playlistCovers[cleanName] = cover;
+      }
     }
     this.saveDatabase();
     return {

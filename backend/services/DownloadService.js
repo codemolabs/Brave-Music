@@ -25,6 +25,148 @@ class DownloadService {
            /spotify:(playlist|album):([a-zA-Z0-9]+)/i.test(url.trim());
   }
 
+  // Check if URL is a YouTube or YouTube Music playlist
+  isYouTubePlaylistUrl(url) {
+    if (!url || typeof url !== 'string') return false;
+    const trimmed = url.trim();
+    return /[?&]list=([a-zA-Z0-9_-]+)/i.test(trimmed) ||
+           /\/playlist\?list=/i.test(trimmed);
+  }
+
+  // Smart cleaner for song title and artist name (removes video noise, Topic, VEVO, etc.)
+  cleanTrackMetadata({ title, artist, creator, uploader, album }) {
+    let cleanTitle = String(title || '').trim();
+    let cleanArtist = String(artist || creator || '').trim();
+    const cleanUploader = String(uploader || '')
+      .replace(/\s*-\s*Topic$/i, '')
+      .replace(/VEVO$/i, '')
+      .trim();
+
+    // Strip common video noise from title
+    const noiseRegex = /\s*[\(\[](?:official\s*(?:music\s*)?video|official\s*audio|official\s*lyric\s*video|lyric\s*video|lyrics|audio|visualizer|video|hd|4k|remastered|explicit|clean\s*version)[\)\]]/gi;
+    cleanTitle = cleanTitle.replace(noiseRegex, '');
+    cleanTitle = cleanTitle.replace(/\s*\|\s*(?:official\s*(?:music\s*)?video|official\s*audio|lyrics|audio).*/gi, '');
+
+    // If artist is missing, empty, or generic
+    if (!cleanArtist || cleanArtist === 'NA' || cleanArtist === 'undefined' || cleanArtist === 'Unknown' || cleanArtist.toLowerCase() === 'brave music') {
+      const dashMatch = cleanTitle.match(/^([^-–—|]+)\s*[-–—|]\s*(.+)$/);
+      if (dashMatch) {
+        let p1 = dashMatch[1].trim();
+        let p2 = dashMatch[2].trim();
+        if (cleanUploader && p2.toLowerCase().includes(cleanUploader.toLowerCase())) {
+          cleanArtist = p2;
+          cleanTitle = p1;
+        } else {
+          cleanArtist = p1;
+          cleanTitle = p2;
+        }
+      } else if (cleanUploader && cleanUploader !== 'NA') {
+        cleanArtist = cleanUploader;
+      } else {
+        cleanArtist = 'Unknown Artist';
+      }
+    }
+
+    // If cleanTitle starts with cleanArtist + delimiter, strip redundant artist from title
+    if (cleanArtist && cleanArtist !== 'Unknown Artist' && cleanTitle.toLowerCase().startsWith(cleanArtist.toLowerCase())) {
+      const rest = cleanTitle.substring(cleanArtist.length).replace(/^[\s-–—|:]+/, '').trim();
+      if (rest) cleanTitle = rest;
+    }
+
+    // Clean remaining quotes and whitespace
+    cleanTitle = cleanTitle.replace(/^["'\s]+|["'\s]+$/g, '');
+    cleanArtist = cleanArtist.replace(/^["'\s]+|["'\s]+$/g, '');
+
+    return {
+      title: cleanTitle || title || 'Unknown Track',
+      artist: cleanArtist || 'Unknown Artist'
+    };
+  }
+
+  // Fetch full YouTube / YouTube Music playlist metadata via yt-dlp flat-playlist
+  async fetchYouTubePlaylistMetadata(url) {
+    const trimmed = String(url || '').trim();
+    const listMatch = trimmed.match(/[?&]list=([a-zA-Z0-9_-]+)/i);
+    const playlistId = listMatch ? listMatch[1] : null;
+    const cleanUrl = playlistId ? `https://www.youtube.com/playlist?list=${playlistId}` : trimmed;
+
+    return new Promise((resolve) => {
+      let isSettled = false;
+      const child = spawn(config.paths.ytdlpBin, [
+        '--flat-playlist',
+        '--dump-single-json',
+        '--no-warnings',
+        '--socket-timeout', '15',
+        cleanUrl
+      ]);
+
+      let jsonStr = '';
+      child.stdout.on('data', chunk => {
+        jsonStr += chunk.toString();
+        if (jsonStr.length > 30 * 1024 * 1024) {
+          try { child.kill('SIGTERM'); } catch (e) {}
+        }
+      });
+
+      child.stderr.on('data', () => {});
+
+      const timer = setTimeout(() => {
+        if (!isSettled) {
+          isSettled = true;
+          try { child.kill('SIGKILL'); } catch (e) {}
+          resolve(null);
+        }
+      }, 25000);
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (isSettled) return;
+        isSettled = true;
+
+        if (code === 0 && jsonStr.trim()) {
+          try {
+            const data = JSON.parse(jsonStr);
+            const name = (data.title || data.playlist_title || 'YouTube Playlist').trim();
+            const coverUrl = (data.thumbnails && Array.isArray(data.thumbnails) && data.thumbnails.length > 0)
+              ? data.thumbnails.slice(-1)[0].url
+              : (data.thumbnail || '');
+            const rawEntries = Array.isArray(data.entries) ? data.entries : [];
+            const tracks = rawEntries.map((e, index) => ({
+              id: e.id,
+              url: e.url || (e.id ? `https://www.youtube.com/watch?v=${e.id}` : null),
+              title: e.title,
+              uploader: e.uploader || e.channel || '',
+              artist: e.artist || '',
+              duration: typeof e.duration === 'number' ? Math.round(e.duration) : 0,
+              thumbnail: (e.thumbnails && Array.isArray(e.thumbnails) && e.thumbnails.length > 0)
+                ? e.thumbnails.slice(-1)[0].url
+                : (e.thumbnail || coverUrl),
+              index: index + 1
+            })).filter(t => Boolean(t.id && t.title));
+
+            return resolve({
+              name,
+              coverUrl,
+              id: playlistId || data.id,
+              tracks
+            });
+          } catch (e) {
+            console.warn('[DownloadService] Failed to parse YouTube playlist JSON:', e.message);
+          }
+        }
+        resolve(null);
+      });
+
+      child.on('error', () => {
+        clearTimeout(timer);
+        if (!isSettled) {
+          isSettled = true;
+          resolve(null);
+        }
+      });
+    });
+  }
+
   // Check if Zotify has authenticated credentials saved
   hasZotifyCredentials() {
     const credPath = path.join(os.homedir(), '.config', 'zotify', 'credentials.json');
@@ -245,14 +387,14 @@ class DownloadService {
           isVideo: false,
           ext: 'flac',
           zotifyCodec: 'flac',
-          ytdlpArgs: ['-x', '--audio-format', 'flac']
+          ytdlpArgs: ['-f', 'bestaudio/best', '-x', '--audio-format', 'flac']
         };
       case 'audio-m4a':
         return {
           isVideo: false,
           ext: 'm4a',
           zotifyCodec: 'aac',
-          ytdlpArgs: ['-f', 'bestaudio[ext=m4a]/bestaudio']
+          ytdlpArgs: ['-f', 'bestaudio[ext=m4a]/bestaudio/best', '-x', '--audio-format', 'm4a']
         };
       case 'video-mp4':
         return {
@@ -274,7 +416,7 @@ class DownloadService {
           isVideo: false,
           ext: 'mp3',
           zotifyCodec: 'mp3',
-          ytdlpArgs: ['-x', '--audio-format', 'mp3', '--audio-quality', '0']
+          ytdlpArgs: ['-f', 'bestaudio/best', '-x', '--audio-format', 'mp3', '--audio-quality', '0']
         };
     }
   }
@@ -441,7 +583,7 @@ class DownloadService {
     const effectivePlaylistName = (playlistName || spotifyData.name || 'Spotify Playlist').trim();
     const coverUrl = spotifyData.coverUrl || '';
 
-    // Initialize playlist and cover in library
+    // Initialize playlist and cover in library upfront
     libraryService.createPlaylist(effectivePlaylistName, coverUrl);
     if (coverUrl) {
       libraryService.setPlaylistCover(effectivePlaylistName, coverUrl);
@@ -451,16 +593,29 @@ class DownloadService {
     const addedTracks = [];
     const downloadsDir = config.paths.downloadsDir;
 
+    // Immediately emit playlistCreated so UI reflects the playlist right away
+    if (typeof onProgress === 'function') {
+      onProgress({
+        downloadId,
+        percent: 1,
+        itemIndex: 0,
+        itemTotal: totalTracks,
+        playlistCreated: { name: effectivePlaylistName, cover: coverUrl },
+        status: `Initialized playlist "${effectivePlaylistName}" with ${totalTracks} tracks`
+      });
+    }
+
     for (let i = 0; i < totalTracks; i++) {
       if (this.canceledDownloads.has(downloadId)) {
         this.canceledDownloads.delete(downloadId);
         return {
-          success: false,
+          success: addedTracks.length > 0,
           downloadId,
           canceled: true,
           error: 'Download canceled by user',
           count: addedTracks.length,
-          tracks: addedTracks
+          tracks: addedTracks,
+          playlist: effectivePlaylistName
         };
       }
 
@@ -489,7 +644,7 @@ class DownloadService {
         '--socket-timeout', String(config.audio.socketTimeout),
         '--match-filter', '!is_live',
         '-o', path.join(downloadsDir, '%(title).100B [%(id)s].%(ext)s'),
-        '--print', 'after_move:RECORD:%(filepath)s<DELIM>%(id)s<DELIM>%(title)s<DELIM>%(uploader)s<DELIM>%(duration)s<DELIM>%(thumbnail)s',
+        '--print', 'after_move:RECORD:%(filepath)s<DELIM>%(id)s<DELIM>%(title)s<DELIM>%(artist)s<DELIM>%(creator)s<DELIM>%(uploader)s<DELIM>%(duration)s<DELIM>%(thumbnail)s',
         searchQuery
       ];
 
@@ -516,7 +671,7 @@ class DownloadService {
               });
             }
           });
-          child.stderr.on('data', chunk => trackOutput += chunk.toString());
+          child.stderr.on('data', chunk => { trackOutput += chunk.toString(); });
 
           child.on('close', (code) => {
             this.activeProcesses.delete(downloadId);
@@ -529,16 +684,16 @@ class DownloadService {
               const parts = recordLine.substring(7).split('<DELIM>');
               const filepath = parts[0]?.trim();
               const ytId = parts[1] || `${Date.now()}_${i}`;
-              const ytDuration = parseInt(parts[4] || '0', 10);
-              const ytThumb = parts[5] || '';
+              const ytDuration = parseInt(parts[6] || parts[4] || '0', 10);
+              const ytThumb = parts[7] || parts[5] || '';
 
               if (filepath && fs.existsSync(filepath)) {
                 const filename = path.basename(filepath);
                 const trackData = {
                   id: `${ytId}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
                   originalId: ytId,
-                  title: track.title, // Preserves genuine original title
-                  artist: track.artist, // Preserves genuine original artist
+                  title: track.title, // Preserves authentic Spotify title
+                  artist: track.artist, // Preserves authentic Spotify artist
                   album: effectivePlaylistName,
                   duration: track.duration || ytDuration,
                   thumbnail: coverUrl || ytThumb,
@@ -568,6 +723,18 @@ class DownloadService {
 
         if (savedTrack) {
           addedTracks.push(savedTrack);
+          // Real-time track emission
+          if (typeof onProgress === 'function') {
+            onProgress({
+              downloadId,
+              percent: Math.min(99, Math.round(((i + 1) / totalTracks) * 100)),
+              itemIndex: i + 1,
+              itemTotal: totalTracks,
+              trackSaved: savedTrack,
+              playlist: effectivePlaylistName,
+              status: `Downloaded ${i + 1} of ${totalTracks}: ${savedTrack.title} (${savedTrack.artist})`
+            });
+          }
         }
       } catch (err) {
         console.warn(`[DownloadService] Failed downloading track ${track.title}:`, err.message);
@@ -595,6 +762,209 @@ class DownloadService {
       tracks: addedTracks,
       playlist: effectivePlaylistName,
       error: addedTracks.length === 0 ? 'Could not download tracks from Spotify playlist' : null
+    };
+  }
+
+  // Download entire YouTube / YouTube Music playlist with upfront metadata & live per-track saving
+  async downloadYouTubePlaylist({ ytData, downloadId, formatOpts, playlistName, onProgress, originalUrl }) {
+    const effectivePlaylistName = (playlistName || ytData.name || 'YouTube Playlist').trim();
+    const coverUrl = ytData.coverUrl || '';
+
+    // Initialize playlist and cover in library upfront
+    libraryService.createPlaylist(effectivePlaylistName, coverUrl);
+    if (coverUrl) {
+      libraryService.setPlaylistCover(effectivePlaylistName, coverUrl);
+    }
+
+    const totalTracks = ytData.tracks.length;
+    const addedTracks = [];
+    const downloadsDir = config.paths.downloadsDir;
+
+    // Immediately emit playlistCreated so UI reflects the playlist right away
+    if (typeof onProgress === 'function') {
+      onProgress({
+        downloadId,
+        percent: 1,
+        itemIndex: 0,
+        itemTotal: totalTracks,
+        playlistCreated: { name: effectivePlaylistName, cover: coverUrl },
+        status: `Initialized playlist "${effectivePlaylistName}" with ${totalTracks} tracks`
+      });
+    }
+
+    for (let i = 0; i < totalTracks; i++) {
+      if (this.canceledDownloads.has(downloadId)) {
+        this.canceledDownloads.delete(downloadId);
+        return {
+          success: addedTracks.length > 0,
+          downloadId,
+          canceled: true,
+          error: 'Download canceled by user',
+          count: addedTracks.length,
+          tracks: addedTracks,
+          playlist: effectivePlaylistName
+        };
+      }
+
+      const track = ytData.tracks[i];
+      const overallPercent = Math.round((i / totalTracks) * 100);
+
+      if (typeof onProgress === 'function') {
+        onProgress({
+          downloadId,
+          percent: overallPercent,
+          itemIndex: i + 1,
+          itemTotal: totalTracks,
+          speed: 'Audio Engine',
+          size: `${i + 1}/${totalTracks}`,
+          status: `Downloading ${i + 1} of ${totalTracks}: ${track.title}…`
+        });
+      }
+
+      const trackUrl = track.url || (track.id ? `https://www.youtube.com/watch?v=${track.id}` : null);
+      if (!trackUrl) continue;
+
+      const trackArgs = [
+        ...formatOpts.ytdlpArgs,
+        '--no-playlist',
+        '--no-warnings',
+        '--socket-timeout', String(config.audio.socketTimeout),
+        '--match-filter', '!is_live',
+        '-o', path.join(downloadsDir, '%(title).100B [%(id)s].%(ext)s'),
+        '--print', 'after_move:RECORD:%(filepath)s<DELIM>%(id)s<DELIM>%(title)s<DELIM>%(artist)s<DELIM>%(creator)s<DELIM>%(uploader)s<DELIM>%(duration)s<DELIM>%(thumbnail)s',
+        trackUrl
+      ];
+
+      try {
+        const savedTrack = await new Promise((resolveTrack) => {
+          let trackSettled = false;
+          const child = spawn(config.paths.ytdlpBin, trackArgs);
+          this.activeProcesses.set(downloadId, child);
+
+          let trackOutput = '';
+          child.stdout.on('data', chunk => {
+            const str = chunk.toString();
+            trackOutput += str;
+            const pctMatch = str.match(/\[download\]\s+([\d.]+)%/i);
+            if (pctMatch && typeof onProgress === 'function') {
+              const itemPct = parseFloat(pctMatch[1]);
+              const itemOverallPct = Math.round((i / totalTracks) * 100 + (itemPct / totalTracks));
+              onProgress({
+                downloadId,
+                percent: Math.min(99, itemOverallPct),
+                itemIndex: i + 1,
+                itemTotal: totalTracks,
+                status: `Downloading ${i + 1} of ${totalTracks}: ${track.title} (${Math.round(itemPct)}%)…`
+              });
+            }
+          });
+          child.stderr.on('data', chunk => { trackOutput += chunk.toString(); });
+
+          child.on('close', (code) => {
+            this.activeProcesses.delete(downloadId);
+            if (trackSettled) return;
+            trackSettled = true;
+
+            const lines = trackOutput.split(/[\r\n]+/).map(s => s.trim());
+            const recordLine = lines.find(l => l.startsWith('RECORD:'));
+            if (recordLine) {
+              const parts = recordLine.substring(7).split('<DELIM>');
+              const filepath = parts[0]?.trim();
+              const ytId = parts[1] || track.id || `${Date.now()}_${i}`;
+              const rawTitle = parts[2] || track.title;
+              const rawArtist = parts[3] || track.artist || '';
+              const rawCreator = parts[4] || '';
+              const rawUploader = parts[5] || track.uploader || '';
+              const ytDuration = parseInt(parts[6] || '0', 10);
+              const ytThumb = parts[7] || track.thumbnail || '';
+
+              if (filepath && fs.existsSync(filepath)) {
+                const filename = path.basename(filepath);
+                const cleaned = this.cleanTrackMetadata({
+                  title: rawTitle,
+                  artist: rawArtist,
+                  creator: rawCreator,
+                  uploader: rawUploader,
+                  album: effectivePlaylistName
+                });
+
+                const trackData = {
+                  id: `${ytId}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+                  originalId: ytId,
+                  title: cleaned.title,
+                  artist: cleaned.artist,
+                  album: effectivePlaylistName,
+                  duration: ytDuration || track.duration || 0,
+                  thumbnail: ytThumb || coverUrl || '',
+                  filename,
+                  downloadUrl: originalUrl,
+                  addedAt: new Date().toISOString(),
+                  playlist: effectivePlaylistName
+                };
+
+                const saved = libraryService.addTrack(trackData);
+                if (saved) {
+                  libraryService.addTrackToPlaylist(saved.id, effectivePlaylistName);
+                  if (!coverUrl && ytThumb) {
+                    libraryService.setPlaylistCover(effectivePlaylistName, ytThumb);
+                  }
+                  return resolveTrack(saved);
+                }
+              }
+            }
+            resolveTrack(null);
+          });
+
+          child.on('error', () => {
+            this.activeProcesses.delete(downloadId);
+            if (!trackSettled) {
+              trackSettled = true;
+              resolveTrack(null);
+            }
+          });
+        });
+
+        if (savedTrack) {
+          addedTracks.push(savedTrack);
+          // Emit progress and real-time track event immediately!
+          if (typeof onProgress === 'function') {
+            onProgress({
+              downloadId,
+              percent: Math.min(99, Math.round(((i + 1) / totalTracks) * 100)),
+              itemIndex: i + 1,
+              itemTotal: totalTracks,
+              trackSaved: savedTrack,
+              playlist: effectivePlaylistName,
+              status: `Downloaded ${i + 1} of ${totalTracks}: ${savedTrack.title} (${savedTrack.artist})`
+            });
+          }
+        }
+      } catch (err) {
+        console.warn(`[DownloadService] Failed downloading YouTube playlist item ${track.title}:`, err.message);
+      }
+    }
+
+    if (coverUrl) {
+      libraryService.setPlaylistCover(effectivePlaylistName, coverUrl);
+    }
+
+    if (typeof onProgress === 'function') {
+      onProgress({
+        downloadId,
+        percent: 100,
+        itemIndex: totalTracks,
+        itemTotal: totalTracks,
+        status: `Completed playlist download (${addedTracks.length} tracks saved)`
+      });
+    }
+
+    return {
+      success: addedTracks.length > 0,
+      downloadId,
+      count: addedTracks.length,
+      tracks: addedTracks,
+      playlist: effectivePlaylistName,
+      error: addedTracks.length === 0 ? 'Could not download tracks from YouTube playlist' : null
     };
   }
 
@@ -638,8 +1008,35 @@ class DownloadService {
     }
 
     const isSpotify = this.isSpotifyUrl(url);
+    const urlIsPlaylist = /[?&]list=[a-zA-Z0-9_-]+/i.test(url) || /\/playlist\b/i.test(url) || /\/album\b/i.test(url);
+    const effectiveIsPlaylist = Boolean(isPlaylist || urlIsPlaylist);
 
-    // 2. If single Spotify track and Zotify credentials exist, try Zotify first
+    // 2. Direct High-Resolution YouTube Playlist Handler
+    if (this.isYouTubePlaylistUrl(url) || (effectiveIsPlaylist && !isSpotify)) {
+      if (typeof onProgress === 'function') {
+        onProgress({
+          downloadId,
+          percent: 5,
+          speed: 'YouTube Engine',
+          size: 'Playlist',
+          status: 'Fetching YouTube playlist metadata and cover art…'
+        });
+      }
+
+      const ytData = await this.fetchYouTubePlaylistMetadata(url);
+      if (ytData && Array.isArray(ytData.tracks) && ytData.tracks.length > 0) {
+        return this.downloadYouTubePlaylist({
+          ytData,
+          downloadId,
+          formatOpts,
+          playlistName: playlistName || ytData.name,
+          onProgress,
+          originalUrl: url
+        });
+      }
+    }
+
+    // 3. If single Spotify track and Zotify credentials exist, try Zotify first
     if (isSpotify && !formatOpts.isVideo && this.hasZotifyCredentials()) {
       if (typeof onProgress === 'function') {
         onProgress({ downloadId, percent: 10, speed: 'Zotify', size: 'Audio', eta: 'Authenticating…' });
@@ -658,10 +1055,8 @@ class DownloadService {
       console.log('[DownloadService] Zotify fallback triggered, continuing with yt-dlp engine…');
     }
 
-    // 3. Main Engine (yt-dlp) with Spotify embed resolution & YouTube Playlist Handling
+    // 4. Main Fallback Engine (yt-dlp) with Spotify embed resolution & Clean Metadata
     const resolved = await this.resolveUrl(url, formatOpts.isVideo);
-    const urlIsPlaylist = /[?&]list=[a-zA-Z0-9_-]+/i.test(url) || /\/playlist\b/i.test(url) || /\/album\b/i.test(url);
-    const effectiveIsPlaylist = Boolean(isPlaylist || urlIsPlaylist);
 
     const baseArgs = [
       ...formatOpts.ytdlpArgs,
@@ -670,7 +1065,7 @@ class DownloadService {
       '--no-warnings',
       '--socket-timeout', String(config.audio.socketTimeout),
       '--match-filter', '!is_live',
-      '--print', 'after_move:RECORD:%(filepath)s<DELIM>%(id)s<DELIM>%(title)s<DELIM>%(uploader)s<DELIM>%(duration)s<DELIM>%(thumbnail)s<DELIM>%(playlist_title)s'
+      '--print', 'after_move:RECORD:%(filepath)s<DELIM>%(id)s<DELIM>%(title)s<DELIM>%(artist)s<DELIM>%(creator)s<DELIM>%(uploader)s<DELIM>%(duration)s<DELIM>%(thumbnail)s<DELIM>%(playlist_title)s'
     ];
 
     if (!effectiveIsPlaylist) {
@@ -837,21 +1232,31 @@ class DownloadService {
             const parts = rawContent.split('<DELIM>');
             const filepath = parts[0] ? parts[0].trim() : '';
             const id = parts[1] || downloadId;
-            const title = parts[2] || resolved.spotifyTitle || 'Unknown Track';
-            const artist = resolved.spotifyArtist || parts[3] || 'Brave Music';
-            const duration = parseInt(parts[4] || '0', 10);
-            const thumbnail = parts[5] || resolved.thumbnail || '';
-            const extractedPlaylist = (parts[6] && parts[6] !== 'NA' && parts[6].trim()) ? parts[6].trim() : null;
+            const rawTitle = resolved.spotifyTitle || parts[2] || 'Unknown Track';
+            const rawArtist = resolved.spotifyArtist || parts[3] || '';
+            const rawCreator = parts[4] || '';
+            const rawUploader = parts[5] || '';
+            const duration = parseInt(parts[6] || parts[4] || '0', 10);
+            const thumbnail = resolved.thumbnail || parts[7] || parts[5] || '';
+            const extractedPlaylist = (parts[8] && parts[8] !== 'NA' && parts[8].trim()) ? parts[8].trim() : null;
 
             const targetPlaylistName = playlistName || extractedPlaylist || (effectiveIsPlaylist ? 'Downloaded Playlist' : null);
 
             if (filepath && fs.existsSync(filepath)) {
               const filename = path.basename(filepath);
+              const cleaned = this.cleanTrackMetadata({
+                title: rawTitle,
+                artist: rawArtist,
+                creator: rawCreator,
+                uploader: rawUploader,
+                album: targetPlaylistName
+              });
+
               const trackData = {
                 id: `${id}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
                 originalId: id,
-                title, // Genuine original title preserved!
-                artist,
+                title: cleaned.title,
+                artist: cleaned.artist,
                 album: targetPlaylistName || (effectiveIsPlaylist ? 'Downloaded Album' : 'Single'),
                 duration,
                 thumbnail,
@@ -867,6 +1272,14 @@ class DownloadService {
                 if (targetPlaylistName) {
                   libraryService.createPlaylist(targetPlaylistName, thumbnail);
                   libraryService.addTrackToPlaylist(saved.id, targetPlaylistName);
+                }
+                if (typeof onProgress === 'function') {
+                  onProgress({
+                    downloadId,
+                    trackSaved: saved,
+                    playlist: targetPlaylistName,
+                    status: `Saved track: ${saved.title} (${saved.artist})`
+                  });
                 }
               }
             }

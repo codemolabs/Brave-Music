@@ -16,6 +16,12 @@ class DownloadController {
       onProgress: (progressData) => {
         if (!senderWebContents.isDestroyed()) {
           senderWebContents.send('download-progress', progressData);
+          if (progressData.trackSaved || progressData.playlistCreated) {
+            senderWebContents.send('library-updated', {
+              track: progressData.trackSaved || null,
+              playlist: progressData.playlist || progressData.playlistCreated || null
+            });
+          }
         }
       }
     });

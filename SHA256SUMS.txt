@@ -1,1 +1,3 @@
+a97bbfad92d21c834fd08bbec79e0d95f8ce1ed2026615b4f3fa802c81b6f223  brave-music_1.0.4_amd64.deb
 fa4e43f52e8432946f52e25b72efe884bcda07aad330f26930318ecb56f191ae  brave-music_1.0.3_amd64.deb
+

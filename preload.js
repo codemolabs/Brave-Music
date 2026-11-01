@@ -43,6 +43,11 @@ contextBridge.exposeInMainWorld('braveApi', {
     ipcRenderer.on('download-progress', handler);
     return () => ipcRenderer.removeListener('download-progress', handler);
   },
+  onLibraryUpdated: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('library-updated', handler);
+    return () => ipcRenderer.removeListener('library-updated', handler);
+  },
 
   // Brave Shields
   getShieldStats: () => ipcRenderer.invoke('get-shield-stats'),

@@ -161,7 +161,7 @@ graph TD
 #### 3. Backend Services (`backend/`)
 - **ShieldsController & AdBlockService**: Evaluates network URLs against declarative Brave Shields ad and tracker lists.
 - **YTMDevtoolsAuthService & AuthSyncService**: Manages session cookies and headers for music services.
-- **DownloadService**: Coordinates `yt-dlp` background processes to fetch audio tracks at 320kbps into local storage.
+- **DownloadService**: Coordinates `yt-dlp` audio-only stream extraction, YouTube and Spotify playlist metadata extraction, ordered track indexing, and reactive library synchronization.
 - **MusikcubeService & StreamServer**: Manages `musikcubed` lifecycle and local HTTP audio streams.
 
 #### 4. Native Engine (`backend/engine/musikcube/`)

@@ -26,6 +26,37 @@ All official releases follow [Semantic Versioning 2.0.0](https://semver.org/):
 
 ## Release History
 
+### Release v1.0.4 (YouTube & Spotify Playlist Auto-Creation, Audio-Only Streams, Clean Metadata & Live Auto-Update)
+- **Release Date**: November 1, 2026
+- **Release Tag**: `v1.0.4`
+- **Target Architecture**: Linux `x86_64` / `amd64`
+- **License**: GPL-3.0 (Codemo OSL)
+- **Direct Download**: [**brave-music_1.0.4_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.4/brave-music_1.0.4_amd64.deb)
+
+#### Package Checksums (SHA-256)
+```text
+a97bbfad92d21c834fd08bbec79e0d95f8ce1ed2026615b4f3fa802c81b6f223  brave-music_1.0.4_amd64.deb
+```
+
+#### Highlights and Fixes
+- **Automated Playlist Creation**:
+  - Automatically fetches playlist title and cover artwork upfront for YouTube Music and Spotify playlist URLs before downloading.
+  - Instantly initializes the playlist in the library so it appears in the sidebar and playlist cards immediately.
+- **Ordered Track Indexing**:
+  - Preserves exact playlist order (1, 2, 3, 4, 5...) in both the playlist view and playback sequence (Play All, Shuffle, Random).
+  - All downloaded tracks are added to both their respective playlist and the unified "All Music" library tab.
+- **Pure Audio-Only Stream Extraction**:
+  - Configured `yt-dlp` with `-f bestaudio/best` and audio-only extraction flags.
+  - Eliminates video stream / video mix audio downloads, ensuring pure audio fidelity and up to 10x faster downloads.
+- **Intelligent Metadata Sanitization**:
+  - Cleans title noise such as `(Official Music Video)`, `(Official Audio)`, `[Visualizer]`, `(Lyric Video)`, `(Audio Track)`, and `- Topic`.
+  - Accurately splits and identifies artist vs song title even when tags are missing or reversed, without defaulting to "Brave Music".
+- **Reactive Live UI Auto-Update**:
+  - Dispatches real-time IPC events (`library-updated` and progress `trackSaved`) to the frontend as tracks finish downloading.
+  - Eliminates the need to restart the application or switch views to see new tracks and playlists.
+
+---
+
 ### Release v1.0.3 (Select Button Repositioning & Simple Selection UI/UX)
 - **Release Date**: November 1, 2026
 - **Release Tag**: `v1.0.3`

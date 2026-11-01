@@ -4,7 +4,7 @@
 
 # Brave Music
 
-### Your Music. Your Privacy. Your Control.
+### Your Music. Your Privacy. Your Control
 
 **An open-source music streaming and offline playback platform.**
 
@@ -31,7 +31,7 @@ Brave Music combines YouTube Music, Spotify Web, and an embedded native C++ audi
 </tr>
 </table>
 
-<br/>
+<br/>s
 
 <table align="center" border="0">
 <tr>
@@ -41,7 +41,7 @@ Brave Music combines YouTube Music, Spotify Web, and an embedded native C++ audi
 <td width="20"></td>
 <td align="center"><strong>GPL-3.0</strong><br/><sub>License</sub></td>
 <td width="20"></td>
-<td align="center"><strong>v1.0.3</strong><br/><sub>Release</sub></td>
+<td align="center"><strong>v1.0.4</strong><br/><sub>Release</sub></td>
 </tr>
 </table>
 
@@ -62,7 +62,7 @@ Built using privacy-focused browser technology and an embedded Musikcube audio e
 ### Core Capabilities
 
 | Feature | Description |
-|:---|:---|
+| :--- | :--- |
 | **YouTube Music** | Integrated YouTube Music streaming experience. |
 | **Spotify Web** | Embedded Spotify Web Player with supported Widevine DRM playback. |
 | **Native Audio Engine** | Embedded C++ Musikcube audio playback engine. |
@@ -117,7 +117,7 @@ Explore the Brave Music interface and its primary application components.
 
 ### Linux Desktop
 
-<sub>AVAILABLE NOW · VERSION 1.0.3 · X86_64</sub>
+<sub>AVAILABLE NOW · VERSION 1.0.4 · X86_64</sub>
 
 Brave Music currently provides a standalone Debian installation package for compatible Linux distributions.
 
@@ -131,24 +131,24 @@ Brave Music currently provides a standalone Debian installation package for comp
 ### Install Using APT
 
 ```bash
-# 1. Download official v1.0.3 Debian package
-wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.3/brave-music_1.0.3_amd64.deb
+# 1. Download official v1.0.4 Debian package
+wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.4/brave-music_1.0.4_amd64.deb
 
 # 2. Install package via APT
-sudo apt install ./brave-music_1.0.3_amd64.deb
+sudo apt install ./brave-music_1.0.4_amd64.deb
 
 # 3. Launch from desktop application menu or terminal
 brave-music
 ```
 
-Direct binary download: [**brave-music_1.0.3_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.3/brave-music_1.0.3_amd64.deb)
+Direct binary download: [**brave-music_1.0.4_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.4/brave-music_1.0.4_amd64.deb)
 
 For complete installation steps, building from source, dependency management, and uninstallation, see [**docs/INSTALL.md**](docs/INSTALL.md).
 
 ### Installation Resources
 
 | Resource | Description |
-|:---|:---|
+| :--- | :--- |
 | [Installation Guide](docs/INSTALL.md) | Complete installation and configuration instructions. |
 | [Developer Guide](docs/DEV-GUIDE.md) | Build the application from source. |
 | [Release Notes](docs/RELEASE.md) | Review available versions and release information. |
@@ -158,7 +158,7 @@ For complete installation steps, building from source, dependency management, an
 ## Technical Specifications
 
 | Component | Technology |
-|:---|:---|
+| :--- | :--- |
 | Application | Brave Music Desktop |
 | Embedded Browser | CastLabs Chromium Runtime |
 | DRM Technology | Widevine |
@@ -192,7 +192,7 @@ The developer portal provides technical documentation, architecture references, 
 ### Documentation Directory
 
 | Documentation | Scope | Description |
-|:---|:---|:---|
+| :--- | :--- | :--- |
 | [INSTALL.md](docs/INSTALL.md) | Installation | System requirements, dependencies, installation, and setup. |
 | [DEV-GUIDE.md](docs/DEV-GUIDE.md) | Engineering | Application architecture, Mermaid diagrams, DRM integration, and build pipeline. |
 | [DESIGN-GUIDE.md](docs/DESIGN-GUIDE.md) | UI / UX | Interface specifications, design tokens, typography, and visual standards. |
@@ -231,7 +231,7 @@ Codemo OSL develops open-source software solutions, promotes technical education
 ### Official Community
 
 | Channel | Information |
-|:---|:---|
+| :--- | :--- |
 | **Official Website** | [codemoteams.org](https://codemoteams.org) |
 | **Developer Community** | Codemo Teams Discord Server |
 | **Project Collaboration** | Official GitHub repositories |
@@ -244,9 +244,9 @@ Developers interested in contributing should review the official contribution do
 ## Governance and Legal Information
 
 | Property | Information |
-|:---|:---|
+| :--- | :--- |
 | Product Name | Brave Music |
-| Current Version | `v1.0.3` |
+| Current Version | `v1.0.4` |
 | Product Organization | Codemo Open Source Labs |
 | Product Authority | Codemo OSL |
 | Software License | GPL-3.0 |
