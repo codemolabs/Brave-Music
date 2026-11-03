@@ -119,15 +119,15 @@ Explore the Brave Music interface and its primary application components.
 
 <sub>AVAILABLE NOW · VERSION 1.0.18 · X86_64 / ARM64</sub>
 
-Brave Music is published to GitHub Packages as `@codemoteams/brave-music` (Linux desktop only).
+Brave Music is published to GitHub Packages as [**`@codemoteams/brave-music`**](https://github.com/orgs/codemoteams/packages/npm/package/brave-music) (Linux desktop only).
 
 ```bash
 # 1. Route @codemoteams scope to GitHub Packages
 npm config set @codemoteams:registry https://npm.pkg.github.com
 
 # 2. Authenticate with GitHub Packages (requires PAT with read:packages)
-npm login --registry=https://npm.pkg.github.com --scope=@codemoteams
-# or: echo "//npm.pkg.github.com/:_authToken=YOUR_PAT" >> ~/.npmrc
+npm config set //npm.pkg.github.com/:_authToken YOUR_GITHUB_PAT
+# Or via interactive login: npm login --registry=https://npm.pkg.github.com --scope=@codemoteams
 
 # 3. Install globally or launch directly via npx
 npm install -g @codemoteams/brave-music

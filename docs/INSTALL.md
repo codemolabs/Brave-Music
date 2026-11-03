@@ -50,7 +50,7 @@ For developers exploring Microsoft UI XAML and modern Windows 11 Fluent Design:
 
 ## 2. Installing on Linux via npm (GitHub Packages)
 
-Brave Music is published to GitHub Packages as `@codemoteams/brave-music`.
+Brave Music is published to GitHub Packages as [**`@codemoteams/brave-music`**](https://github.com/orgs/codemoteams/packages/npm/package/brave-music).
 
 > [!NOTE]
 > Currently, the npm package is scoped exclusively for Linux (`x86_64` / `arm64`). Windows installation via npm is currently deferred pending platform-specific runtime constraints; Windows users should use the native Windows Setup Suite (`.exe`) or Portable package (`.zip`) above.

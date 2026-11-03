@@ -5,7 +5,7 @@ This document tracks official version releases, changelogs, binary checksums, an
 ### Release v1.0.18
 
 - **Release Tag**: `v1.0.18`
-- **npm GitHub Package (`@codemoteams/brave-music`)**: Published package to GitHub Packages (`https://github.com/codemoteams/Brave-Music/packages`), specifically scoped for Linux environments (`"os": ["linux"]`, `x64` / `arm64`) with executable CLI launcher `bin/brave-music.js` and zero-install `npx @codemoteams/brave-music` support.
+- **npm GitHub Package (`@codemoteams/brave-music`)**: Published package to GitHub Packages ([`@codemoteams/brave-music`](https://github.com/orgs/codemoteams/packages/npm/package/brave-music)), specifically scoped for Linux environments (`"os": ["linux"]`, `x64` / `arm64`) with executable CLI launcher `bin/brave-music.js` and zero-install `npx @codemoteams/brave-music` support.
 - **Windows Native Release & Suite (.exe / .zip)**: Complete Windows x64 release package with native Windows libraries, bundled `yt-dlp.exe`, CastLabs Widevine CDM DRM support, and Microsoft UI XAML (WinUI 3) design language.
 - **Windows Suite "Shows Downloading" UI**: Dedicated Windows native download and onboarding suite with real-time progress bar, throughput metrics, ETA, and Windows 11 taskbar integration.
 - **WinUI 3 & Windows App SDK Architecture**: Full C# WinUI 3 suite project in `Install/Windows/BraveMusic.Installer/` implementing `PackageDeploymentManager.AddPackageByUriAsync` and `ContentDialog` (with critical `dialog.XamlRoot = this.Content.XamlRoot` visual tree association).
