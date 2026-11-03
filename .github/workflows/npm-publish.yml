@@ -1,9 +1,9 @@
 name: Publish to GitHub Packages
 
 on:
-  release:
-    types: [published]
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -27,10 +27,26 @@ jobs:
           registry-url: 'https://npm.pkg.github.com'
           scope: '@codemoteams'
 
+      - name: Configure Registry Authentication
+        run: |
+          echo "@codemoteams:registry=https://npm.pkg.github.com" > .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+          echo "//npm.pkg.github.com/:always-auth=true" >> .npmrc
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install Dependencies
         run: npm ci || npm install --legacy-peer-deps
 
       - name: Publish to GitHub Packages
-        run: npm publish
+        run: |
+          CURRENT_VER=$(node -p "require('./package.json').version")
+          echo "Current package version: $CURRENT_VER"
+          if npm view @codemoteams/brave-music@$CURRENT_VER version >/dev/null 2>&1; then
+            echo "Version $CURRENT_VER is already published on GitHub Packages."
+          else
+            echo "Publishing version $CURRENT_VER to GitHub Packages..."
+            npm publish
+          fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
