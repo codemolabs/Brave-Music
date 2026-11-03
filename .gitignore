@@ -4,7 +4,8 @@ node_modules/
 # Production build artifacts and packages
 dist/
 build/
-bin/
+bin/*
+!bin/brave-music.js
 tools/
 Install/Windows/tools/
 Install/Windows/dist/
@@ -22,6 +23,9 @@ Install/Linux/dist/
 *.msixbundle
 
 # C# / .NET build outputs
+**/bin/Debug/
+**/bin/Release/
+**/obj/
 obj/
 *.user
 *.suo

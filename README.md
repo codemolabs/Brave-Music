@@ -115,33 +115,57 @@ Explore the Brave Music interface and its primary application components.
 
 <a id="platform-availability"></a>
 
-### Linux Desktop
+### 1. Linux npm Package (GitHub Packages)
 
-<sub>AVAILABLE NOW · VERSION 1.0.6 · X86_64</sub>
+<sub>AVAILABLE NOW · VERSION 1.0.18 · X86_64 / ARM64</sub>
 
-Brave Music currently provides a standalone Debian installation package for compatible Linux distributions.
-
-**Supported distributions:**
-
-- Ubuntu
-- Debian
-- Linux Mint
-- Pop!_OS
-
-### Install Using APT
+Brave Music is published to GitHub Packages as `@codemoteams/brave-music` (Linux desktop only).
 
 ```bash
-# 1. Download official v1.0.6 Debian package
-wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.6/brave-music_1.0.6_amd64.deb
+# 1. Route @codemoteams scope to GitHub Packages
+npm config set @codemoteams:registry https://npm.pkg.github.com
+
+# 2. Authenticate with GitHub Packages (requires PAT with read:packages)
+npm login --registry=https://npm.pkg.github.com --scope=@codemoteams
+# or: echo "//npm.pkg.github.com/:_authToken=YOUR_PAT" >> ~/.npmrc
+
+# 3. Install globally or launch directly via npx
+npm install -g @codemoteams/brave-music
+brave-music
+
+# Or run instantly without installation:
+npx @codemoteams/brave-music
+```
+
+> [!NOTE]
+> Currently, the npm package is scoped for Linux (`"os": ["linux"]`). Windows users should install the official native Windows Setup Suite (`.exe`) or Portable package (`.zip`) below.
+
+### 2. Linux Desktop (.deb Package)
+
+<sub>AVAILABLE NOW · VERSION 1.0.18 · AMD64</sub>
+
+Brave Music provides a standalone Debian installation package for compatible Linux distributions (Ubuntu, Debian, Linux Mint, Pop!_OS).
+
+```bash
+# 1. Download official v1.0.18 Debian package
+wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb
 
 # 2. Install package via APT
-sudo apt install ./brave-music_1.0.6_amd64.deb
+sudo apt install ./brave-music_1.0.18_amd64.deb
 
 # 3. Launch from desktop application menu or terminal
 brave-music
 ```
 
-Direct binary download: [**brave-music_1.0.6_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.6/brave-music_1.0.6_amd64.deb)
+Direct binary download: [**brave-music_1.0.18_amd64.deb (28 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb)
+
+### 3. Windows 10 / 11 Native Suite
+
+<sub>AVAILABLE NOW · VERSION 1.0.18 · WIN64</sub>
+
+- **Setup Installer (`.exe`)**: [**BraveMusic-Setup-1.0.18.exe (139 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/BraveMusic-Setup-1.0.18.exe) — Self-contained Windows installer with bundled yt-dlp, Widevine CDM, and WinUI 3 Fluent popups.
+- **Portable Suite (`.zip`)**: [**brave-music_1.0.18_win64.zip (194 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_win64.zip) — Zero-install standalone archive.
+- **WinUI 3 Modern Suite**: Open-source C# project in `Install/Windows/BraveMusic.Installer/` showcasing Windows App SDK package deployment.
 
 For complete installation steps, building from source, dependency management, and uninstallation, see [**docs/INSTALL.md**](docs/INSTALL.md).
 

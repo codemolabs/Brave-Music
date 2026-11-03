@@ -11,12 +11,12 @@ Brave Music is tested and officially supported on 64-bit (`x86_64` / `amd64`) ar
 | Platform | Minimum Version | Installation Package | Status |
 | :--- | :--- | :--- | :--- |
 | **Windows** | Windows 10 (1809+) / Windows 11 | Setup (`.exe`) / Portable (`.zip`) / WinUI 3 | Fully Supported (v1.0.18) |
-| **Ubuntu** | 20.04 LTS, 22.04 LTS, 24.04 LTS | Debian Package (`.deb`) | Fully Supported |
-| **Debian** | 11 (Bullseye), 12 (Bookworm) | Debian Package (`.deb`) | Fully Supported |
-| **Linux Mint** | 20, 21, 22 | Debian Package (`.deb`) | Fully Supported |
-| **Pop!_OS** | 22.04 LTS+ | Debian Package (`.deb`) | Fully Supported |
-| **Fedora** | 38, 39, 40 | Source Build / Standalone | Supported via Source |
-| **Arch Linux / Manjaro** | Rolling | Source Build / Standalone | Supported via Source |
+| **Ubuntu** | 20.04 LTS, 22.04 LTS, 24.04 LTS | Debian (`.deb`) / npm (`@codemoteams/brave-music`) | Fully Supported |
+| **Debian** | 11 (Bullseye), 12 (Bookworm) | Debian (`.deb`) / npm (`@codemoteams/brave-music`) | Fully Supported |
+| **Linux Mint** | 20, 21, 22 | Debian (`.deb`) / npm (`@codemoteams/brave-music`) | Fully Supported |
+| **Pop!_OS** | 22.04 LTS+ | Debian (`.deb`) / npm (`@codemoteams/brave-music`) | Fully Supported |
+| **Fedora** | 38, 39, 40 | npm (`@codemoteams/brave-music`) / Source Build | Fully Supported |
+| **Arch Linux / Manjaro** | Rolling | npm (`@codemoteams/brave-music`) / Source Build | Fully Supported |
 
 ---
 
@@ -48,7 +48,51 @@ For developers exploring Microsoft UI XAML and modern Windows 11 Fluent Design:
 
 ---
 
-## 2. Installing on Linux via Debian Package (`.deb`)
+## 2. Installing on Linux via npm (GitHub Packages)
+
+Brave Music is published to GitHub Packages as `@codemoteams/brave-music`.
+
+> [!NOTE]
+> Currently, the npm package is scoped exclusively for Linux (`x86_64` / `arm64`). Windows installation via npm is currently deferred pending platform-specific runtime constraints; Windows users should use the native Windows Setup Suite (`.exe`) or Portable package (`.zip`) above.
+
+### Step 1: Configure npm Registry
+Configure npm to route the `@codemoteams` scope to GitHub Packages:
+```bash
+npm config set @codemoteams:registry https://npm.pkg.github.com
+```
+
+### Step 2: Authenticate with GitHub Packages
+GitHub Packages requires authentication even for downloading public packages. You will need a GitHub Personal Access Token (classic) with `read:packages` scope:
+
+**Method A: Interactive npm login**
+```bash
+npm login --registry=https://npm.pkg.github.com --scope=@codemoteams
+# Username: <your-github-username>
+# Password: <your-personal-access-token-with-read:packages>
+# Email: <your-email>
+```
+
+**Method B: User .npmrc file**
+Append the following line to `~/.npmrc`:
+```bash
+echo "//npm.pkg.github.com/:_authToken=YOUR_GITHUB_PAT" >> ~/.npmrc
+```
+
+### Step 3: Install Globally or Run via npx
+Install globally:
+```bash
+npm install -g @codemoteams/brave-music
+brave-music
+```
+
+Or run directly with npx without installing globally:
+```bash
+npx @codemoteams/brave-music
+```
+
+---
+
+## 3. Installing on Linux via Debian Package (`.deb`)
 
 The official standalone Debian package installs Brave Music with all system menu entries, desktop shortcuts, native C++ audio shared libraries, and executable symlinks.
 
@@ -86,7 +130,7 @@ sudo apt install ./brave-music_1.0.18_amd64.deb
 
 ---
 
-## 3. Directory Layout and File System Placement
+## 4. Directory Layout and File System Placement
 
 When installed via package, Brave Music adheres to Linux Filesystem Hierarchy Standards (FHS):
 
@@ -102,7 +146,7 @@ When installed via package, Brave Music adheres to Linux Filesystem Hierarchy St
 
 ---
 
-## 4. Running from Source (Developer Installation)
+## 5. Running from Source (Developer Installation)
 
 If you are developing or testing without system installation:
 
@@ -135,7 +179,7 @@ Or execute the local launcher:
 
 ---
 
-## 5. Command-Line Options and Execution Flags
+## 6. Command-Line Options and Execution Flags
 
 The `brave-music` launcher accepts Chromium and Electron runtime flags:
 
@@ -147,22 +191,30 @@ The `brave-music` launcher accepts Chromium and Electron runtime flags:
 
 ---
 
-## 6. Updating Brave Music
+## 7. Updating Brave Music
 
 To update to a new release when a new package is published:
 ```bash
 sudo apt update
 sudo apt install --only-upgrade ./brave-music_<new_version>_amd64.deb
 ```
+Or if installed via npm:
+```bash
+npm update -g @codemoteams/brave-music
+```
 
 ---
 
-## 7. Uninstallation and System Cleanup
+## 8. Uninstallation and System Cleanup
 
 ### Standard Removal
 To remove the application while retaining your local offline music downloads and playlists:
 ```bash
 sudo apt remove brave-music
+```
+Or if installed via npm:
+```bash
+npm uninstall -g @codemoteams/brave-music
 ```
 
 ### Complete Purge
@@ -175,7 +227,7 @@ rm -rf ~/.config/musikcube
 
 ---
 
-## 8. Troubleshooting Matrix
+## 9. Troubleshooting Matrix
 
 | Issue | Root Cause | Resolution |
 | :--- | :--- | :--- |
