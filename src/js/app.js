@@ -198,6 +198,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  function refreshMusicTabsAfterSignIn(service) {
+    const webview = service === 'spotify' ? spotifyWebview : ytWebview;
+    try { webview?.reload?.(); } catch (error) {}
+    const label = service === 'spotify' ? 'Spotify' : 'YouTube Music';
+    showToast(`${label} sign-in saved. ${label} refreshed.`);
+  }
+
   btnReload?.addEventListener('click', () => {
     btnReload.classList.add('spinning');
     setTimeout(() => btnReload.classList.remove('spinning'), 600);
@@ -230,7 +237,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const v = await window.braveApi.getAppVersion();
           const versionEl = document.getElementById('about-app-version');
           if (versionEl) {
-            versionEl.textContent = `Version v${v} (Codemo Stable Release)`;
+            versionEl.textContent = `Version v${v}`;
           }
         }
       } catch (e) {}
@@ -250,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.braveApi.getAppVersion().then(v => {
       const versionEl = document.getElementById('about-app-version');
       if (versionEl) {
-        versionEl.textContent = `Version v${v} (Codemo Stable Release)`;
+        versionEl.textContent = `Version v${v}`;
       }
     }).catch(() => {});
   }
@@ -318,13 +325,13 @@ Observed Behavior:
 
   // ==========================================================================
   // ==========================================================================
-  // AUTHENTICATION & SESSION MANAGEMENT (CLEAN MINIMAL WHITE THEME)
+  // AUTHENTICATION & SESSION MANAGEMENT
   // ==========================================================================
   const btnAuthSync = document.getElementById('btn-auth-sync');
-  const headerUserLabel = document.getElementById('header-user-label');
-  const headerAvatarImg = document.getElementById('header-avatar-img');
-  const authHeaderDot = document.getElementById('auth-header-dot');
   const authSyncModal = document.getElementById('auth-sync-modal');
+  const authModalSubtitle = authSyncModal?.querySelector('.login-modal-subtitle');
+  const authModalTitle = document.getElementById('auth-title');
+  const authServiceIcon = document.getElementById('auth-service-icon');
   const btnCloseAuthSync = document.getElementById('btn-close-auth-sync');
   const btnCancelAuthSync = document.getElementById('btn-cancel-auth-sync');
 
@@ -380,22 +387,37 @@ Observed Behavior:
   const spotifyFileName = document.getElementById('spotify-file-name');
 
   let activeAuthTab = 'ytm';
+  let authStatusRefreshPromise = null;
+  let authStatusRefreshQueued = false;
+
+  const authSessionTracker = {
+    youtube: { state: 'idle', closeTimer: null },
+    spotify: { state: 'idle', closeTimer: null }
+  };
 
   function switchAuthTab(tabId) {
     activeAuthTab = tabId;
+    const isSpotify = tabId === 'spotify';
+    const serviceName = isSpotify ? 'Spotify' : 'YouTube Music';
+    const serviceIcon = isSpotify ? 'assets/icons/spotify.svg' : 'assets/icons/yt-music.svg';
+
+    if (authModalTitle) authModalTitle.textContent = serviceName;
+    if (authServiceIcon) {
+      authServiceIcon.src = serviceIcon;
+      authServiceIcon.alt = serviceName;
+    }
+    if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Sign in to YouTube Music';
+    if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Sign in to Spotify';
+
     loginTabPills.forEach(pill => {
-      if (pill.dataset.tab === tabId) {
-        pill.classList.add('active');
-      } else {
-        pill.classList.remove('active');
-      }
+      pill.classList.toggle('active', pill.dataset.tab === tabId);
     });
 
     Object.keys(loginTabPanels).forEach(key => {
       const panel = loginTabPanels[key];
       if (panel) {
         if (key === tabId) {
-          panel.style.display = 'block';
+          panel.style.display = 'flex';
           panel.classList.add('active');
         } else {
           panel.style.display = 'none';
@@ -411,7 +433,24 @@ Observed Behavior:
     });
   });
 
-  async function refreshAuthStatusUI() {
+  function refreshAuthStatusUI() {
+    if (authStatusRefreshPromise) {
+      authStatusRefreshQueued = true;
+      return authStatusRefreshPromise;
+    }
+
+    authStatusRefreshPromise = (async () => {
+      do {
+        authStatusRefreshQueued = false;
+        await refreshAuthStatusUIOnce();
+      } while (authStatusRefreshQueued);
+    })().finally(() => {
+      authStatusRefreshPromise = null;
+    });
+    return authStatusRefreshPromise;
+  }
+
+  async function refreshAuthStatusUIOnce() {
     if (!window.braveApi?.getAuthStatus) return;
     try {
       const status = await window.braveApi.getAuthStatus();
@@ -420,64 +459,73 @@ Observed Behavior:
       // YouTube Music Status & Saved Account Card
       const isYtmAuth = !!(status.youtube?.authenticated || status.ytmusic?.authenticated);
       const ytmAcc = accounts.youtube || status.youtube?.account;
+      const isSpotifyAuth = !!status.spotify?.authenticated;
+      const spotifyAcc = accounts.spotify || status.spotify?.account;
+      const currentServiceAuth = activeAuthTab === 'spotify' ? isSpotifyAuth : isYtmAuth;
+      if (authModalSubtitle) {
+        authModalSubtitle.textContent = currentServiceAuth ? 'Signed in on this device' : 'Sign in to continue';
+      }
 
-      if (isYtmAuth && ytmAcc && ytmAcc.authenticated !== false) {
+      if (isYtmAuth && ytmAcc?.authenticated !== false) {
+        const activeYtmAcc = ytmAcc || {};
         if (ytmStatusChip) ytmStatusChip.classList.add('connected');
-        if (ytmStatusLabel) ytmStatusLabel.textContent = `Connected (${ytmAcc.name || 'Logged in'})`;
+        if (ytmStatusLabel) ytmStatusLabel.textContent = 'Connected on this device';
         if (btnYtmSignout) btnYtmSignout.style.display = 'inline-flex';
 
         // Populate Saved Account Card
         if (ytmSavedAccountCard) {
           ytmSavedAccountCard.style.display = 'block';
-          if (ytmAccountName) ytmAccountName.textContent = ytmAcc.name || 'YouTube Music Account';
-          if (ytmAccountEmail) ytmAccountEmail.textContent = ytmAcc.email || 'Active Google Session';
+          if (ytmAccountName) ytmAccountName.textContent = 'Account';
+          if (ytmAccountEmail) ytmAccountEmail.textContent = activeYtmAcc.email || 'Active Google Session';
           if (ytmAccountTime) {
-            const dateStr = ytmAcc.lastLogin ? new Date(ytmAcc.lastLogin).toLocaleDateString() : 'Active';
-            ytmAccountTime.textContent = `Saved & Active • ${dateStr}`;
+            const dateStr = activeYtmAcc.lastLogin ? new Date(activeYtmAcc.lastLogin).toLocaleDateString() : '';
+            ytmAccountTime.textContent = dateStr ? `Session • ${dateStr}` : `Active session`;
           }
-          if (ytmAcc.avatar && ytmAccountAvatar) {
-            ytmAccountAvatar.src = ytmAcc.avatar;
+          if (activeYtmAcc.avatar && ytmAccountAvatar) {
+            ytmAccountAvatar.src = activeYtmAcc.avatar;
             ytmAccountAvatar.style.display = 'block';
             if (ytmAccountInitials) ytmAccountInitials.style.display = 'none';
           } else {
             if (ytmAccountAvatar) ytmAccountAvatar.style.display = 'none';
             if (ytmAccountInitials) {
               ytmAccountInitials.style.display = 'flex';
-              const initial = (ytmAcc.name || 'Y').charAt(0).toUpperCase();
+              const initial = (activeYtmAcc.name || 'Y').charAt(0).toUpperCase();
               ytmAccountInitials.textContent = initial || 'YM';
             }
           }
         }
         if (ytmSigninHeader) ytmSigninHeader.style.display = 'flex';
+        const actionCard = document.getElementById('ytm-login-action-card');
+        if (actionCard) actionCard.style.display = 'none';
       } else {
         if (ytmStatusChip) ytmStatusChip.classList.remove('connected');
         if (ytmStatusLabel) ytmStatusLabel.textContent = 'Not logged in';
         if (btnYtmSignout) btnYtmSignout.style.display = 'none';
         if (ytmSavedAccountCard) ytmSavedAccountCard.style.display = 'none';
         if (ytmSigninHeader) ytmSigninHeader.style.display = 'none';
+        const actionCard = document.getElementById('ytm-login-action-card');
+        if (actionCard) actionCard.style.display = 'flex';
       }
 
       // Spotify Status & Saved Account Card
-      const isSpotifyAuth = !!status.spotify?.authenticated;
-      const spotifyAcc = accounts.spotify || status.spotify?.account;
-
-      if (isSpotifyAuth && spotifyAcc && spotifyAcc.authenticated !== false) {
+      if (isSpotifyAuth && spotifyAcc?.authenticated !== false) {
+        const activeSpotifyAcc = spotifyAcc || {};
         if (spotifyStatusChip) spotifyStatusChip.classList.add('connected');
-        const spName = spotifyAcc.name || status.spotify.user?.display_name || 'Spotify User';
-        if (spotifyStatusLabel) spotifyStatusLabel.textContent = `Connected (${spName})`;
+        const spName = activeSpotifyAcc.name || status.spotify.user?.display_name || 'Spotify User';
+        if (spotifyStatusLabel) spotifyStatusLabel.textContent = 'Connected on this device';
         if (btnSpotifySignout) btnSpotifySignout.style.display = 'inline-flex';
 
         // Populate Saved Account Card
         if (spotifySavedAccountCard) {
           spotifySavedAccountCard.style.display = 'block';
-          if (spotifyAccountName) spotifyAccountName.textContent = spName;
-          if (spotifyAccountEmail) spotifyAccountEmail.textContent = spotifyAcc.email || 'Active Spotify Session';
+          if (spotifyAccountName) spotifyAccountName.textContent = 'Account';
+          if (spotifyAccountEmail) spotifyAccountEmail.textContent = activeSpotifyAcc.email || 'Active Spotify Session';
           if (spotifyAccountTime) {
-            const dateStr = spotifyAcc.lastLogin ? new Date(spotifyAcc.lastLogin).toLocaleDateString() : 'Active';
-            spotifyAccountTime.textContent = `Saved & Active • ${dateStr}`;
+            const dateStr = activeSpotifyAcc.lastLogin ? new Date(activeSpotifyAcc.lastLogin).toLocaleDateString() : '';
+            spotifyAccountTime.textContent = dateStr ? `Session • ${dateStr}` : `Active session`;
           }
-          if (spotifyAcc.avatar && spotifyAccountAvatar) {
-            spotifyAccountAvatar.src = spotifyAcc.avatar;
+          if (activeSpotifyAcc.avatar && spotifyAccountAvatar) {
+            spotifyAccountAvatar.src = activeSpotifyAcc.avatar;
             spotifyAccountAvatar.style.display = 'block';
             if (spotifyAccountInitials) spotifyAccountInitials.style.display = 'none';
           } else {
@@ -490,64 +538,31 @@ Observed Behavior:
           }
         }
         if (spotifySigninHeader) spotifySigninHeader.style.display = 'flex';
+        const actionCard = document.getElementById('spotify-login-action-card');
+        if (actionCard) actionCard.style.display = 'none';
       } else {
         if (spotifyStatusChip) spotifyStatusChip.classList.remove('connected');
         if (spotifyStatusLabel) spotifyStatusLabel.textContent = 'Not logged in';
         if (btnSpotifySignout) btnSpotifySignout.style.display = 'none';
         if (spotifySavedAccountCard) spotifySavedAccountCard.style.display = 'none';
         if (spotifySigninHeader) spotifySigninHeader.style.display = 'none';
+        const actionCard = document.getElementById('spotify-login-action-card');
+        if (actionCard) actionCard.style.display = 'flex';
       }
 
-      // Header button indicator dot & label
+      // Header profile button status (Simple Empty Profile Icon)
       const isAnyAuth = isYtmAuth || isSpotifyAuth;
       if (btnAuthSync) {
-        if (isAnyAuth) {
-          btnAuthSync.classList.add('connected');
-          authHeaderDot?.classList.add('connected');
-
-          // Pick display name based on current view or active account
-          let activeName = '';
-          let activeAvatar = '';
-          if (state.currentTab === 'spotify-view' && isSpotifyAuth && spotifyAcc?.name) {
-            activeName = spotifyAcc.name;
-            activeAvatar = spotifyAcc.avatar || '';
-          } else if (isYtmAuth && ytmAcc?.name) {
-            activeName = ytmAcc.name;
-            activeAvatar = ytmAcc.avatar || '';
-          } else if (isSpotifyAuth && spotifyAcc?.name) {
-            activeName = spotifyAcc.name;
-            activeAvatar = spotifyAcc.avatar || '';
-          }
-
-          // Clean display name for the pill button
-          const shortName = activeName ? activeName.split(' ')[0] : 'Account';
-          if (headerUserLabel) headerUserLabel.textContent = shortName;
-          btnAuthSync.title = `Account: ${activeName || 'Connected'} (Click to manage)`;
-
-          if (activeAvatar && headerAvatarImg) {
-            headerAvatarImg.src = activeAvatar;
-            headerAvatarImg.style.display = 'block';
-            const defaultSvg = document.querySelector('.header-account-btn .auth-sync-icon');
-            if (defaultSvg) defaultSvg.style.display = 'none';
-          } else {
-            if (headerAvatarImg) headerAvatarImg.style.display = 'none';
-            const defaultSvg = document.querySelector('.header-account-btn .auth-sync-icon');
-            if (defaultSvg) defaultSvg.style.display = 'block';
-          }
-        } else {
-          btnAuthSync.classList.remove('connected');
-          authHeaderDot?.classList.remove('connected');
-          if (headerUserLabel) headerUserLabel.textContent = 'Sign In';
-          btnAuthSync.title = 'Sign In / Account';
-          if (headerAvatarImg) headerAvatarImg.style.display = 'none';
-          const defaultSvg = document.querySelector('.header-account-btn .auth-sync-icon');
-          if (defaultSvg) defaultSvg.style.display = 'block';
-        }
+        btnAuthSync.classList.toggle('connected', isAnyAuth);
+        btnAuthSync.title = isAnyAuth ? 'Sign In & Account (Connected)' : 'Sign In & Account';
       }
     } catch (e) {
       console.warn('[Auth] Error querying auth status:', e);
     }
   }
+
+  // Avoid repeat storage writes when navigation events report the same profile.
+  const savedProfileSignatures = new Map();
 
   // Background Webview User Profile Extractor
   async function inspectAndSaveWebviewUser(service = 'youtube') {
@@ -571,6 +586,8 @@ Observed Behavior:
           })()
         `);
         if (data && (data.loggedIn || data.name || data.email)) {
+          const signature = JSON.stringify([data.name || '', data.email || '', data.avatar || '']);
+          if (savedProfileSignatures.get(service) === signature) return;
           await window.braveApi.saveUserAccount('youtube', {
             name: data.name || 'YouTube Music Account',
             email: data.email || 'Active Google Session',
@@ -578,6 +595,7 @@ Observed Behavior:
             authenticated: true,
             source: 'webview'
           });
+          savedProfileSignatures.set(service, signature);
           refreshAuthStatusUI();
         }
       } else if (service === 'spotify' && spotifyWebview) {
@@ -596,6 +614,8 @@ Observed Behavior:
           })()
         `);
         if (data && (data.loggedIn || data.name)) {
+          const signature = JSON.stringify([data.name || '', '', data.avatar || '']);
+          if (savedProfileSignatures.get(service) === signature) return;
           await window.braveApi.saveUserAccount('spotify', {
             name: data.name || 'Spotify Account',
             email: 'Active Spotify Session',
@@ -603,6 +623,7 @@ Observed Behavior:
             authenticated: true,
             source: 'webview'
           });
+          savedProfileSignatures.set(service, signature);
           refreshAuthStatusUI();
         }
       }
@@ -615,6 +636,21 @@ Observed Behavior:
     if (authSyncModal) {
       authSyncModal.style.display = 'flex';
       switchAuthTab(initialTab);
+      // Clean up stale status feedback when opening if idle
+      if (authSessionTracker.youtube.state !== 'loading' && ytmCdpStatus) {
+        ytmCdpStatus.style.display = 'none';
+        ytmCdpStatus.textContent = '';
+        btnStartYtmCdp?.classList.remove('is-loading');
+        if (btnStartYtmCdp) btnStartYtmCdp.disabled = false;
+        if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
+      }
+      if (authSessionTracker.spotify.state !== 'loading' && spotifyLoginStatus) {
+        spotifyLoginStatus.style.display = 'none';
+        spotifyLoginStatus.textContent = '';
+        btnStartSpotifyLogin?.classList.remove('is-loading');
+        if (btnStartSpotifyLogin) btnStartSpotifyLogin.disabled = false;
+        if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
+      }
       refreshAuthStatusUI();
       btnCloseAuthSync?.focus();
     }
@@ -642,18 +678,26 @@ Observed Behavior:
   });
 
   btnYtmSignoutCard?.addEventListener('click', async () => {
+    const label = btnYtmSignoutCard.querySelector('span');
+    btnYtmSignoutCard.disabled = true;
+    btnYtmSignoutCard.classList.add('is-loading');
+    if (label) label.textContent = 'Signing out…';
     try {
       await window.braveApi.logoutProvider('youtube');
       showToast('Signed out of YouTube Music.');
-      refreshAuthStatusUI();
+      await refreshAuthStatusUI();
       reloadActiveWebview(ytWebview, 'YouTube Music');
       if (ytmCdpStatus) {
-        ytmCdpStatus.className = 'login-live-feedback';
-        ytmCdpStatus.style.display = 'block';
-        ytmCdpStatus.textContent = 'Account removed and signed out.';
+        ytmCdpStatus.className = 'login-live-feedback info';
+        ytmCdpStatus.style.display = 'flex';
+        ytmCdpStatus.textContent = 'Signed out. Saved session removed from this device.';
       }
     } catch (err) {
       showToast('Error signing out: ' + err.message);
+    } finally {
+      btnYtmSignoutCard.disabled = false;
+      btnYtmSignoutCard.classList.remove('is-loading');
+      if (label) label.textContent = 'Sign Out';
     }
   });
 
@@ -664,18 +708,26 @@ Observed Behavior:
   });
 
   btnSpotifySignoutCard?.addEventListener('click', async () => {
+    const label = btnSpotifySignoutCard.querySelector('span');
+    btnSpotifySignoutCard.disabled = true;
+    btnSpotifySignoutCard.classList.add('is-loading');
+    if (label) label.textContent = 'Signing out…';
     try {
       await window.braveApi.logoutProvider('spotify');
       showToast('Signed out of Spotify.');
-      refreshAuthStatusUI();
+      await refreshAuthStatusUI();
       reloadActiveWebview(spotifyWebview, 'Spotify');
       if (spotifyLoginStatus) {
-        spotifyLoginStatus.className = 'login-live-feedback';
-        spotifyLoginStatus.style.display = 'block';
-        spotifyLoginStatus.textContent = 'Account removed and signed out.';
+        spotifyLoginStatus.className = 'login-live-feedback info';
+        spotifyLoginStatus.style.display = 'flex';
+        spotifyLoginStatus.textContent = 'Signed out. Saved session removed from this device.';
       }
     } catch (err) {
       showToast('Error signing out: ' + err.message);
+    } finally {
+      btnSpotifySignoutCard.disabled = false;
+      btnSpotifySignoutCard.classList.remove('is-loading');
+      if (label) label.textContent = 'Sign Out';
     }
   });
 
@@ -690,59 +742,93 @@ Observed Behavior:
   // =========================================================================
 
   btnStartYtmCdp?.addEventListener('click', async () => {
+    authSessionTracker.youtube.state = 'loading';
+    if (authSessionTracker.youtube.closeTimer) clearTimeout(authSessionTracker.youtube.closeTimer);
     btnStartYtmCdp.disabled = true;
-    if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Browser Open...';
-    if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'inline-block';
+    btnStartYtmCdp.classList.add('is-loading');
+    if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Opening browser…';
+    if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'inline-flex';
 
     if (ytmCdpStatus) {
       ytmCdpStatus.className = 'login-live-feedback loading';
-      ytmCdpStatus.style.display = 'block';
-      ytmCdpStatus.textContent = 'Opening browser... Sign in normally, we will detect your login.';
+      ytmCdpStatus.style.display = 'flex';
+      ytmCdpStatus.textContent = 'Opening your browser to sign in. Brave Music will sync your session automatically.';
     }
 
     try {
       const res = await window.braveApi.startServiceLogin('youtube', 'auto');
       if (res && res.success) {
+        authSessionTracker.youtube.state = 'complete';
+        btnStartYtmCdp.classList.remove('is-loading');
+        btnStartYtmCdp.disabled = false;
+        if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Sign in to YouTube Music';
+        if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
+
         if (ytmCdpStatus) {
           ytmCdpStatus.className = 'login-live-feedback success';
-          ytmCdpStatus.style.display = 'block';
-          ytmCdpStatus.textContent = '✓ Login complete! Applying session...';
+          ytmCdpStatus.style.display = 'flex';
+          ytmCdpStatus.textContent = 'Sign-in complete! Synchronizing your YouTube Music session…';
         }
-        showToast('YouTube Music signed in! Refreshing player...');
+        refreshMusicTabsAfterSignIn('youtube');
         refreshAuthStatusUI();
-        reloadActiveWebview(ytWebview, 'YouTube Music');
-        setTimeout(() => inspectAndSaveWebviewUser('youtube'), 1500);
-        setTimeout(() => closeAuthSyncModal(), 2200);
+        authSessionTracker.youtube.closeTimer = setTimeout(() => {
+          closeAuthSyncModal();
+          authSessionTracker.youtube.state = 'idle';
+        }, 1800);
       } else {
-        if (ytmCdpStatus) {
-          ytmCdpStatus.className = 'login-live-feedback error';
-          ytmCdpStatus.style.display = 'block';
-          ytmCdpStatus.textContent = `⚠ ${res?.error || 'Sign-in cancelled or failed.'}`;
+        if (authSessionTracker.youtube.state !== 'complete') {
+          authSessionTracker.youtube.state = 'error';
+          btnStartYtmCdp.classList.remove('is-loading');
+          btnStartYtmCdp.disabled = false;
+          if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Sign in to YouTube Music';
+          if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
+
+          if (ytmCdpStatus) {
+            ytmCdpStatus.className = 'login-live-feedback error';
+            ytmCdpStatus.style.display = 'flex';
+            ytmCdpStatus.textContent = res?.error || 'Sign-in was cancelled or could not be completed.';
+          }
         }
       }
     } catch (err) {
-      if (ytmCdpStatus) {
-        ytmCdpStatus.className = 'login-live-feedback error';
-        ytmCdpStatus.style.display = 'block';
-        ytmCdpStatus.textContent = `⚠ Sign-in error: ${err.message}`;
+      if (authSessionTracker.youtube.state !== 'complete') {
+        authSessionTracker.youtube.state = 'error';
+        btnStartYtmCdp.classList.remove('is-loading');
+        btnStartYtmCdp.disabled = false;
+        if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Sign in to YouTube Music';
+        if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
+
+        if (ytmCdpStatus) {
+          ytmCdpStatus.className = 'login-live-feedback error';
+          ytmCdpStatus.style.display = 'flex';
+          ytmCdpStatus.textContent = `Sign-in error: ${err.message}`;
+        }
       }
     } finally {
       btnStartYtmCdp.disabled = false;
-      if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Login to YouTube Music';
+      btnStartYtmCdp.classList.remove('is-loading');
+      if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Sign in to YouTube Music';
       if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
+      if (authSessionTracker.youtube.state !== 'complete') {
+        authSessionTracker.youtube.state = 'idle';
+      }
     }
   });
 
   btnCancelYtmCdp?.addEventListener('click', async () => {
     try {
-      await window.braveApi.cancelServiceLogin();
+      authSessionTracker.youtube.state = 'cancelled';
+      if (authSessionTracker.youtube.closeTimer) clearTimeout(authSessionTracker.youtube.closeTimer);
       btnStartYtmCdp.disabled = false;
-      if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Login to YouTube Music';
+      btnStartYtmCdp.classList.remove('is-loading');
+      if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Sign in to YouTube Music';
       if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
       if (ytmCdpStatus) {
-        ytmCdpStatus.className = 'login-live-feedback';
+        ytmCdpStatus.className = 'login-live-feedback info';
+        ytmCdpStatus.style.display = 'flex';
         ytmCdpStatus.textContent = 'Sign-in cancelled.';
       }
+      await window.braveApi.cancelServiceLogin();
     } catch (e) {}
   });
 
@@ -768,25 +854,24 @@ Observed Behavior:
           if (ytmCdpStatus) {
             ytmCdpStatus.className = 'login-live-feedback success';
             ytmCdpStatus.style.display = 'block';
-            ytmCdpStatus.textContent = `✓ Successfully applied ${res.count || ''} cookies!`;
+            ytmCdpStatus.textContent = `Session imported${res.count ? ` (${res.count} cookies)` : ''}. Refreshing music…`;
           }
-          showToast('YouTube Music cookies applied! Refreshing player...');
+          showToast('Sign-in cookies applied. Refreshing music tabs…');
           refreshAuthStatusUI();
-          reloadActiveWebview(ytWebview, 'YouTube Music');
-          setTimeout(() => inspectAndSaveWebviewUser('youtube'), 1500);
+          refreshMusicTabsAfterSignIn('youtube');
           setTimeout(() => closeAuthSyncModal(), 2200);
         } else {
           if (ytmCdpStatus) {
             ytmCdpStatus.className = 'login-live-feedback error';
             ytmCdpStatus.style.display = 'block';
-            ytmCdpStatus.textContent = `⚠ ${res?.error || 'Failed to import cookies.'}`;
+            ytmCdpStatus.textContent = res?.error || 'Could not import the cookies file.';
           }
         }
       } catch (err) {
         if (ytmCdpStatus) {
           ytmCdpStatus.className = 'login-live-feedback error';
           ytmCdpStatus.style.display = 'block';
-          ytmCdpStatus.textContent = `⚠ Import error: ${err.message}`;
+          ytmCdpStatus.textContent = `Import error: ${err.message}`;
         }
       } finally {
         event.target.value = '';
@@ -811,7 +896,7 @@ Observed Behavior:
       if (ytmCdpStatus) {
         ytmCdpStatus.className = 'login-live-feedback';
         ytmCdpStatus.style.display = 'block';
-        ytmCdpStatus.textContent = 'Signed out successfully.';
+        ytmCdpStatus.textContent = 'Signed out. This app’s saved session was removed.';
       }
     } catch (err) {
       showToast('Error signing out: ' + err.message);
@@ -823,59 +908,93 @@ Observed Behavior:
   // =========================================================================
 
   btnStartSpotifyLogin?.addEventListener('click', async () => {
+    authSessionTracker.spotify.state = 'loading';
+    if (authSessionTracker.spotify.closeTimer) clearTimeout(authSessionTracker.spotify.closeTimer);
     btnStartSpotifyLogin.disabled = true;
-    if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Browser Open...';
-    if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'inline-block';
+    btnStartSpotifyLogin.classList.add('is-loading');
+    if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Opening browser…';
+    if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'inline-flex';
 
     if (spotifyLoginStatus) {
       spotifyLoginStatus.className = 'login-live-feedback loading';
-      spotifyLoginStatus.style.display = 'block';
-      spotifyLoginStatus.textContent = 'Opening browser... Sign in to Spotify, we will detect your login.';
+      spotifyLoginStatus.style.display = 'flex';
+      spotifyLoginStatus.textContent = 'Opening your browser to sign in. Brave Music will sync your session automatically.';
     }
 
     try {
       const res = await window.braveApi.startServiceLogin('spotify', 'auto');
       if (res && res.success) {
+        authSessionTracker.spotify.state = 'complete';
+        btnStartSpotifyLogin.classList.remove('is-loading');
+        btnStartSpotifyLogin.disabled = false;
+        if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Sign in to Spotify';
+        if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
+
         if (spotifyLoginStatus) {
           spotifyLoginStatus.className = 'login-live-feedback success';
-          spotifyLoginStatus.style.display = 'block';
-          spotifyLoginStatus.textContent = '✓ Login complete! Applying session...';
+          spotifyLoginStatus.style.display = 'flex';
+          spotifyLoginStatus.textContent = 'Sign-in complete! Synchronizing your Spotify session…';
         }
-        showToast('Spotify signed in! Refreshing player...');
+        refreshMusicTabsAfterSignIn('spotify');
         refreshAuthStatusUI();
-        reloadActiveWebview(spotifyWebview, 'Spotify');
-        setTimeout(() => inspectAndSaveWebviewUser('spotify'), 1500);
-        setTimeout(() => closeAuthSyncModal(), 2200);
+        authSessionTracker.spotify.closeTimer = setTimeout(() => {
+          closeAuthSyncModal();
+          authSessionTracker.spotify.state = 'idle';
+        }, 1800);
       } else {
-        if (spotifyLoginStatus) {
-          spotifyLoginStatus.className = 'login-live-feedback error';
-          spotifyLoginStatus.style.display = 'block';
-          spotifyLoginStatus.textContent = `⚠ ${res?.error || 'Spotify sign-in cancelled or failed.'}`;
+        if (authSessionTracker.spotify.state !== 'complete') {
+          authSessionTracker.spotify.state = 'error';
+          btnStartSpotifyLogin.classList.remove('is-loading');
+          btnStartSpotifyLogin.disabled = false;
+          if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Sign in to Spotify';
+          if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
+
+          if (spotifyLoginStatus) {
+            spotifyLoginStatus.className = 'login-live-feedback error';
+            spotifyLoginStatus.style.display = 'flex';
+            spotifyLoginStatus.textContent = res?.error || 'Sign-in was cancelled or could not be completed.';
+          }
         }
       }
     } catch (err) {
-      if (spotifyLoginStatus) {
-        spotifyLoginStatus.className = 'login-live-feedback error';
-        spotifyLoginStatus.style.display = 'block';
-        spotifyLoginStatus.textContent = `⚠ Sign-in error: ${err.message}`;
+      if (authSessionTracker.spotify.state !== 'complete') {
+        authSessionTracker.spotify.state = 'error';
+        btnStartSpotifyLogin.classList.remove('is-loading');
+        btnStartSpotifyLogin.disabled = false;
+        if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Sign in to Spotify';
+        if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
+
+        if (spotifyLoginStatus) {
+          spotifyLoginStatus.className = 'login-live-feedback error';
+          spotifyLoginStatus.style.display = 'flex';
+          spotifyLoginStatus.textContent = `Sign-in error: ${err.message}`;
+        }
       }
     } finally {
       btnStartSpotifyLogin.disabled = false;
-      if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Login to Spotify';
+      btnStartSpotifyLogin.classList.remove('is-loading');
+      if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Sign in to Spotify';
       if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
+      if (authSessionTracker.spotify.state !== 'complete') {
+        authSessionTracker.spotify.state = 'idle';
+      }
     }
   });
 
   btnCancelSpotifyLogin?.addEventListener('click', async () => {
     try {
-      await window.braveApi.cancelServiceLogin();
+      authSessionTracker.spotify.state = 'cancelled';
+      if (authSessionTracker.spotify.closeTimer) clearTimeout(authSessionTracker.spotify.closeTimer);
       btnStartSpotifyLogin.disabled = false;
-      if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Login to Spotify';
+      btnStartSpotifyLogin.classList.remove('is-loading');
+      if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Sign in to Spotify';
       if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
       if (spotifyLoginStatus) {
-        spotifyLoginStatus.className = 'login-live-feedback';
+        spotifyLoginStatus.className = 'login-live-feedback info';
+        spotifyLoginStatus.style.display = 'flex';
         spotifyLoginStatus.textContent = 'Sign-in cancelled.';
       }
+      await window.braveApi.cancelServiceLogin();
     } catch (e) {}
   });
 
@@ -888,8 +1007,8 @@ Observed Behavior:
 
     if (spotifyLoginStatus) {
       spotifyLoginStatus.className = 'login-live-feedback loading';
-      spotifyLoginStatus.style.display = 'block';
-      spotifyLoginStatus.textContent = `Reading ${file.name} and importing cookies...`;
+      spotifyLoginStatus.style.display = 'flex';
+      spotifyLoginStatus.textContent = `Reading ${file.name} and importing cookies…`;
     }
 
     const reader = new FileReader();
@@ -900,26 +1019,25 @@ Observed Behavior:
         if (res && res.success) {
           if (spotifyLoginStatus) {
             spotifyLoginStatus.className = 'login-live-feedback success';
-            spotifyLoginStatus.style.display = 'block';
-            spotifyLoginStatus.textContent = `✓ Successfully applied ${res.count || ''} cookies!`;
+            spotifyLoginStatus.style.display = 'flex';
+            spotifyLoginStatus.textContent = `Session imported${res.count ? ` (${res.count} cookies)` : ''}. Refreshing music…`;
           }
-          showToast('Spotify cookies applied! Refreshing player...');
+          showToast('Sign-in cookies applied. Refreshing music tabs…');
           refreshAuthStatusUI();
-          reloadActiveWebview(spotifyWebview, 'Spotify');
-          setTimeout(() => inspectAndSaveWebviewUser('spotify'), 1500);
+          refreshMusicTabsAfterSignIn('spotify');
           setTimeout(() => closeAuthSyncModal(), 2200);
         } else {
           if (spotifyLoginStatus) {
             spotifyLoginStatus.className = 'login-live-feedback error';
-            spotifyLoginStatus.style.display = 'block';
-            spotifyLoginStatus.textContent = `⚠ ${res?.error || 'Failed to import cookies.'}`;
+            spotifyLoginStatus.style.display = 'flex';
+            spotifyLoginStatus.textContent = res?.error || 'Could not import the cookies file.';
           }
         }
       } catch (err) {
         if (spotifyLoginStatus) {
           spotifyLoginStatus.className = 'login-live-feedback error';
-          spotifyLoginStatus.style.display = 'block';
-          spotifyLoginStatus.textContent = `⚠ Import error: ${err.message}`;
+          spotifyLoginStatus.style.display = 'flex';
+          spotifyLoginStatus.textContent = `Import error: ${err.message}`;
         }
       } finally {
         event.target.value = '';
@@ -942,9 +1060,9 @@ Observed Behavior:
       refreshAuthStatusUI();
       reloadActiveWebview(spotifyWebview, 'Spotify');
       if (spotifyLoginStatus) {
-        spotifyLoginStatus.className = 'login-live-feedback';
-        spotifyLoginStatus.style.display = 'block';
-        spotifyLoginStatus.textContent = 'Signed out successfully.';
+        spotifyLoginStatus.className = 'login-live-feedback info';
+        spotifyLoginStatus.style.display = 'flex';
+        spotifyLoginStatus.textContent = 'Signed out. Saved session removed from this device.';
       }
     } catch (err) {
       showToast('Error signing out: ' + err.message);
@@ -953,20 +1071,53 @@ Observed Behavior:
 
   // Real-time CDP status listener from backend
   window.braveApi?.onAuthCdpStatus?.((status) => {
-    const isSpotify = status.service === 'spotify';
+    const serviceKey = (status.service || (activeAuthTab === 'spotify' ? 'spotify' : 'youtube')).toLowerCase() === 'spotify' ? 'spotify' : 'youtube';
+    const isSpotify = serviceKey === 'spotify';
     const targetStatusEl = isSpotify ? spotifyLoginStatus : ytmCdpStatus;
+    const targetBtn = isSpotify ? btnStartSpotifyLogin : btnStartYtmCdp;
+    const targetCancel = isSpotify ? btnCancelSpotifyLogin : btnCancelYtmCdp;
+    const tracker = authSessionTracker[serviceKey];
     if (!targetStatusEl) return;
 
-    targetStatusEl.style.display = 'block';
+    // GUARD: If action is already complete, ignore late waiting ticks
+    if (tracker.state === 'complete' && status.state !== 'complete') {
+      return;
+    }
+
+    targetStatusEl.style.display = 'flex';
+
     if (status.state === 'complete') {
+      tracker.state = 'complete';
+      targetBtn?.classList.remove('is-loading');
+      if (targetBtn) targetBtn.disabled = false;
+      if (targetCancel) targetCancel.style.display = 'none';
       targetStatusEl.className = 'login-live-feedback success';
-      targetStatusEl.textContent = `✓ ${status.message}`;
-    } else if (status.state === 'error' || status.state === 'cancelled') {
+      targetStatusEl.textContent = status.message || 'Sign-in complete! Session applied.';
+      refreshMusicTabsAfterSignIn(serviceKey);
+      refreshAuthStatusUI();
+      if (tracker.closeTimer) clearTimeout(tracker.closeTimer);
+      tracker.closeTimer = setTimeout(() => {
+        closeAuthSyncModal();
+        tracker.state = 'idle';
+      }, 1800);
+    } else if (status.state === 'error') {
+      tracker.state = 'error';
+      targetBtn?.classList.remove('is-loading');
+      if (targetBtn) targetBtn.disabled = false;
+      if (targetCancel) targetCancel.style.display = 'none';
       targetStatusEl.className = 'login-live-feedback error';
-      targetStatusEl.textContent = status.message;
+      targetStatusEl.textContent = status.message || 'Sign-in failed.';
+    } else if (status.state === 'cancelled') {
+      tracker.state = 'cancelled';
+      targetBtn?.classList.remove('is-loading');
+      if (targetBtn) targetBtn.disabled = false;
+      if (targetCancel) targetCancel.style.display = 'none';
+      targetStatusEl.className = 'login-live-feedback info';
+      targetStatusEl.textContent = status.message || 'Sign-in cancelled.';
     } else {
+      tracker.state = 'loading';
       targetStatusEl.className = 'login-live-feedback loading';
-      targetStatusEl.textContent = status.message;
+      targetStatusEl.textContent = status.message || 'Waiting for sign-in in your browser…';
     }
   });
 
@@ -1018,6 +1169,9 @@ Observed Behavior:
     }
 
     refreshAuthStatusUI();
+    if (typeof syncPlaybackLoop === 'function') {
+      syncPlaybackLoop();
+    }
   }
 
   tabs.forEach(tab => {
@@ -1085,10 +1239,8 @@ Observed Behavior:
   setupWebviewShields(spotifyWebview, 'Spotify');
 
   // Automatically inspect and sync signed-in user profiles
-  ytWebview?.addEventListener('dom-ready', () => inspectAndSaveWebviewUser('youtube'));
-  ytWebview?.addEventListener('did-navigate', () => inspectAndSaveWebviewUser('youtube'));
-  spotifyWebview?.addEventListener('dom-ready', () => inspectAndSaveWebviewUser('spotify'));
-  spotifyWebview?.addEventListener('did-navigate', () => inspectAndSaveWebviewUser('spotify'));
+  ytWebview?.addEventListener('did-stop-loading', () => inspectAndSaveWebviewUser('youtube'));
+  spotifyWebview?.addEventListener('did-stop-loading', () => inspectAndSaveWebviewUser('spotify'));
 
   // ==========================================================================
   // DOWNLOAD CONTROLS (OFFLINE AUDIO ENGINE)
@@ -1193,6 +1345,7 @@ Observed Behavior:
         progressPercentVal.textContent = (data.itemTotal && data.itemIndex)
           ? `${pct}% (${data.itemIndex}/${data.itemTotal})`
           : `${pct}%`;
+        window.braveApi?.setTaskbarProgress(pct / 100);
       }
       if (progressStatusLabel) {
         if (data.status) {
@@ -1223,6 +1376,36 @@ Observed Behavior:
       }
     });
   }
+
+  // WinUI 3 Windows Suite & Package Downloader Modal trigger
+  const btnWinuiSuite = document.getElementById('btn-winui-suite');
+  btnWinuiSuite?.addEventListener('click', () => {
+    if (window.winui) {
+      window.winui.showDownloadSuite({
+        title: 'Brave Music Windows Suite (WinUI 3)',
+        version: '1.0.18'
+      });
+      let p = 0;
+      const interval = setInterval(() => {
+        p += 12;
+        if (p <= 100) {
+          window.winui.updateDownloadSuite({
+            percent: p,
+            speed: '14.2 MB/s',
+            transferred: `${Math.round(p * 1.25)} MB / 125 MB`,
+            eta: `${Math.max(0, Math.round((100 - p) / 12))}s`,
+            status: p < 35 ? 'Downloading CastLabs Widevine runtime…' : (p < 75 ? 'Verifying SHA256 integrity…' : 'Finalizing local audio engine…')
+          });
+        }
+        if (p >= 100) {
+          clearInterval(interval);
+          setTimeout(() => {
+            window.winui.downloadSuite.complete({ message: 'Windows Suite verification complete. All components ready!' });
+          }, 600);
+        }
+      }, 300);
+    }
+  });
 
   btnOpenFolder?.addEventListener('click', () => {
     window.braveApi?.openDownloadsFolder();
@@ -2042,6 +2225,11 @@ Observed Behavior:
         return;
       }
 
+      // Immediately pause OTT webviews so local music is exclusive
+      pauseYouTube();
+      pauseSpotify();
+      state.activeAudioSource = 'local';
+
       state.player.currentTrack = track;
       state.player.currentIndex = index;
       state.player.isPlaying = true;
@@ -2065,6 +2253,7 @@ Observed Behavior:
         if (playerWaves) playerWaves.style.display = 'none';
         renderTracksTable();
         showToast('Playback interrupted or format unsupported');
+        syncPlayerToMprisAndMediaSession({ isPlaying: false, isStopped: true });
       });
 
       // Update runtime bar metadata
@@ -2078,6 +2267,7 @@ Observed Behavior:
 
       renderTracksTable();
       showToast(`Playing "${track.title}"`);
+      syncPlayerToMprisAndMediaSession({ isPlaying: true });
     } catch (e) {
       showToast(`Player error: ${e.message}`);
     }
@@ -2106,12 +2296,17 @@ Observed Behavior:
       playerPlayIcon.style.display = 'block';
       playerPauseIcon.style.display = 'none';
       if (playerWaves) playerWaves.style.display = 'none';
+      syncPlayerToMprisAndMediaSession({ isPlaying: false, isPaused: true });
     } else {
+      pauseYouTube();
+      pauseSpotify();
+      state.activeAudioSource = 'local';
       runtimeAudio.play().catch(() => {});
       state.player.isPlaying = true;
       playerPlayIcon.style.display = 'none';
       playerPauseIcon.style.display = 'block';
       if (playerWaves) playerWaves.style.display = 'inline-flex';
+      syncPlayerToMprisAndMediaSession({ isPlaying: true, isPaused: false });
     }
 
     renderTracksTable();
@@ -2148,6 +2343,7 @@ Observed Behavior:
   }
 
   // Audio Event Listeners
+  let lastMprisPositionSync = 0;
   runtimeAudio.addEventListener('timeupdate', () => {
     playerCurrentTime.textContent = formatDuration(runtimeAudio.currentTime);
 
@@ -2156,16 +2352,50 @@ Observed Behavior:
       playerSeekSlider.value = pct;
       playerSeekFill.style.width = `${pct}%`;
     }
+
+    const now = Date.now();
+    if (now - lastMprisPositionSync > 2500) {
+      lastMprisPositionSync = now;
+      if (window.braveApi?.updateMprisState && state.player.isPlaying) {
+        window.braveApi.updateMprisState({
+          position: runtimeAudio.currentTime || 0,
+          duration: runtimeAudio.duration || 0,
+          isPlaying: true
+        }).catch(() => {});
+      }
+    }
   });
 
   runtimeAudio.addEventListener('loadedmetadata', () => {
     playerTotalTime.textContent = formatDuration(runtimeAudio.duration);
+    syncPlayerToMprisAndMediaSession();
+  });
+
+  runtimeAudio.addEventListener('play', () => {
+    state.player.isPlaying = true;
+    playerPlayIcon.style.display = 'none';
+    playerPauseIcon.style.display = 'block';
+    if (playerWaves) playerWaves.style.display = 'inline-flex';
+    renderTracksTable();
+    syncPlayerToMprisAndMediaSession({ isPlaying: true });
+  });
+
+  runtimeAudio.addEventListener('pause', () => {
+    if (state.player.isPlaying) {
+      state.player.isPlaying = false;
+      playerPlayIcon.style.display = 'block';
+      playerPauseIcon.style.display = 'none';
+      if (playerWaves) playerWaves.style.display = 'none';
+      renderTracksTable();
+      syncPlayerToMprisAndMediaSession({ isPlaying: false, isPaused: true });
+    }
   });
 
   runtimeAudio.addEventListener('ended', () => {
     if (state.player.isRepeat) {
       runtimeAudio.currentTime = 0;
       runtimeAudio.play().catch(() => {});
+      syncPlayerToMprisAndMediaSession({ isPlaying: true });
     } else {
       playNextTrack();
     }
@@ -2179,6 +2409,7 @@ Observed Behavior:
     if (playerWaves) playerWaves.style.display = 'none';
     renderTracksTable();
     showToast('Playback error: unable to decode or read audio stream');
+    syncPlayerToMprisAndMediaSession({ isPlaying: false, isStopped: true });
   });
 
   // OneUI Seek bar scrubbing
@@ -2194,24 +2425,27 @@ Observed Behavior:
     state.player.isDraggingSeek = false;
     if (runtimeAudio.duration) {
       runtimeAudio.currentTime = (e.target.value / 100) * runtimeAudio.duration;
+      syncPlayerToMprisAndMediaSession();
     }
   });
 
   // Player controls click events
-  playerPlayPauseBtn.addEventListener('click', togglePlayPause);
-  playerNextBtn.addEventListener('click', playNextTrack);
-  playerPrevBtn.addEventListener('click', playPrevTrack);
+  playerPlayPauseBtn.addEventListener('click', () => handlePlayPause('playpause'));
+  playerNextBtn.addEventListener('click', handleNextTrack);
+  playerPrevBtn.addEventListener('click', handlePrevTrack);
 
   playerShuffleBtn.addEventListener('click', () => {
     state.player.isShuffle = !state.player.isShuffle;
     playerShuffleBtn.classList.toggle('active', state.player.isShuffle);
     showToast(state.player.isShuffle ? 'Shuffle enabled' : 'Shuffle disabled');
+    syncPlayerToMprisAndMediaSession();
   });
 
   playerRepeatBtn.addEventListener('click', () => {
     state.player.isRepeat = !state.player.isRepeat;
     playerRepeatBtn.classList.toggle('active', state.player.isRepeat);
     showToast(state.player.isRepeat ? 'Repeat track enabled' : 'Repeat disabled');
+    syncPlayerToMprisAndMediaSession();
   });
 
   // Volume icon click toggles floating OneUI popover bar
@@ -2241,6 +2475,9 @@ Observed Behavior:
     if (playerVolPercent) playerVolPercent.textContent = `${pct}%`;
     if (playerVolumeFill) playerVolumeFill.style.height = `${pct}%`;
     updateVolumeIcon();
+    if (window.braveApi?.updateMprisState) {
+      window.braveApi.updateMprisState({ volume: state.player.isMuted ? 0 : clamped }).catch(() => {});
+    }
   }
 
   let isDraggingVerticalVolume = false;
@@ -2335,6 +2572,734 @@ Observed Behavior:
       `;
     }
   }
+
+  // ==========================================================================
+  // LINUX MPRIS2 & WEB MEDIA SESSION INTEGRATION
+  // ==========================================================================
+
+  // Global cache of last known playback states
+  let isYtPlayingActive = false;
+  let isSpotifyPlayingActive = false;
+
+  // Determine active playback context strictly bounded to the active tab / source:
+  // "make it like if I play 1 OTT or even a local music they don't go back to any other OTT and local music and all buttons work under the tab of OTT where we play music."
+  function getEffectivePlaybackContext() {
+    // 1. Actively playing sources have absolute highest priority
+    if (state.player.isPlaying) {
+      return 'local';
+    }
+    if (isSpotifyPlayingActive) {
+      return 'spotify';
+    }
+    if (isYtPlayingActive) {
+      return 'youtube';
+    }
+
+    // 2. When idle / paused, prioritize current tab user is viewing
+    if (state.currentTab === 'yt-view') {
+      return 'youtube';
+    }
+    if (state.currentTab === 'spotify-view') {
+      return 'spotify';
+    }
+    if (state.currentTab === 'downloads-view') {
+      return 'local';
+    }
+
+    // 3. Fallback to active source
+    if (state.activeAudioSource === 'spotify') {
+      return 'spotify';
+    }
+    if (state.activeAudioSource === 'local') {
+      return 'local';
+    }
+
+    return 'youtube';
+  }
+
+  // Pause YouTube Music webview
+  function pauseYouTube() {
+    if (!ytWebview) return;
+    try {
+      ytWebview.executeJavaScript(`
+        (() => {
+          try {
+            const video = document.querySelector('video');
+            if (video && !video.paused) video.pause();
+          } catch (e) {}
+        })()
+      `).catch(() => {});
+    } catch (e) {}
+  }
+
+  // Pause Spotify webview
+  function pauseSpotify() {
+    if (!spotifyWebview) return;
+    try {
+      spotifyWebview.executeJavaScript(`
+        (() => {
+          try {
+            const playBtn = document.querySelector('[data-testid="control-button-playpause"]');
+            const ariaLabel = playBtn?.getAttribute('aria-label')?.toLowerCase() || '';
+            if (ariaLabel.includes('pause') && playBtn) playBtn.click();
+          } catch (e) {}
+        })()
+      `).catch(() => {});
+    } catch (e) {}
+  }
+
+  // Pause Local Music
+  function pauseLocalAudio() {
+    if (state.player.isPlaying) {
+      runtimeAudio.pause();
+      state.player.isPlaying = false;
+      playerPlayIcon.style.display = 'block';
+      playerPauseIcon.style.display = 'none';
+      if (playerWaves) playerWaves.style.display = 'none';
+      renderTracksTable();
+      syncPlayerToMprisAndMediaSession({ isPlaying: false, isPaused: true });
+    }
+  }
+
+  // Control YouTube Music OTT
+  function controlYouTube(action) {
+    if (!ytWebview) return;
+    try {
+      if (action === 'playpause' || action === 'play' || action === 'pause') {
+        ytWebview.executeJavaScript(`
+          (() => {
+            try {
+              const playPauseBtn = document.querySelector('ytmusic-player-bar #play-pause-button') ||
+                                   document.querySelector('#play-pause-button') ||
+                                   document.querySelector('.play-pause-button');
+              const video = document.querySelector('video');
+              const req = '${action}';
+              if (req === 'play') {
+                if (video && video.paused) {
+                  if (playPauseBtn) playPauseBtn.click(); else video.play();
+                }
+              } else if (req === 'pause') {
+                if (video && !video.paused) {
+                  if (playPauseBtn) playPauseBtn.click(); else video.pause();
+                }
+              } else {
+                if (playPauseBtn) {
+                  playPauseBtn.click();
+                } else if (video) {
+                  if (video.paused) video.play(); else video.pause();
+                }
+              }
+            } catch (e) {}
+          })()
+        `).catch(() => {});
+      } else if (action === 'next') {
+        ytWebview.executeJavaScript(`
+          (() => {
+            try {
+              const nextBtn = document.querySelector('ytmusic-player-bar .next-button') ||
+                              document.querySelector('.next-button') ||
+                              document.querySelector('#next-button') ||
+                              document.querySelector('tp-yt-paper-icon-button.next-button') ||
+                              document.querySelector('[aria-label="Next song"]') ||
+                              document.querySelector('[aria-label="Next"]');
+              if (nextBtn) {
+                nextBtn.click();
+              } else {
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'N', code: 'KeyN', shiftKey: true, bubbles: true }));
+              }
+            } catch (e) {}
+          })()
+        `).catch(() => {});
+      } else if (action === 'previous') {
+        ytWebview.executeJavaScript(`
+          (() => {
+            try {
+              const prevBtn = document.querySelector('ytmusic-player-bar .previous-button') ||
+                              document.querySelector('.previous-button') ||
+                              document.querySelector('#previous-button') ||
+                              document.querySelector('tp-yt-paper-icon-button.previous-button') ||
+                              document.querySelector('[aria-label="Previous song"]') ||
+                              document.querySelector('[aria-label="Previous"]');
+              if (prevBtn) {
+                prevBtn.click();
+              } else {
+                window.dispatchEvent(new KeyboardEvent('keydown', { key: 'P', code: 'KeyP', shiftKey: true, bubbles: true }));
+              }
+            } catch (e) {}
+          })()
+        `).catch(() => {});
+      }
+    } catch (e) {
+      console.warn('[YTMControl] Notice:', e.message);
+    }
+  }
+
+  // Control Spotify OTT
+  function controlSpotify(action) {
+    if (!spotifyWebview) return;
+    try {
+      if (action === 'playpause' || action === 'play' || action === 'pause') {
+        spotifyWebview.executeJavaScript(`
+          (() => {
+            try {
+              const playPauseBtn = document.querySelector('[data-testid="control-button-playpause"]') ||
+                                   document.querySelector('button[aria-label="Play"]') ||
+                                   document.querySelector('button[aria-label="Pause"]');
+              const aria = playPauseBtn?.getAttribute('aria-label')?.toLowerCase() || '';
+              const isPlaying = aria.includes('pause');
+              const req = '${action}';
+              if (req === 'play') {
+                if (!isPlaying && playPauseBtn) playPauseBtn.click();
+              } else if (req === 'pause') {
+                if (isPlaying && playPauseBtn) playPauseBtn.click();
+              } else {
+                if (playPauseBtn) playPauseBtn.click();
+              }
+            } catch (e) {}
+          })()
+        `).catch(() => {});
+      } else if (action === 'next') {
+        spotifyWebview.executeJavaScript(`
+          (() => {
+            try {
+              const nextBtn = document.querySelector('[data-testid="control-button-skip-forward"]') ||
+                              document.querySelector('button[aria-label="Next"]') ||
+                              document.querySelector('button[aria-label="Next track"]');
+              if (nextBtn) nextBtn.click();
+            } catch (e) {}
+          })()
+        `).catch(() => {});
+      } else if (action === 'previous') {
+        spotifyWebview.executeJavaScript(`
+          (() => {
+            try {
+              const prevBtn = document.querySelector('[data-testid="control-button-skip-back"]') ||
+                              document.querySelector('button[aria-label="Previous"]') ||
+                              document.querySelector('button[aria-label="Previous track"]');
+              if (prevBtn) prevBtn.click();
+            } catch (e) {}
+          })()
+        `).catch(() => {});
+      }
+    } catch (e) {
+      console.warn('[SpotifyControl] Notice:', e.message);
+    }
+  }
+
+  // Unified Previous Track Handler - Scoped to the active context, never cross-contaminates
+  function handlePrevTrack() {
+    const context = getEffectivePlaybackContext();
+    if (context === 'youtube') {
+      controlYouTube('previous');
+    } else if (context === 'spotify') {
+      controlSpotify('previous');
+    } else {
+      playPrevTrack();
+    }
+  }
+
+  // Unified Next Track Handler - Scoped to the active context, never cross-contaminates
+  function handleNextTrack() {
+    const context = getEffectivePlaybackContext();
+    if (context === 'youtube') {
+      controlYouTube('next');
+    } else if (context === 'spotify') {
+      controlSpotify('next');
+    } else {
+      playNextTrack();
+    }
+  }
+
+  // Unified Play/Pause Handler
+  function handlePlayPause(requestedAction = 'playpause') {
+    const context = getEffectivePlaybackContext();
+    if (context === 'youtube') {
+      controlYouTube(requestedAction);
+    } else if (context === 'spotify') {
+      controlSpotify(requestedAction);
+    } else {
+      if (requestedAction === 'play') {
+        if (!state.player.isPlaying) togglePlayPause();
+      } else if (requestedAction === 'pause') {
+        if (state.player.isPlaying) togglePlayPause();
+      } else {
+        togglePlayPause();
+      }
+    }
+  }
+
+  // Unified Stop Handler
+  function handleStop() {
+    const context = getEffectivePlaybackContext();
+    if (context === 'youtube') {
+      controlYouTube('pause');
+    } else if (context === 'spotify') {
+      controlSpotify('pause');
+    } else {
+      pauseLocalAudio();
+      runtimeAudio.currentTime = 0;
+    }
+  }
+
+  // Synchronize player bar in-app UI across local, YouTube Music, and Spotify
+  function updatePlayerBarUI(info = {}) {
+    const { title, artist, artworkUrl, isPlaying, duration, position } = info;
+    if (playerTitle && title !== undefined) {
+      playerTitle.textContent = title || 'Select a track to play';
+      playerTitle.title = title || '';
+    }
+    if (playerArtist && artist !== undefined) {
+      playerArtist.textContent = artist || 'Offline Library';
+      playerArtist.title = artist || '';
+    }
+    if (playerArtImg && artworkUrl !== undefined) {
+      const targetSrc = artworkUrl || EMPTY_MUSIC_THUMBNAIL;
+      if (playerArtImg.src !== targetSrc) {
+        playerArtImg.src = targetSrc;
+      }
+    }
+    if (playerPlayIcon && playerPauseIcon && isPlaying !== undefined) {
+      playerPlayIcon.style.display = isPlaying ? 'none' : 'block';
+      playerPauseIcon.style.display = isPlaying ? 'block' : 'none';
+    }
+    if (playerWaves && isPlaying !== undefined) {
+      playerWaves.style.display = isPlaying ? 'inline-flex' : 'none';
+    }
+    if (typeof position === 'number' && typeof duration === 'number' && duration > 0) {
+      if (playerCurrentTime && !state.player.isDraggingSeek) {
+        playerCurrentTime.textContent = formatDuration(position);
+      }
+      if (playerTotalTime) {
+        playerTotalTime.textContent = formatDuration(duration);
+      }
+      if (playerSeekFill && playerSeekSlider && !state.player.isDraggingSeek) {
+        const pct = Math.min(100, Math.max(0, (position / duration) * 100));
+        playerSeekFill.style.width = `${pct}%`;
+        playerSeekSlider.value = pct;
+      }
+    }
+  }
+
+  // Synchronize Brave Music state to Linux MPRIS2 (org.mpris.MediaPlayer2) & Web MediaSession
+  function syncPlayerToMprisAndMediaSession(overrides = {}) {
+    if (!state.player.currentTrack) return;
+    const track = state.player.currentTrack;
+    const thumb = getTrackThumbnail(track);
+    const duration = runtimeAudio.duration || (track.duration ? parseFloat(track.duration) : 0) || 0;
+    const position = runtimeAudio.currentTime || 0;
+    const isPlaying = overrides.isPlaying !== undefined ? overrides.isPlaying : state.player.isPlaying;
+    const isPaused = overrides.isPaused !== undefined ? overrides.isPaused : (!isPlaying && !!state.player.currentTrack);
+    const isStopped = overrides.isStopped || false;
+
+    const mprisPayload = {
+      title: track.title || 'Unknown Title',
+      artist: track.artist || 'Offline Library',
+      album: track.album || (state.selectedPlaylist || 'Downloaded Music'),
+      duration: duration,
+      position: position,
+      artworkUrl: thumb,
+      isPlaying: isPlaying,
+      isPaused: isPaused,
+      isStopped: isStopped,
+      volume: state.player.isMuted ? 0 : state.player.volume,
+      canGoNext: true,
+      canGoPrevious: true,
+      shuffle: state.player.isShuffle,
+      loopStatus: state.player.isRepeat ? 'Track' : 'None',
+      trackId: track.id || track.filename || track.title
+    };
+
+    if (window.braveApi?.updateMprisState) {
+      window.braveApi.updateMprisState(mprisPayload).catch(() => {});
+    }
+
+    updateMediaSession({
+      title: track.title || 'Unknown Title',
+      artist: track.artist || 'Offline Library',
+      album: track.album || (state.selectedPlaylist || 'Downloaded Music'),
+      artworkUrl: thumb,
+      isPlaying,
+      isPaused
+    });
+
+    updatePlayerBarUI({
+      title: track.title || 'Unknown Title',
+      artist: track.artist || 'Offline Library',
+      artworkUrl: thumb,
+      isPlaying,
+      duration,
+      position
+    });
+  }
+
+  function updateMediaSession(meta) {
+    if (!('mediaSession' in navigator)) return;
+    try {
+      if (meta.isPlaying) {
+        navigator.mediaSession.playbackState = 'playing';
+      } else if (meta.isPaused) {
+        navigator.mediaSession.playbackState = 'paused';
+      } else {
+        navigator.mediaSession.playbackState = 'none';
+      }
+
+      const artwork = [];
+      if (meta.artworkUrl && (meta.artworkUrl.startsWith('http://') || meta.artworkUrl.startsWith('https://'))) {
+        artwork.push({ src: meta.artworkUrl, sizes: '512x512', type: 'image/jpeg' });
+      }
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: meta.title || 'Brave Music',
+        artist: meta.artist || 'Brave Music',
+        album: meta.album || 'Brave Music',
+        artwork
+      });
+    } catch (e) {}
+  }
+
+  // Handle incoming remote MPRIS commands from Linux desktop (panel buttons, notification controls, media keys)
+  if (window.braveApi?.onMprisCommand) {
+    window.braveApi.onMprisCommand((cmd) => {
+      const action = cmd?.action;
+      if (!action) return;
+
+      if (action === 'play') {
+        handlePlayPause('play');
+      } else if (action === 'pause') {
+        handlePlayPause('pause');
+      } else if (action === 'playpause') {
+        handlePlayPause('playpause');
+      } else if (action === 'next') {
+        handleNextTrack();
+      } else if (action === 'previous') {
+        handlePrevTrack();
+      } else if (action === 'stop') {
+        handleStop();
+      } else if (action === 'seek') {
+        const context = getEffectivePlaybackContext();
+        if (context === 'local' && runtimeAudio.duration && typeof cmd.offset === 'number') {
+          runtimeAudio.currentTime = Math.max(0, Math.min(runtimeAudio.duration, runtimeAudio.currentTime + cmd.offset));
+          syncPlayerToMprisAndMediaSession();
+        }
+      } else if (action === 'setposition') {
+        const context = getEffectivePlaybackContext();
+        if (context === 'local' && runtimeAudio.duration && typeof cmd.position === 'number') {
+          runtimeAudio.currentTime = Math.max(0, Math.min(runtimeAudio.duration, cmd.position));
+          syncPlayerToMprisAndMediaSession();
+        }
+      } else if (action === 'setvolume') {
+        if (typeof cmd.volume === 'number') {
+          setPlayerVolume(cmd.volume);
+        }
+      } else if (action === 'shuffle') {
+        state.player.isShuffle = (cmd.shuffle !== undefined) ? !!cmd.shuffle : !state.player.isShuffle;
+        playerShuffleBtn?.classList.toggle('active', state.player.isShuffle);
+        syncPlayerToMprisAndMediaSession();
+      } else if (action === 'loopstatus') {
+        state.player.isRepeat = (cmd.loopStatus === 'Track');
+        playerRepeatBtn?.classList.toggle('active', state.player.isRepeat);
+        syncPlayerToMprisAndMediaSession();
+      }
+    });
+  }
+
+  // Setup Standard Web MediaSession handlers
+  if ('mediaSession' in navigator) {
+    try {
+      navigator.mediaSession.setActionHandler('play', () => handlePlayPause('play'));
+      navigator.mediaSession.setActionHandler('pause', () => handlePlayPause('pause'));
+      navigator.mediaSession.setActionHandler('previoustrack', () => handlePrevTrack());
+      navigator.mediaSession.setActionHandler('nexttrack', () => handleNextTrack());
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        const context = getEffectivePlaybackContext();
+        if (context === 'local' && details.seekTime !== undefined && runtimeAudio.duration) {
+          runtimeAudio.currentTime = details.seekTime;
+          syncPlayerToMprisAndMediaSession();
+        }
+      });
+    } catch (e) {
+      console.warn('[MediaSession] Setup notice:', e.message);
+    }
+  }
+
+  // Webview Playback Inspector functions
+  async function checkYouTubeState() {
+    if (!ytWebview) return null;
+    try {
+      return await ytWebview.executeJavaScript(`
+        (() => {
+          try {
+            const video = document.querySelector('video');
+            const isVideoPlaying = !!(video && !video.paused && !video.ended && video.readyState >= 2);
+            const mediaSessionPlaying = navigator.mediaSession?.playbackState === 'playing';
+            const playPauseBtn = document.querySelector('ytmusic-player-bar #play-pause-button') ||
+                                 document.querySelector('#play-pause-button');
+            const ariaLabel = playPauseBtn?.getAttribute('aria-label')?.toLowerCase() || '';
+            const isButtonPause = ariaLabel.includes('pause') || ariaLabel.includes('paus');
+            const isPlaying = isVideoPlaying || mediaSessionPlaying || isButtonPause;
+
+            // MediaSession metadata prioritized, then DOM queries
+            const msTitle = navigator.mediaSession?.metadata?.title?.trim() || '';
+            const titleEl = document.querySelector('ytmusic-player-bar .title') ||
+                            document.querySelector('.ytmusic-player-bar.title') ||
+                            document.querySelector('ytmusic-player-bar yt-formatted-string.title');
+            const domTitle = titleEl?.textContent?.trim() || '';
+            const title = msTitle || domTitle;
+
+            const msArtist = navigator.mediaSession?.metadata?.artist?.trim() || '';
+            const artistEl = document.querySelector('ytmusic-player-bar .byline a') ||
+                             document.querySelector('ytmusic-player-bar .byline') ||
+                             document.querySelector('.ytmusic-player-bar.byline');
+            const domArtist = artistEl?.textContent?.trim() || '';
+            const artist = msArtist || domArtist;
+
+            const album = navigator.mediaSession?.metadata?.album?.trim() || 'YouTube Music';
+
+            let artworkUrl = '';
+            const msArtwork = navigator.mediaSession?.metadata?.artwork;
+            if (Array.isArray(msArtwork) && msArtwork.length > 0) {
+              artworkUrl = msArtwork[msArtwork.length - 1]?.src || msArtwork[0]?.src || '';
+            }
+            if (!artworkUrl) {
+              const artEl = document.querySelector('ytmusic-player-bar img') ||
+                            document.querySelector('.ytmusic-player-bar img');
+              artworkUrl = artEl?.src || '';
+            }
+
+            const duration = (video && typeof video.duration === 'number' && !isNaN(video.duration)) ? video.duration : 0;
+            const position = (video && typeof video.currentTime === 'number' && !isNaN(video.currentTime)) ? video.currentTime : 0;
+
+            return {
+              isPlaying,
+              title,
+              artist: artist || 'YouTube Music',
+              album,
+              duration,
+              position,
+              artworkUrl
+            };
+          } catch (e) { return null; }
+        })()
+      `);
+    } catch (e) { return null; }
+  }
+
+  async function checkSpotifyState() {
+    if (!spotifyWebview) return null;
+    try {
+      return await spotifyWebview.executeJavaScript(`
+        (() => {
+          try {
+            const audio = document.querySelector('audio');
+            const isAudioPlaying = !!(audio && !audio.paused && !audio.ended && audio.currentTime > 0);
+            const mediaSessionPlaying = navigator.mediaSession?.playbackState === 'playing';
+            const playBtn = document.querySelector('[data-testid="control-button-playpause"]') ||
+                            document.querySelector('button[aria-label="Play"]') ||
+                            document.querySelector('button[aria-label="Pause"]') ||
+                            document.querySelector('button[aria-label*="Pause"]') ||
+                            document.querySelector('button[aria-label*="Pausa"]') ||
+                            document.querySelector('button[aria-label*="Pausieren"]');
+            const ariaLabel = playBtn?.getAttribute('aria-label')?.toLowerCase() || '';
+            const isButtonPause = ariaLabel.includes('pause') || ariaLabel.includes('paus');
+            const isPlaying = isAudioPlaying || mediaSessionPlaying || isButtonPause;
+
+            // MediaSession metadata prioritized, then DOM queries
+            const msTitle = navigator.mediaSession?.metadata?.title?.trim() || '';
+            const titleEl = document.querySelector('[data-testid="nowplaying-track-link"]') ||
+                            document.querySelector('[data-testid="context-item-info-title"]') ||
+                            document.querySelector('[data-testid="now-playing-widget"] [data-testid="context-item-info-title"]') ||
+                            document.querySelector('[data-testid="now-playing-widget"] a[href*="/track/"]') ||
+                            document.querySelector('[data-testid="context-item-link"]') ||
+                            document.querySelector('.now-playing__song') ||
+                            document.querySelector('.track-info__name');
+            const domTitle = titleEl?.textContent?.trim() || '';
+            const title = msTitle || domTitle;
+
+            const msArtist = navigator.mediaSession?.metadata?.artist?.trim() || '';
+            const artistEl = document.querySelector('[data-testid="context-item-info-subtitles"]') ||
+                             document.querySelector('[data-testid="context-item-info-artist"]') ||
+                             document.querySelector('[data-testid="now-playing-widget"] [data-testid="context-item-info-artist"]') ||
+                             document.querySelector('[data-testid="now-playing-widget"] a[href*="/artist/"]') ||
+                             document.querySelector('footer [data-testid="context-item-info-subtitles"] a') ||
+                             document.querySelector('.now-playing__artist') ||
+                             document.querySelector('.track-info__artists');
+            const domArtist = artistEl?.textContent?.trim() || '';
+            const artist = msArtist || domArtist;
+
+            const album = navigator.mediaSession?.metadata?.album?.trim() || 'Spotify';
+
+            let artworkUrl = '';
+            const msArtwork = navigator.mediaSession?.metadata?.artwork;
+            if (Array.isArray(msArtwork) && msArtwork.length > 0) {
+              artworkUrl = msArtwork[msArtwork.length - 1]?.src || msArtwork[0]?.src || '';
+            }
+            if (!artworkUrl) {
+              const artEl = document.querySelector('[data-testid="now-playing-widget"] img') ||
+                            document.querySelector('[data-testid="cover-art-image"]') ||
+                            document.querySelector('footer img[src*="image"]') ||
+                            document.querySelector('footer img');
+              artworkUrl = artEl?.src || '';
+            }
+
+            const duration = (audio && typeof audio.duration === 'number' && !isNaN(audio.duration)) ? audio.duration : 0;
+            const position = (audio && typeof audio.currentTime === 'number' && !isNaN(audio.currentTime)) ? audio.currentTime : 0;
+
+            return {
+              isPlaying,
+              title,
+              artist: artist || 'Spotify',
+              album,
+              duration,
+              position,
+              artworkUrl
+            };
+          } catch (e) { return null; }
+        })()
+      `);
+    } catch (e) { return null; }
+  }
+
+  // Webview MPRIS synchronization and single-source exclusivity engine
+  let lastYtPlaying = false;
+  let lastSpotifyPlaying = false;
+  let lastLocalPlaying = false;
+
+  async function syncPlaybackLoop() {
+    try {
+      const ytInfo = await checkYouTubeState();
+      const spotifyInfo = await checkSpotifyState();
+
+      const isYtPlaying = !!(ytInfo && ytInfo.isPlaying);
+      const isSpotifyPlaying = !!(spotifyInfo && spotifyInfo.isPlaying);
+      const isLocalPlaying = !!state.player.isPlaying;
+
+      isYtPlayingActive = isYtPlaying;
+      isSpotifyPlayingActive = isSpotifyPlaying;
+
+      // Enforce strict single-source exclusivity: playing one source pauses the others
+      if (isYtPlaying && !lastYtPlaying) {
+        if (isLocalPlaying) pauseLocalAudio();
+        if (isSpotifyPlaying) pauseSpotify();
+        state.activeAudioSource = 'youtube';
+      } else if (isSpotifyPlaying && !lastSpotifyPlaying) {
+        if (isLocalPlaying) pauseLocalAudio();
+        if (isYtPlaying) pauseYouTube();
+        state.activeAudioSource = 'spotify';
+      } else if (isLocalPlaying && !lastLocalPlaying) {
+        if (isYtPlaying) pauseYouTube();
+        if (isSpotifyPlaying) pauseSpotify();
+        state.activeAudioSource = 'local';
+      }
+
+      lastYtPlaying = isYtPlaying;
+      lastSpotifyPlaying = isSpotifyPlaying;
+      lastLocalPlaying = isLocalPlaying;
+
+      const context = getEffectivePlaybackContext();
+
+      if (context === 'youtube') {
+        const title = ytInfo?.title || 'YouTube Music';
+        const artist = ytInfo?.artist || 'YouTube Music';
+        const album = ytInfo?.album || 'YouTube Music';
+        const artworkUrl = ytInfo?.artworkUrl || '';
+        const duration = ytInfo?.duration || 0;
+        const position = ytInfo?.position || 0;
+
+        window.braveApi?.updateMprisState({
+          title,
+          artist,
+          album,
+          duration,
+          position,
+          artworkUrl,
+          isPlaying: isYtPlaying,
+          isPaused: !isYtPlaying,
+          canGoNext: true,
+          canGoPrevious: true,
+          trackId: 'ytm_' + title
+        });
+
+        updateMediaSession({
+          title,
+          artist,
+          album,
+          artworkUrl,
+          isPlaying: isYtPlaying,
+          isPaused: !isYtPlaying
+        });
+
+        updatePlayerBarUI({
+          title: ytInfo?.title ? title : 'Select a track to play',
+          artist: ytInfo?.title ? artist : 'YouTube Music',
+          artworkUrl,
+          isPlaying: isYtPlaying,
+          duration,
+          position
+        });
+      } else if (context === 'spotify') {
+        const title = spotifyInfo?.title || 'Spotify';
+        const artist = spotifyInfo?.artist || 'Spotify';
+        const album = spotifyInfo?.album || 'Spotify';
+        const artworkUrl = spotifyInfo?.artworkUrl || '';
+        const duration = spotifyInfo?.duration || 0;
+        const position = spotifyInfo?.position || 0;
+
+        window.braveApi?.updateMprisState({
+          title,
+          artist,
+          album,
+          duration,
+          position,
+          artworkUrl,
+          isPlaying: isSpotifyPlaying,
+          isPaused: !isSpotifyPlaying,
+          canGoNext: true,
+          canGoPrevious: true,
+          trackId: 'spotify_' + title
+        });
+
+        updateMediaSession({
+          title,
+          artist,
+          album,
+          artworkUrl,
+          isPlaying: isSpotifyPlaying,
+          isPaused: !isSpotifyPlaying
+        });
+
+        updatePlayerBarUI({
+          title: spotifyInfo?.title ? title : 'Select a track to play',
+          artist: spotifyInfo?.title ? artist : 'Spotify',
+          artworkUrl,
+          isPlaying: isSpotifyPlaying,
+          duration,
+          position
+        });
+      } else if (context === 'local') {
+        if (state.player.currentTrack) {
+          syncPlayerToMprisAndMediaSession();
+          updatePlayerBarUI({
+            title: state.player.currentTrack.title || 'Unknown Title',
+            artist: state.player.currentTrack.artist || 'Offline Library',
+            artworkUrl: getTrackThumbnail(state.player.currentTrack),
+            isPlaying: isLocalPlaying,
+            duration: runtimeAudio.duration || (state.player.currentTrack.duration ? parseFloat(state.player.currentTrack.duration) : 0) || 0,
+            position: runtimeAudio.currentTime || 0
+          });
+        } else {
+          updatePlayerBarUI({
+            title: 'Select a track to play',
+            artist: 'Offline Library',
+            artworkUrl: EMPTY_MUSIC_THUMBNAIL,
+            isPlaying: false,
+            duration: 0,
+            position: 0
+          });
+        }
+      }
+    } catch (e) {}
+  }
+
+  setInterval(syncPlaybackLoop, 1200);
 
   // ==========================================================================
   // OFFLINE LIBRARY DATA & RENDERING

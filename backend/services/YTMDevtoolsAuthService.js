@@ -35,6 +35,7 @@ class YTMDevtoolsAuthService {
     this.activeProcess = null;
     this.activeWs = null;
     this.activePollInterval = null;
+    this.loginAttemptId = 0;
     this.statusListeners = new Set();
   }
 
@@ -61,53 +62,79 @@ class YTMDevtoolsAuthService {
     });
   }
 
-  // Detect installed browsers in priority order
+  // Detect installed browsers in priority order (cross-platform Windows & Linux)
   detectBrowsers() {
     const list = [];
+    const isWin = process.platform === 'win32';
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    const progFiles = process.env.ProgramFiles || 'C:\\Program Files';
+    const progFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
 
     // Google Chrome
-    const chromeCandidates = [
+    const chromeCandidates = isWin ? [
+      path.join(progFiles, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(progFilesX86, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(localAppData, 'Google', 'Chrome', 'Application', 'chrome.exe')
+    ] : [
       '/usr/bin/google-chrome',
       '/usr/bin/google-chrome-stable',
       '/usr/bin/google-chrome-beta'
     ];
     for (const bin of chromeCandidates) {
-      if (fs.existsSync(bin)) {
+      if (bin && fs.existsSync(bin)) {
         list.push({ id: 'chrome', name: 'Google Chrome', path: bin });
         break;
       }
     }
 
     // Brave Browser
-    const braveCandidates = [
+    const braveCandidates = isWin ? [
+      path.join(progFiles, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+      path.join(progFilesX86, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'),
+      path.join(localAppData, 'BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe')
+    ] : [
       '/snap/bin/brave',
       '/usr/bin/brave-browser',
       '/usr/bin/brave',
       '/var/lib/snapd/snap/bin/brave'
     ];
     for (const bin of braveCandidates) {
-      if (fs.existsSync(bin)) {
+      if (bin && fs.existsSync(bin)) {
         list.push({ id: 'brave', name: 'Brave Browser', path: bin });
         break;
       }
     }
 
+    // Microsoft Edge
+    const edgeCandidates = isWin ? [
+      path.join(progFilesX86, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      path.join(progFiles, 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      path.join(localAppData, 'Microsoft', 'Edge', 'Application', 'msedge.exe')
+    ] : [
+      '/usr/bin/microsoft-edge',
+      '/usr/bin/microsoft-edge-stable'
+    ];
+    for (const bin of edgeCandidates) {
+      if (bin && fs.existsSync(bin)) {
+        list.push({ id: 'edge', name: 'Microsoft Edge', path: bin });
+        break;
+      }
+    }
+
     // Chromium
-    const chromiumCandidates = [
+    const chromiumCandidates = isWin ? [
+      path.join(localAppData, 'Chromium', 'Application', 'chrome.exe'),
+      path.join(progFiles, 'Chromium', 'Application', 'chrome.exe')
+    ] : [
       '/snap/bin/chromium',
       '/usr/bin/chromium',
       '/usr/bin/chromium-browser'
     ];
     for (const bin of chromiumCandidates) {
-      if (fs.existsSync(bin)) {
+      if (bin && fs.existsSync(bin)) {
         list.push({ id: 'chromium', name: 'Chromium', path: bin });
         break;
       }
-    }
-
-    // Microsoft Edge
-    if (fs.existsSync('/usr/bin/microsoft-edge')) {
-      list.push({ id: 'edge', name: 'Microsoft Edge', path: '/usr/bin/microsoft-edge' });
     }
 
     return list;
@@ -134,80 +161,70 @@ class YTMDevtoolsAuthService {
 
   async startCdpLogin(service = 'youtube', preferredBrowser = 'auto') {
     this.cancelCdpLogin();
-
-    // Support legacy argument where service was browser string
-    if (service === 'auto' || service === 'chrome' || service === 'brave' || service === 'chromium') {
-      preferredBrowser = service;
-      service = 'youtube';
-    }
-
+    const attemptId = this.loginAttemptId;
     const normalizedService = (service || 'youtube').toLowerCase() === 'spotify' ? 'spotify' : 'youtube';
-    const isSpotify = normalizedService === 'spotify';
-    const serviceName = isSpotify ? 'Spotify' : 'YouTube Music';
-    const targetUrl = isSpotify 
+    this.activeLoginService = normalizedService;
+    const targetUrl = normalizedService === 'spotify'
       ? 'https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F'
-      : 'https://music.youtube.com';
-
-    const profileDir = isSpotify ? this.spotifyProfileDir : this.ytmProfileDir;
-    const browser = this.resolveBrowserBinary(preferredBrowser);
-    const port = await this.getFreePort();
-
-    if (!fs.existsSync(profileDir)) {
-      try { fs.mkdirSync(profileDir, { recursive: true }); } catch (e) {}
-    }
-
-    this._notify('status', {
-      service: normalizedService,
-      state: 'launching',
-      message: `Opening browser for ${serviceName} sign-in...`
-    });
-
-    const args = [
-      `--remote-debugging-port=${port}`,
-      `--user-data-dir=${profileDir}`,
-      '--no-first-run',
-      '--no-default-browser-check',
-      '--disable-sync',
-      '--disable-background-networking',
-      `--app=${targetUrl}`
-    ];
-
-    // Brave-specific flags to allow standard Google extension signin and unblock auth cookies
-    if (browser.id === 'brave' || browser.path.includes('brave')) {
-      args.push('--enable-features=AllowGoogleLoginForExtensions');
-      args.push('--disable-brave-shields');
-    }
-
-    console.log(`[CDP-Auth] Spawning ${browser.name} for ${serviceName} with port ${port}`);
-
-    const proc = spawn(browser.path, args, {
-      detached: false,
-      stdio: 'ignore'
-    });
-
-    this.activeProcess = proc;
-
-    proc.on('exit', (code, signal) => {
-      console.log(`[CDP-Auth] Browser process exited with code ${code}, signal ${signal}`);
-      if (this.activeProcess === proc) {
-        this.activeProcess = null;
-      }
-    });
-
-    // Wait for CDP /json/list to become available
-    const pageTarget = await this._waitForCdpTarget(port, 20000);
-    if (!pageTarget) {
-      throw new Error(`Browser did not respond to remote debugging protocol on port ${port}`);
-    }
+      : 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F';
+    const authSyncService = require('./AuthSyncService');
+    const browserTarget = authSyncService.getDefaultBrowserTarget();
+    const opened = await authSyncService.openInDefaultBrowser(targetUrl);
+    if (!opened.success) throw new Error(opened.error || 'Could not open the default browser.');
 
     this._notify('status', {
       service: normalizedService,
       state: 'waiting_login',
-      message: `Browser opened. Sign in to your ${serviceName} account...`
+      message: `Sign in in your default browser. Brave Music will sync the session from ${browserTarget}.`
     });
 
-    // Connect WebSocket to page target
-    return this._connectAndPollCookies(pageTarget.webSocketDebuggerUrl, port, normalizedService);
+    const deadline = Date.now() + 300000;
+    let lastError = '';
+    while (Date.now() < deadline && attemptId === this.loginAttemptId) {
+      const result = await authSyncService.extractDefaultBrowserCookies(normalizedService);
+      if (result.success) {
+        const cookies = result.cookies || [];
+        const isSpotify = normalizedService === 'spotify';
+        const hasServiceLogin = isSpotify
+          ? cookies.some((cookie) => cookie.name === 'sp_dc') ||
+            (cookies.some((cookie) => cookie.name === 'sp_key') && cookies.some((cookie) => cookie.name === 'sp_t'))
+          : cookies.some((cookie) => cookie.name === 'LOGIN_INFO') ||
+            (cookies.some((cookie) => cookie.name === 'SAPISID') && cookies.some((cookie) => cookie.name === 'SID'));
+
+        if (hasServiceLogin && attemptId === this.loginAttemptId) {
+          const applied = await this._injectCdpCookies(cookies, normalizedService);
+          if (!applied.success) throw new Error(applied.error || 'Could not apply browser cookies to the music tabs.');
+          const account = this.saveUserAccount(normalizedService, {
+            name: isSpotify ? 'Spotify Account' : 'Google Account',
+            email: isSpotify ? 'Active Spotify Session' : 'Active Google Session',
+            authenticated: true,
+            source: 'default-browser'
+          });
+          this._notify('status', {
+            service: normalizedService,
+            state: 'complete',
+            count: applied.count,
+            message: 'Sign-in complete. Browser session copied to Brave Music.'
+          });
+          return { ...applied, account: account.account };
+        }
+      } else {
+        lastError = result.error || 'Could not read browser cookies.';
+      }
+
+      if (attemptId !== this.loginAttemptId) break;
+      this._notify('status', {
+        service: normalizedService,
+        state: 'waiting_login',
+        message: 'Waiting for sign-in in your default browser…'
+      });
+      await new Promise((resolve) => setTimeout(resolve, 3500));
+    }
+
+    if (attemptId !== this.loginAttemptId) throw new Error('Sign-in cancelled.');
+    throw new Error(lastError
+      ? `Sign-in timed out. Could not read the default browser session: ${lastError}`
+      : 'Sign-in timed out. Sign in to the service in your default browser, then try again.');
   }
 
   async _waitForCdpTarget(port, timeoutMs = 20000) {
@@ -340,7 +357,9 @@ class YTMDevtoolsAuthService {
     });
   }
 
-  cancelCdpLogin() {
+  cancelCdpLogin(service) {
+    this.loginAttemptId++;
+    const targetService = service || this.activeLoginService || 'youtube';
     if (this.activePollInterval) {
       clearInterval(this.activePollInterval);
       this.activePollInterval = null;
@@ -353,7 +372,8 @@ class YTMDevtoolsAuthService {
       try { this.activeProcess.kill('SIGKILL'); } catch (e) {}
       this.activeProcess = null;
     }
-    this._notify('status', { state: 'cancelled', message: 'Sign-in cancelled.' });
+    this._notify('status', { service: targetService, state: 'cancelled', message: 'Sign-in cancelled.' });
+    this.activeLoginService = null;
   }
 
   // =========================================================================
@@ -406,9 +426,11 @@ class YTMDevtoolsAuthService {
     let injectedCount = 0;
 
     for (const c of relevantCookies) {
-      const isDomain = c.domain && c.domain.startsWith('.');
+      const rawDomain = (c.domain || '').toLowerCase();
+      const domainCookieRoots = ['youtube.com', 'google.com', 'googleusercontent.com', 'gstatic.com', 'spotify.com', 'spotifycdn.com', 'scdn.co'];
+      const isDomain = rawDomain.startsWith('.') || domainCookieRoots.includes(rawDomain);
       const cleanDomain = isDomain 
-        ? c.domain.substring(1) 
+        ? (rawDomain.startsWith('.') ? rawDomain.substring(1) : rawDomain)
         : (c.domain || (isSpotify ? 'open.spotify.com' : 'music.youtube.com'));
       const isHostPrefix = c.name && c.name.startsWith('__Host-');
       const isSecurePrefix = c.name && c.name.startsWith('__Secure-');
@@ -435,7 +457,7 @@ class YTMDevtoolsAuthService {
       };
 
       if (!isHostPrefix && isDomain) {
-        cookieObj.domain = cleanDomain;
+        cookieObj.domain = `.${cleanDomain}`;
       }
 
       if (c.expires && c.expires > 0) {
@@ -446,8 +468,14 @@ class YTMDevtoolsAuthService {
 
       for (const s of partitions) {
         try {
+          if (isDomain) {
+            await s.cookies.remove(cookieUrl, c.name).catch(() => {});
+          }
           await s.cookies.set(cookieObj);
         } catch (setErr) {
+          if (isDomain) {
+            throw new Error(`Could not apply domain cookie ${c.name}: ${setErr.message}`);
+          }
           try {
             const fallback = {
               url: cookieUrl,
@@ -594,15 +622,31 @@ class YTMDevtoolsAuthService {
     let ytmRestored = false;
     let spotifyRestored = false;
 
+    const sharedSession = session ? session.fromPartition(SHARED_PARTITION) : null;
+    const hasLiveCookies = async (domain, names) => {
+      if (!sharedSession) return false;
+      try {
+        const cookies = await sharedSession.cookies.get({ domain });
+        return cookies.some((cookie) => names.includes(cookie.name));
+      } catch (error) {
+        return false;
+      }
+    };
+
     // 1. YouTube Music
     if (fs.existsSync(this.ytmSessionPath)) {
       try {
-        const raw = fs.readFileSync(this.ytmSessionPath, 'utf8');
-        const cookies = JSON.parse(raw);
-        if (Array.isArray(cookies) && cookies.length > 0) {
-          await this._injectCdpCookies(cookies, 'youtube');
-          console.log(`[CDP-Auth] Restored ${cookies.length} persisted YouTube Music cookies on startup.`);
+        const alreadyAuthenticated = await hasLiveCookies('youtube.com', ['LOGIN_INFO']);
+        if (alreadyAuthenticated) {
           ytmRestored = true;
+        } else {
+          const raw = fs.readFileSync(this.ytmSessionPath, 'utf8');
+          const cookies = JSON.parse(raw);
+          if (Array.isArray(cookies) && cookies.length > 0) {
+            await this._injectCdpCookies(cookies, 'youtube');
+            console.log(`[CDP-Auth] Restored ${cookies.length} persisted YouTube Music cookies on startup.`);
+            ytmRestored = true;
+          }
         }
       } catch (e) {
         console.warn('[CDP-Auth] Error restoring YouTube session:', e.message);
@@ -612,12 +656,17 @@ class YTMDevtoolsAuthService {
     // 2. Spotify
     if (fs.existsSync(this.spotifySessionPath)) {
       try {
-        const raw = fs.readFileSync(this.spotifySessionPath, 'utf8');
-        const cookies = JSON.parse(raw);
-        if (Array.isArray(cookies) && cookies.length > 0) {
-          await this._injectCdpCookies(cookies, 'spotify');
-          console.log(`[CDP-Auth] Restored ${cookies.length} persisted Spotify cookies on startup.`);
+        const alreadyAuthenticated = await hasLiveCookies('spotify.com', ['sp_dc']);
+        if (alreadyAuthenticated) {
           spotifyRestored = true;
+        } else {
+          const raw = fs.readFileSync(this.spotifySessionPath, 'utf8');
+          const cookies = JSON.parse(raw);
+          if (Array.isArray(cookies) && cookies.length > 0) {
+            await this._injectCdpCookies(cookies, 'spotify');
+            console.log(`[CDP-Auth] Restored ${cookies.length} persisted Spotify cookies on startup.`);
+            spotifyRestored = true;
+          }
         }
       } catch (e) {
         console.warn('[CDP-Auth] Error restoring Spotify session:', e.message);
@@ -632,17 +681,17 @@ class YTMDevtoolsAuthService {
 
   // Check live cookie authentication status for both services
   async getServiceAuthStatus() {
-    let hasYtm = fs.existsSync(this.ytmSessionPath);
-    let hasSpotify = fs.existsSync(this.spotifySessionPath);
+    let hasYtm = false;
+    let hasSpotify = false;
 
     try {
       if (session) {
         const s = session.fromPartition(SHARED_PARTITION);
-        const ytmCookies = await s.cookies.get({ domain: '.youtube.com' });
-        if (ytmCookies && ytmCookies.some(c => c.name === '__Secure-3PAPISID' || c.name === 'LOGIN_INFO')) {
+        const ytmCookies = await s.cookies.get({ domain: 'youtube.com' });
+        if (ytmCookies && ytmCookies.some(c => c.name === 'LOGIN_INFO')) {
           hasYtm = true;
         }
-        const spotifyCookies = await s.cookies.get({ domain: '.spotify.com' });
+        const spotifyCookies = await s.cookies.get({ domain: 'spotify.com' });
         if (spotifyCookies && spotifyCookies.some(c => c.name === 'sp_dc')) {
           hasSpotify = true;
         }

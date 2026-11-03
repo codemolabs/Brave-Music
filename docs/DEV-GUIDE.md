@@ -215,21 +215,38 @@ node test-castlabs-eme.js
 
 ---
 
-## 5. Building the Debian Package
+## 5. Building Distribution Packages (Linux & Windows)
 
-The build pipeline bundles the application into a standalone Debian `.deb` package installed into `/opt/brave-music`:
+Brave Music supports automated build scripts for both Linux Debian and Windows 10/11:
 
+### Building Linux Debian Package (`.deb`)
 ```bash
 npm run build:deb
 ```
-Or run the script:
+Or run the script directly:
 ```bash
-./build-deb.sh
+bash Install/Linux/build-deb.sh
 ```
+The script builds the package at `Install/Linux/brave-music_1.0.18_amd64.deb`.
 
-The script outputs `brave-music_1.0.3_amd64.deb` at the project root. Install and test the package with:
+### Building Windows Suite (`.exe` & `.zip`)
 ```bash
-sudo apt install ./brave-music_1.0.3_amd64.deb
+npm run build:win
+```
+Or run the script directly:
+```bash
+bash Install/Windows/build-win.sh
+```
+The script outputs:
+- `Install/Windows/BraveMusic-Setup-1.0.18.exe` (Self-extracting GUI suite)
+- `Install/Windows/brave-music_1.0.18_win64.zip` (Portable suite)
+
+### Building WinUI 3 Native Installer
+Navigate to `Install/Windows/BraveMusic.Installer/` and compile with `winapp CLI`:
+```powershell
+winget install Microsoft.winappcli --source winget
+winapp build
+winapp package
 ```
 
 ---

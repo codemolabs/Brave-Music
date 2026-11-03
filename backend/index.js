@@ -9,6 +9,7 @@ try {
 }
 const streamServer = require('./services/StreamServer');
 const musikcubeService = require('./services/MusikcubeService');
+const mprisService = require('./services/MprisService');
 const adBlockService = require('./services/AdBlockService');
 const downloadController = require('./controllers/DownloadController');
 const libraryController = require('./controllers/LibraryController');
@@ -37,6 +38,12 @@ class Backend {
       musikcubeService.start();
     } catch (e) {
       console.warn('[Backend] MusikcubeService start notice:', e.message);
+    }
+
+    try {
+      mprisService.init({ mainWindow: this.mainWindow });
+    } catch (e) {
+      console.warn('[Backend] MprisService init notice:', e.message);
     }
 
     // 2. Attach Brave Shields to default session and webview partitions
@@ -101,6 +108,9 @@ class Backend {
     // Musikcube Audio Engine
     ipcMain.handle('get-musikcube-status', () => musikcubeService.getStatus());
 
+    // Linux MPRIS Media Controller
+    ipcMain.handle('mpris-update-state', (event, payload) => mprisService.updateState(payload));
+
     // Browser Auth & Session Sync (Capability-based)
     const ytmDevtoolsAuthService = require('./services/YTMDevtoolsAuthService');
     ytmDevtoolsAuthService.onStatus((statusData) => {
@@ -136,6 +146,7 @@ class Backend {
   shutdown() {
     streamServer.stop();
     musikcubeService.stop();
+    mprisService.stop();
   }
 }
 

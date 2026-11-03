@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('braveApi', {
   maximize: () => ipcRenderer.invoke('window-maximize'),
   close: () => ipcRenderer.invoke('window-close'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  getPlatformInfo: () => ipcRenderer.invoke('get-platform-info'),
+  setTaskbarProgress: (progress) => ipcRenderer.invoke('set-taskbar-progress', progress),
 
   // Library & Storage
   getLibrary: () => ipcRenderer.invoke('get-library'),
@@ -61,6 +63,14 @@ contextBridge.exposeInMainWorld('braveApi', {
 
   // Musikcube Audio Engine Backend
   getMusikcubeStatus: () => ipcRenderer.invoke('get-musikcube-status'),
+
+  // Linux MPRIS Media Controller
+  updateMprisState: (stateData) => ipcRenderer.invoke('mpris-update-state', stateData),
+  onMprisCommand: (callback) => {
+    const handler = (event, data) => callback(data);
+    ipcRenderer.on('mpris-command', handler);
+    return () => ipcRenderer.removeListener('mpris-command', handler);
+  },
 
   // Browser Auth & Session Synchronization (Capability-based)
   openBrowserLogin: (service, url) => ipcRenderer.invoke('auth-open-browser-login', { service, url }),

@@ -1,17 +1,22 @@
 {
   "name": "brave-music",
-  "version": "1.0.6",
+  "version": "1.0.18",
   "description": "Brave Music OTT Platform - Ad-free YouTube, Spotify and Built-in Offline Music Engine",
   "main": "main.js",
   "scripts": {
     "start": "electron . --no-sandbox",
-    "build:deb": "bash build-deb.sh"
+    "build:deb": "bash Install/Linux/build-deb.sh",
+    "build:win": "bash Install/Windows/build-win.sh"
   },
   "author": "Brave Music Team",
   "license": "GPL-3.0-or-later",
   "dependencies": {
-    "ws": "^8.22.0",
-    "electron": "github:castlabs/electron-releases#v42.11.18+wvcus"
+    "electron": "github:castlabs/electron-releases#v42.11.18+wvcus",
+    "ws": "^8.22.0"
+  },
+  "optionalDependencies": {
+    "dbus-next": "^0.10.2",
+    "mpris-service": "^2.1.2"
   },
   "devDependencies": {
     "electron": "github:castlabs/electron-releases#v42.11.18+wvcus"

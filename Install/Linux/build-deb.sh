@@ -2,14 +2,15 @@
 set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "1.0.1")
+ROOT_DIR="$(cd "$DIR/../.." && pwd)"
+VERSION=$(node -p "require('$ROOT_DIR/package.json').version" 2>/dev/null || echo "1.0.18")
 BUILD_DIR="$DIR/dist/brave-music_${VERSION}_amd64"
 OUTPUT_DEB="$DIR/brave-music_${VERSION}_amd64.deb"
 
 echo "=== Building Brave Music Debian (.deb) Package (v${VERSION}) ==="
 
 # Clean previous build artifacts
-rm -rf "$DIR/dist" "$DIR"/brave-music_*_amd64.deb
+rm -rf "$DIR/dist"
 mkdir -p "$BUILD_DIR/DEBIAN"
 mkdir -p "$BUILD_DIR/opt/brave-music"
 mkdir -p "$BUILD_DIR/usr/bin"
@@ -31,12 +32,12 @@ Description: Brave Music OTT Platform
 EOF
 
 # 2. Copy App Files into /opt/brave-music
-cp "$DIR/package.json" "$BUILD_DIR/opt/brave-music/"
-cp "$DIR/main.js" "$BUILD_DIR/opt/brave-music/"
-cp "$DIR/preload.js" "$BUILD_DIR/opt/brave-music/"
-cp -r "$DIR/backend" "$BUILD_DIR/opt/brave-music/"
-cp -r "$DIR/src" "$BUILD_DIR/opt/brave-music/"
-cp -r "$DIR/node_modules" "$BUILD_DIR/opt/brave-music/"
+cp "$ROOT_DIR/package.json" "$BUILD_DIR/opt/brave-music/"
+cp "$ROOT_DIR/main.js" "$BUILD_DIR/opt/brave-music/"
+cp "$ROOT_DIR/preload.js" "$BUILD_DIR/opt/brave-music/"
+cp -r "$ROOT_DIR/backend" "$BUILD_DIR/opt/brave-music/"
+cp -r "$ROOT_DIR/src" "$BUILD_DIR/opt/brave-music/"
+cp -r "$ROOT_DIR/node_modules" "$BUILD_DIR/opt/brave-music/"
 
 # Seed Widevine CDM into /opt/brave-music/WidevineCdm if available
 mkdir -p "$BUILD_DIR/opt/brave-music/WidevineCdm"
@@ -85,7 +86,7 @@ EOF
 chmod 644 "$BUILD_DIR/usr/share/applications/brave-music.desktop"
 
 # 6. Copy App Icon to /usr/share/icons/hicolor/scalable/apps/brave-music.svg
-cp "$DIR/src/assets/app-icon.svg" "$BUILD_DIR/usr/share/icons/hicolor/scalable/apps/brave-music.svg"
+cp "$ROOT_DIR/src/assets/app-icon.svg" "$BUILD_DIR/usr/share/icons/hicolor/scalable/apps/brave-music.svg"
 chmod 644 "$BUILD_DIR/usr/share/icons/hicolor/scalable/apps/brave-music.svg"
 
 # 7. Package with dpkg-deb

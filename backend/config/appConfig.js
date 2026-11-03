@@ -2,8 +2,14 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
+const isWin = process.platform === 'win32';
+
 // Brave Music Application Storage Configuration
-const DATA_DIR = process.env.BRAVE_MUSIC_DATA_DIR || path.join(os.homedir(), '.local', 'share', 'brave-music');
+const DATA_DIR = process.env.BRAVE_MUSIC_DATA_DIR || (
+  isWin
+    ? path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'brave-music')
+    : path.join(os.homedir(), '.local', 'share', 'brave-music')
+);
 const DOWNLOADS_DIR = path.join(DATA_DIR, 'downloads');
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails');
 const DB_FILE = path.join(DATA_DIR, 'library.json');
@@ -35,7 +41,18 @@ function resolveYtDlpBinary() {
   const envPath = process.env.YTM_YTDLP || process.env.YTDLP_PATH;
   if (envPath && fs.existsSync(envPath)) return envPath;
 
-  const candidatePaths = [
+  const binaryName = isWin ? 'yt-dlp.exe' : 'yt-dlp';
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+
+  const candidatePaths = isWin ? [
+    path.join(__dirname, '..', '..', 'bin', binaryName),
+    path.join(process.resourcesPath || '', 'bin', binaryName),
+    path.join(process.resourcesPath || '', binaryName),
+    path.join(localAppData, 'Programs', 'yt-dlp', binaryName),
+    path.join(localAppData, 'Microsoft', 'WinGet', 'Packages', 'yt-dlp.yt-dlp_Microsoft.Winget.Source_8wekyb3d8bbwe', binaryName),
+    path.join(process.env.ProgramFiles || 'C:\\Program Files', 'yt-dlp', binaryName),
+    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'yt-dlp', binaryName)
+  ] : [
     path.join(os.homedir(), '.local', 'bin', 'yt-dlp'),
     '/usr/local/bin/yt-dlp',
     '/usr/bin/yt-dlp',
@@ -43,10 +60,10 @@ function resolveYtDlpBinary() {
   ];
 
   for (const p of candidatePaths) {
-    if (fs.existsSync(p)) return p;
+    if (p && fs.existsSync(p)) return p;
   }
 
-  return 'yt-dlp';
+  return binaryName;
 }
 
 // Locate zotify binary
@@ -54,7 +71,14 @@ function resolveZotifyBinary() {
   const envPath = process.env.BRAVE_MUSIC_ZOTIFY || process.env.ZOTIFY_PATH;
   if (envPath && fs.existsSync(envPath)) return envPath;
 
-  const candidatePaths = [
+  const binaryName = isWin ? 'zotify.exe' : 'zotify';
+  const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+
+  const candidatePaths = isWin ? [
+    path.join(__dirname, '..', '..', 'bin', binaryName),
+    path.join(process.resourcesPath || '', 'bin', binaryName),
+    path.join(localAppData, 'Programs', 'Python', 'Scripts', binaryName)
+  ] : [
     path.join(os.homedir(), '.local', 'bin', 'zotify'),
     '/usr/local/bin/zotify',
     '/usr/bin/zotify',
@@ -62,10 +86,10 @@ function resolveZotifyBinary() {
   ];
 
   for (const p of candidatePaths) {
-    if (fs.existsSync(p)) return p;
+    if (p && fs.existsSync(p)) return p;
   }
 
-  return 'zotify';
+  return binaryName;
 }
 
 const config = {

@@ -2,6 +2,111 @@
 
 This document tracks official version releases, changelogs, binary checksums, and update schedules for Brave Music under Codemo Open Source Labs (Codemo OSL).
 
+### Release v1.0.18
+
+- **Release Tag**: `v1.0.18`
+- **Windows Native Release & Suite (.exe / .zip)**: Complete Windows x64 release package with native Windows libraries, bundled `yt-dlp.exe`, CastLabs Widevine CDM DRM support, and Microsoft UI XAML (WinUI 3) design language.
+- **Windows Suite "Shows Downloading" UI**: Dedicated Windows native download and onboarding suite with real-time progress bar, throughput metrics, ETA, and Windows 11 taskbar integration.
+- **WinUI 3 & Windows App SDK Architecture**: Full C# WinUI 3 suite project in `Install/Windows/BraveMusic.Installer/` implementing `PackageDeploymentManager.AddPackageByUriAsync` and `ContentDialog` (with critical `dialog.XamlRoot = this.Content.XamlRoot` visual tree association).
+- **New Multi-Platform Release Folder Scheme**: Structured under `Install/` with `Install/Linux/`, `Install/Windows/`, `Install/MacOS/`, and `Install/Android/`.
+- **Zero Telemetry & Local Execution**: 100% on-device processing with zero data collection, no telemetry, and no forced installation. Developed and governed by Codemo Open Source Labs (COSL).
+- **Debian Package (Linux)**: `Install/Linux/brave-music_1.0.18_amd64.deb`
+- **Linux SHA-256**: `f198ef99d80d1eb61cff82d4f3b5667cd89b0182c82d66fc7fb7ee9b65d2b41b`
+- **Windows Setup Executable**: `Install/Windows/BraveMusic-Setup-1.0.18.exe`
+- **Windows Setup SHA-256**: `cc85d9e8e5964ad3cc011ed62fb24642b485a9f14a71c417585e73adf6b42d20`
+- **Windows Portable Suite**: `Install/Windows/brave-music_1.0.18_win64.zip`
+- **Windows Portable SHA-256**: `f333261575c64abd6d72588360ee33b416d74927f9724f1694b04c863a5b10d4`
+
+### Release v1.0.17
+
+- **Release Tag**: `v1.0.17`
+- **Scoped Playback & Source Isolation**: Ensured Previous and Next controls are strictly bounded to the active player context (YouTube Music, Spotify, or Local Music) without cross-contaminating or switching to other sources.
+- **Tab-Scoped Controls**: All playback controls operate strictly under the currently active tab.
+- **Information Dialog Clean Version**: Streamlined version display in the Information dialog to clean version string.
+- **Debian Package**: `brave-music_1.0.17_amd64.deb`
+- **SHA-256**: `6f9737ac33659147793c32e98d2c64d539c56da0f9f7a05c376162d984ea3ea2`
+
+### Release v1.0.16 (Linux Built-in Player MPRIS Controls)
+
+- **Release Tag**: `v1.0.16`
+- **Linux Built-in Media Player Integration (MPRIS2)**: Integrated native `org.mpris.MediaPlayer2.bravemusic` D-Bus service, allowing the Linux desktop (GNOME Shell, notification center, top panel, lock screen, sound applet) to show the media controller widget with playback buttons (Play, Pause, Next, Previous).
+- **Desktop Entry Association**: Linked MPRIS service to `brave-music.desktop` and `/usr/share/icons/hicolor/scalable/apps/brave-music.svg` for seamless app identity and icon rendering in the Linux shell.
+- **Hardware Media Key Handling**: Full support for multimedia keyboard and headset hardware keys (Play/Pause, Next, Prev, Stop).
+- **Bidirectional State Sync**: Real-time position tracking, volume syncing, shuffle, repeat, track title, artist, and album art synchronization between the built-in offline player and the Linux OS.
+- **Webview Playback Relay**: Seamless fallback bridging for YouTube Music and Spotify webview playback controls and metadata when Our Player is idle.
+- **Debian Package**: `brave-music_1.0.16_amd64.deb`
+- **SHA-256**: `2b6b9c824adbeeb7f187aacd7eef4f4edc42c2db2bcd37007fa45f841630e753`
+
+### Release v1.0.15 (Header Profile Icon & Clean Sign-In)
+
+- **Release Tag**: `v1.0.15`
+- **Header Profile Button**: Restored the simple, clean empty profile icon button (`btn-auth-sync`) in the top navigation header without tube/pill text wrappers, dot indicators, or avatar replacements.
+- **Untouched Sign-In Popup**: Preserved the full redesigned dark theme sign-in popup, native brand styles, tab switching, and bounded feedback containers.
+- **Information Dialog**: Updated release version indicators to v1.0.15 across dialog and runtime listeners.
+- **Debian Package**: `brave-music_1.0.15_amd64.deb`
+- **SHA-256**: `77be87d73c8350a14fdd35024d04c9498123af7da69af1ed88f00b513322bff6`
+
+### Release v1.0.14 (Clean Sign-In & Session Sync)
+
+- **Release Tag**: `v1.0.14`
+- **Sign-In Redesign**: Modern dark theme sign-in modal matching design guide tokens, removed dashed dividers and borders, added segmented navigation pill bar, and native YouTube Music (`#ff0033`) and Spotify (`#1ed760`) brand styles.
+- **Container Overflow Fix**: Strictly bounded and responsive live status feedback card preventing layout stretch or container override.
+- **Animation & Lifecycle Sync**: Added attempt tracking and lifecycle guards in CDP auth to prevent late status ticks from overwriting completed logins, instant spinner removal on cancellation, and safe sign-out progress handling.
+- **Information Dialog**: Synchronized version indicator in About dialog with dynamic release tracking.
+- **Debian Package**: `brave-music_1.0.14_amd64.deb`
+- **SHA-256**: `d924a3a0ec87ca6fdc3a82d8358bfbfda0f3170609bf5694f17dc1733bd15bb1`
+
+### Release v1.0.13 (Account Feedback & Performance)
+
+- **Release Tag**: `v1.0.13`
+- **Account Feedback**: Replace the remaining blue loading box with compact dark-theme feedback and consistent loading, success, and error states.
+- **Performance**: Coalesce overlapping account refreshes, inspect each music page once after loading, skip unchanged profile writes, and reload only the service being signed in.
+- **Debian Package**: `brave-music_1.0.13_amd64.deb`
+- **SHA-256**: `25c0444fc3d72e8fb42eb79952657d4acaea3cd423bd92915cac997ffe613d6e`
+
+### Release v1.0.12 (Service-Aware Account Dialog)
+
+- **Release Tag**: `v1.0.12`
+- **Account UI**: Match the account dialog to Brave Music's dark theme, show the active service's original icon and name, and keep sign-in/sign-out compact with clear loading and success states.
+- **Account State**: Display the signed-in view when a service reports an active session, even when profile metadata is unavailable.
+- **Debian Package**: `brave-music_1.0.12_amd64.deb`
+- **SHA-256**: `4cf8418f4f779680f204be26fd08893d641017ec361acf6b137f325dd0b9a346`
+
+### Release v1.0.11 (Domain-Scoped Browser Cookies)
+
+- **Release Tag**: `v1.0.11`
+- **Sign-in**: Preserve domain-wide browser cookie scope when applying cookies to the shared session, so YouTube and Spotify subdomains receive the service login cookies.
+- **Migration**: Replace stale host-only cookie entries from earlier sync attempts before setting domain-wide cookies.
+- **Debian Package**: `brave-music_1.0.11_amd64.deb`
+
+### Release v1.0.10 (Default Browser Authentication)
+
+- **Release Tag**: `v1.0.10`
+- **Sign-in**: Opens the system default browser for Google or Spotify authentication, then securely imports only the selected service's cookies into the shared embedded session.
+- **Session Handling**: Cookie export files use mode `0600` and are removed after import; both music tabs refresh when sign-in completes.
+- **Debian Package**: `brave-music_1.0.10_amd64.deb`
+
+### Release v1.0.9 (Final Account Sheet Polish)
+
+- **Release Tag**: `v1.0.9`
+- **Account UI**: Reduced the sign-in dialog to a plain account state and one action, with the provider picker and cookie import controls removed from the visible dialog.
+- **Debian Package**: `brave-music_1.0.9_amd64.deb`
+
+### Release v1.0.8 (Account Dialog & Shared Sign-In Fixes)
+
+- **Release Tag**: `v1.0.8`
+- **Account UI**: Separated the account dialog from the About dialog and simplified the person icon and sign-in sheet.
+- **Sign-in**: Wait for the YouTube sign-in redirect to finish before closing the shared-session window. Refresh both music tabs after sign-in or cookie import.
+- **Session Persistence**: Avoid restoring legacy cookie snapshots over an existing live browser session.
+- **Debian Package**: `brave-music_1.0.8_amd64.deb`
+
+### Release v1.0.7 (Shared Persistent Sign-In & Minimal Account UI)
+
+- **Release Tag**: `v1.0.7`
+- **Sign-in**: Authentication now runs in a Brave Music window attached to the same persistent browser session used by both music tabs. Google and supported service sessions are kept on-device and reused across tabs and app restarts.
+- **Account UI**: Replaced the labeled account pill with a person icon and simplified the sign-in sheet.
+- **Debian Package**: `brave-music_1.0.7_amd64.deb`
+
 ---
 
 ## Release Channels

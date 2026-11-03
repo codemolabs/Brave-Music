@@ -21,7 +21,7 @@ class AuthController {
     return authSyncService.openInDefaultBrowser(url);
   }
 
-  // Unified Service Login (YouTube Music or Spotify via authentic browser CDP)
+  // Open the system browser and sync the selected provider's cookies into the shared app session.
   async startServiceLogin(event, { service, browser } = {}) {
     try {
       return await ytmDevtoolsAuthService.startCdpLogin(service || 'youtube', browser || 'auto');

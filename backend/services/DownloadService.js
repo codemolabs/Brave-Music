@@ -98,7 +98,7 @@ class DownloadService {
         '--no-warnings',
         '--socket-timeout', '15',
         cleanUrl
-      ]);
+      ], { windowsHide: true });
 
       let jsonStr = '';
       child.stdout.on('data', chunk => {
@@ -440,7 +440,7 @@ class DownloadService {
 
     return new Promise((resolve) => {
       let isSettled = false;
-      const child = spawn(config.paths.zotifyBin, zotifyArgs);
+      const child = spawn(config.paths.zotifyBin, zotifyArgs, { windowsHide: true });
       this.activeProcesses.set(downloadId, child);
 
       // 25 second timeout safeguard in case zotify hangs on interactive login prompt
@@ -651,7 +651,7 @@ class DownloadService {
       try {
         const savedTrack = await new Promise((resolveTrack) => {
           let trackSettled = false;
-          const child = spawn(config.paths.ytdlpBin, trackArgs);
+          const child = spawn(config.paths.ytdlpBin, trackArgs, { windowsHide: true });
           this.activeProcesses.set(downloadId, child);
 
           let trackOutput = '';
@@ -838,7 +838,7 @@ class DownloadService {
       try {
         const savedTrack = await new Promise((resolveTrack) => {
           let trackSettled = false;
-          const child = spawn(config.paths.ytdlpBin, trackArgs);
+          const child = spawn(config.paths.ytdlpBin, trackArgs, { windowsHide: true });
           this.activeProcesses.set(downloadId, child);
 
           let trackOutput = '';
@@ -1082,7 +1082,7 @@ class DownloadService {
 
     return new Promise((resolve) => {
       let isSettled = false;
-      const child = spawn(config.paths.ytdlpBin, baseArgs);
+      const child = spawn(config.paths.ytdlpBin, baseArgs, { windowsHide: true });
       this.activeProcesses.set(downloadId, child);
 
       // Inactivity timeout: if no output for 90 seconds, terminate stalled download

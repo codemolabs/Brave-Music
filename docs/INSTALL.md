@@ -1,15 +1,16 @@
-# Installing Brave Music on Linux
+# Installing Brave Music (Linux & Windows)
 
-This guide provides official instructions for installing, configuring, verifying, and updating Brave Music on supported Linux distributions.
+This guide provides official instructions for installing, configuring, verifying, and updating Brave Music on supported Windows and Linux environments.
 
 ---
 
-## Supported Linux Distributions
+## Supported Operating Systems
 
-Brave Music is tested and officially supported on 64-bit (`x86_64` / `amd64`) Linux distributions:
+Brave Music is tested and officially supported on 64-bit (`x86_64` / `amd64`) architectures:
 
-| Distribution | Minimum Version | Installation Package | Status |
+| Platform | Minimum Version | Installation Package | Status |
 | :--- | :--- | :--- | :--- |
+| **Windows** | Windows 10 (1809+) / Windows 11 | Setup (`.exe`) / Portable (`.zip`) / WinUI 3 | Fully Supported (v1.0.18) |
 | **Ubuntu** | 20.04 LTS, 22.04 LTS, 24.04 LTS | Debian Package (`.deb`) | Fully Supported |
 | **Debian** | 11 (Bullseye), 12 (Bookworm) | Debian Package (`.deb`) | Fully Supported |
 | **Linux Mint** | 20, 21, 22 | Debian Package (`.deb`) | Fully Supported |
@@ -19,39 +20,45 @@ Brave Music is tested and officially supported on 64-bit (`x86_64` / `amd64`) Li
 
 ---
 
-## 1. System Dependencies and Prerequisites
+## 1. Installing on Windows
 
-Brave Music requires standard media extraction and sound playback utilities:
+Brave Music offers two distribution formats for Windows 10/11 alongside the open-source WinUI 3 onboarding project:
 
-### Ubuntu / Debian / Linux Mint / Pop!_OS
-```bash
-sudo apt update
-sudo apt install -y curl yt-dlp libnotify-bin
-```
+### Option A: Windows Setup Suite (`.exe` - Recommended)
+1. Download **[BraveMusic-Setup-1.0.18.exe](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/BraveMusic-Setup-1.0.18.exe)** from the official release page.
+2. Double-click the installer. The native suite unpacks to `%LOCALAPPDATA%\Programs\BraveMusic` with all Windows runtime libraries and launches Brave Music automatically.
+3. Media extraction (`yt-dlp.exe`) and CastLabs Widevine CDM are bundled self-contained—no extra dependencies or python installation required.
 
-### Fedora / RHEL
-```bash
-sudo dnf install -y curl yt-dlp libnotify
-```
+### Option B: Portable Windows Suite (`.zip`)
+1. Download **[brave-music_1.0.18_win64.zip](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_win64.zip)**.
+2. Extract the archive into any folder of your choice (e.g. `C:\Tools\BraveMusic`).
+3. Run `brave-music.exe`.
 
-### Arch Linux / Manjaro
-```bash
-sudo pacman -S --needed curl yt-dlp libnotify
-```
+### Option C: WinUI 3 & Windows App SDK Native Installer
+For developers exploring Microsoft UI XAML and modern Windows 11 Fluent Design:
+1. Navigate to `Install/Windows/BraveMusic.Installer/`.
+2. Built with `Microsoft.WindowsAppSDK` (v1.6+) and `Microsoft.Windows.SDK.BuildTools`.
+3. Demonstrates `PackageDeploymentManager.AddPackageByUriAsync` and `ContentDialog` (with `dialog.XamlRoot` visual tree binding).
+4. Package using the Microsoft `winapp` CLI:
+   ```powershell
+   winget install Microsoft.winappcli --source winget
+   winapp build
+   winapp package
+   ```
 
 ---
 
-## 2. Installing via Debian Package (`.deb`)
+## 2. Installing on Linux via Debian Package (`.deb`)
 
 The official standalone Debian package installs Brave Music with all system menu entries, desktop shortcuts, native C++ audio shared libraries, and executable symlinks.
 
 ### Step 1: Download or Build the Package
 Download the latest verified package directly from GitHub Releases:
 ```bash
-wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.6/brave-music_1.0.6_amd64.deb
+wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb
 ```
 
-Direct binary download: [**brave-music_1.0.6_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.6/brave-music_1.0.6_amd64.deb)
+Direct binary download: [**brave-music_1.0.18_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb)
 
 Or build it locally from source:
 ```bash
@@ -61,13 +68,13 @@ npm run build:deb
 ### Step 2: Verify Package Integrity (SHA-256)
 Before installing, verify that the package hash matches the official release record:
 ```bash
-sha256sum brave-music_1.0.6_amd64.deb
+sha256sum brave-music_1.0.18_amd64.deb
 ```
 
 ### Step 3: Install Package via APT
 Use `apt install` so that any missing distribution dependencies are automatically resolved:
 ```bash
-sudo apt install ./brave-music_1.0.6_amd64.deb
+sudo apt install ./brave-music_1.0.18_amd64.deb
 ```
 
 ### Step 4: Launch Brave Music

@@ -15,13 +15,13 @@ Brave Music combines YouTube Music, Spotify Web, and an embedded native C++ audi
 <table border="0" align="center">
 <tr>
 <td align="center">
-<a href="https://github.com/codemoteams/Brave-Music/releases/download/v1.0.3/brave-music_1.0.3_amd64.deb"><img src="https://thumb.wikimedia.org/wikipedia/commons/thumb/3/35/Tux.svg/960px-Tux.svg.png?_=20260427133119" alt="Linux Tux Logo" width="36" height="36"/></a><br/>
-<sub><strong>Linux</strong></sub>
+<a href="Install/Linux/brave-music_1.0.18_amd64.deb"><img src="https://thumb.wikimedia.org/wikipedia/commons/thumb/3/35/Tux.svg/960px-Tux.svg.png?_=20260427133119" alt="Linux Tux Logo" width="36" height="36"/></a><br/>
+<sub><strong>Linux (.deb)</strong></sub>
 </td>
 <td width="28"></td>
 <td align="center">
-<a href="#platform-availability"><img src="src/assets/icons/microsoft.svg" alt="Microsoft Windows Logo" width="36" height="36"/></a><br/>
-<sub><strong>Windows</strong></sub>
+<a href="Install/Windows/BraveMusic-Setup-1.0.18.exe"><img src="src/assets/icons/microsoft.svg" alt="Microsoft Windows Logo" width="36" height="36"/></a><br/>
+<sub><strong>Windows (.exe)</strong></sub>
 </td>
 <td width="28"></td>
 <td align="center">
@@ -31,23 +31,23 @@ Brave Music combines YouTube Music, Spotify Web, and an embedded native C++ audi
 </tr>
 </table>
 
-<br/>s
+<br/>
 
 <table align="center" border="0">
 <tr>
-<td align="center"><strong>120 MB</strong><br/><sub>Package Size</sub></td>
+<td align="center"><strong>140 MB</strong><br/><sub>Package Size</sub></td>
 <td width="20"></td>
 <td align="center"><strong>C++</strong><br/><sub>Audio Engine</sub></td>
 <td width="20"></td>
 <td align="center"><strong>GPL-3.0</strong><br/><sub>License</sub></td>
 <td width="20"></td>
-<td align="center"><strong>v1.0.6</strong><br/><sub>Release</sub></td>
+<td align="center"><strong>v1.0.18</strong><br/><sub>Release</sub></td>
 </tr>
 </table>
 
 <br/>
 
-<a href="https://github.com/codemoteams/Brave-Music/releases/download/v1.0.3/brave-music_1.0.3_amd64.deb"><img src="src/assets/buttons/install-app.svg" alt="Install Debian Package" height="42"/></a><a href="#developer-portal"><img src="src/assets/buttons/developer-portal.svg" alt="Developer Portal" height="42"/></a><a href="docs/RELEASE.md"><img src="src/assets/buttons/release-notes.svg" alt="Release Notes" height="42"/></a><a href="docs/CONTRIBUTION.md"><img src="src/assets/buttons/contribute.svg" alt="Contribute" height="42"/></a>
+<a href="Install/Windows/BraveMusic-Setup-1.0.18.exe"><img src="src/assets/buttons/install-app.svg" alt="Install Windows Suite" height="42"/></a><a href="Install/Linux/brave-music_1.0.18_amd64.deb"><img src="src/assets/buttons/install-app.svg" alt="Install Linux Debian" height="42"/></a><a href="#developer-portal"><img src="src/assets/buttons/developer-portal.svg" alt="Developer Portal" height="42"/></a><a href="docs/RELEASE.md"><img src="src/assets/buttons/release-notes.svg" alt="Release Notes" height="42"/></a><a href="docs/CONTRIBUTION.md"><img src="src/assets/buttons/contribute.svg" alt="Contribute" height="42"/></a>
 
 </div>
 
@@ -246,7 +246,7 @@ Developers interested in contributing should review the official contribution do
 | Property | Information |
 | :--- | :--- |
 | Product Name | Brave Music |
-| Current Version | `v1.0.6` |
+| Current Version | `v1.0.18` |
 | Product Organization | Codemo Open Source Labs |
 | Product Authority | Codemo OSL |
 | Software License | GPL-3.0 |

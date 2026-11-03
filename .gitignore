@@ -3,11 +3,28 @@ node_modules/
 
 # Production build artifacts and packages
 dist/
+build/
+bin/
+tools/
+Install/Windows/tools/
+Install/Windows/dist/
+Install/Linux/dist/
 *.deb
 *.rpm
 *.AppImage
 *.tar.gz
 *.zip
+*.7z
+*.exe
+*.msix
+*.appx
+*.appxbundle
+*.msixbundle
+
+# C# / .NET build outputs
+obj/
+*.user
+*.suo
 
 # Logs
 logs/
@@ -19,6 +36,7 @@ yarn-error.log*
 # Runtime data / local cache
 .cache/
 .tmp/
+.auth-probe/
 
 # OS and Editor metadata
 .DS_Store

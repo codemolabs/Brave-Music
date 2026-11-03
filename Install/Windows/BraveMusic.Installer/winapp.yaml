@@ -1,0 +1,28 @@
+# Microsoft winapp CLI configuration
+# Install tool via: winget install Microsoft.winappcli --source winget
+name: BraveMusic
+version: 1.0.18
+publisher: CN=CodemoOpenSourceLabs
+publisherDisplayName: Codemo Open Source Labs
+packageType: msix
+
+build:
+  project: BraveMusic.Installer.csproj
+  configuration: Release
+  platform: x64
+
+msix:
+  identity:
+    name: CodemoOSL.BraveMusic
+    publisher: CN=CodemoOpenSourceLabs
+    version: 1.0.18.0
+    processorArchitecture: x64
+  capabilities:
+    - runFullTrust
+  dependencies:
+    windowsAppRuntime: "1.6"
+
+signing:
+  autoSign: true
+  certificate: self-signed
+

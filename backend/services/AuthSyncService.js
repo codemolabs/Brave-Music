@@ -1,4 +1,4 @@
-const { execFile } = require('child_process');
+const { execFile, execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -15,21 +15,56 @@ class AuthSyncService {
     return path.join(process.env.HOME || os.homedir(), 'snap/brave/current/.config/BraveSoftware/Brave-Browser');
   }
 
+  getDefaultBrowserTarget() {
+    let desktopId = '';
+    for (const [command, args] of [
+      ['xdg-settings', ['get', 'default-web-browser']],
+      ['xdg-mime', ['query', 'default', 'x-scheme-handler/https']]
+    ]) {
+      try {
+        desktopId = execFileSync(command, args, { encoding: 'utf8', timeout: 3000 }).trim();
+        if (desktopId) break;
+      } catch (error) {}
+    }
+
+    const id = desktopId.toLowerCase();
+    const home = process.env.HOME || os.homedir();
+    if (id.includes('brave')) {
+      const snapProfile = this.getSnapBravePath();
+      const standardProfile = path.join(home, '.config/BraveSoftware/Brave-Browser');
+      if (fs.existsSync(snapProfile)) return `brave:${snapProfile}`;
+      if (fs.existsSync(standardProfile)) return `brave:${standardProfile}`;
+      return 'brave';
+    }
+    if (id.includes('chrome') || id.includes('google-chrome')) return 'chrome:Default';
+    if (id.includes('chromium')) return 'chromium';
+    if (id.includes('firefox')) return 'firefox';
+    if (id.includes('microsoft-edge') || id.includes('edge')) return 'edge';
+    throw new Error(`Could not identify the default browser (${desktopId || 'no desktop handler configured'}).`);
+  }
+
   getAvailableBrowsers() {
     const available = [];
     available.push({ id: 'auto', name: '★ Auto-Detect & Sync All Active Logins (Recommended)' });
+    const isWin = process.platform === 'win32';
+    const home = process.env.HOME || os.homedir();
+    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
 
-    // 1. Brave Browser (Snap & Standard)
+    // 1. Brave Browser (Snap, Standard & Windows)
     const snapBrave = this.getSnapBravePath();
-    const stdBrave = path.join(process.env.HOME || os.homedir(), '.config/BraveSoftware/Brave-Browser');
-    if (fs.existsSync(snapBrave)) {
+    const stdBrave = isWin
+      ? path.join(localAppData, 'BraveSoftware/Brave-Browser/User Data')
+      : path.join(home, '.config/BraveSoftware/Brave-Browser');
+    if (snapBrave && fs.existsSync(snapBrave)) {
       available.push({ id: 'brave:snap', name: 'Brave Browser (Snap - Active Session)' });
     } else if (fs.existsSync(stdBrave)) {
       available.push({ id: 'brave', name: 'Brave Browser' });
     }
 
     // 2. Google Chrome Profiles
-    const chromeDir = path.join(process.env.HOME || os.homedir(), '.config/google-chrome');
+    const chromeDir = isWin
+      ? path.join(localAppData, 'Google/Chrome/User Data')
+      : path.join(home, '.config/google-chrome');
     if (fs.existsSync(chromeDir)) {
       try {
         const entries = fs.readdirSync(chromeDir);
@@ -55,13 +90,21 @@ class AuthSyncService {
       } catch (e) {}
     }
 
-    // 3. Mozilla Firefox
-    if (fs.existsSync('/usr/bin/firefox') || fs.existsSync('/snap/bin/firefox')) {
+    // 3. Microsoft Edge Profiles
+    const edgeDir = isWin
+      ? path.join(localAppData, 'Microsoft/Edge/User Data')
+      : path.join(home, '.config/microsoft-edge');
+    if (fs.existsSync(edgeDir)) {
+      available.push({ id: 'edge', name: 'Microsoft Edge' });
+    }
+
+    // 4. Mozilla Firefox
+    if (!isWin && (fs.existsSync('/usr/bin/firefox') || fs.existsSync('/snap/bin/firefox'))) {
       available.push({ id: 'firefox', name: 'Mozilla Firefox' });
     }
 
-    // 4. Chromium
-    if (fs.existsSync('/usr/bin/chromium') || fs.existsSync('/usr/bin/chromium-browser')) {
+    // 5. Chromium
+    if (!isWin && (fs.existsSync('/usr/bin/chromium') || fs.existsSync('/usr/bin/chromium-browser'))) {
       available.push({ id: 'chromium', name: 'Chromium' });
     }
 
@@ -104,8 +147,8 @@ class AuthSyncService {
       const [domain, flag, cookiePath, secure, expiry, name, value] = parts;
       if (!name || value === undefined) continue;
 
-      const isDomain = domain.startsWith('.');
-      const cleanDomain = isDomain ? domain.substring(1) : domain;
+      const isDomain = flag.toUpperCase() === 'TRUE' || domain.startsWith('.');
+      const cleanDomain = domain.startsWith('.') ? domain.substring(1) : domain;
       const isHostPrefix = name.startsWith('__Host-');
       const isSecurePrefix = name.startsWith('__Secure-');
       const isSecure = secure.toUpperCase() === 'TRUE' || isHostPrefix || isSecurePrefix;
@@ -126,7 +169,7 @@ class AuthSyncService {
 
       // RFC 6265bis: __Host- cookies must NOT have domain set (must be host-only)
       if (!isHostPrefix && isDomain) {
-        cookieObj.domain = cleanDomain;
+        cookieObj.domain = `.${cleanDomain}`;
       }
 
       cookies.push(cookieObj);
@@ -152,7 +195,11 @@ class AuthSyncService {
 
   async runYtDlpExtraction(targetArg, targetUrl) {
     const tempFile = path.join(os.tmpdir(), `ytdlp_sync_${Date.now()}_${Math.random().toString(36).substring(7)}.txt`);
-    try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch (e) {}
+    try {
+      fs.writeFileSync(tempFile, '# Netscape HTTP Cookie File\n', { flag: 'wx', mode: 0o600 });
+    } catch (error) {
+      return { success: false, cookies: [], error: error.message };
+    }
 
     return new Promise((resolve) => {
       execFile('yt-dlp', [
@@ -165,12 +212,28 @@ class AuthSyncService {
         if (fs.existsSync(tempFile) && fs.statSync(tempFile).size > 0) {
           const cookies = this.parseNetscapeCookies(tempFile);
           try { fs.unlinkSync(tempFile); } catch (e) {}
-          resolve({ success: true, cookies });
+          resolve({ success: cookies.length > 0, cookies, error: error ? error.message : stderr });
         } else {
+          try { fs.unlinkSync(tempFile); } catch (e) {}
           resolve({ success: false, cookies: [], error: error ? error.message : stderr });
         }
       });
     });
+  }
+
+  async extractDefaultBrowserCookies(serviceTarget = 'youtube') {
+    const browserTarget = this.getDefaultBrowserTarget();
+    const result = await this.runYtDlpExtraction(browserTarget, 'https://www.youtube.com');
+    if (!result.success) return { ...result, browserTarget };
+
+    const allowedDomains = serviceTarget === 'spotify'
+      ? ['spotify.com', 'spotifycdn.com', 'scdn.co']
+      : ['youtube.com', 'google.com', 'googleusercontent.com', 'gstatic.com'];
+    const cookies = result.cookies.filter((cookie) => {
+      const domain = (cookie.domain || '').toLowerCase().replace(/^\./, '');
+      return allowedDomains.some((allowed) => domain === allowed || domain.endsWith(`.${allowed}`));
+    });
+    return { success: true, browserTarget, cookies };
   }
 
   async extractAndImportCookies(browserId = 'auto', serviceTarget = 'youtube') {
