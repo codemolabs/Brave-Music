@@ -4,7 +4,6 @@
 
 # Brave Music
 **Your Music. Your Privacy. Your Control.**
-
 An open-source desktop music streaming and offline audio engine combining YouTube Music, Spotify Web, and local playback into a unified, privacy-focused experience.
 
 <p align="center">
@@ -117,7 +116,7 @@ Download and run the self-contained installer:
 
 <div align="center">
 
-<img src="src/assets/cosl-logo.png" alt="Codemo Open Source Labs Logo"/>
+<img src="src/assets/cosl-logo.png" alt="Codemo Open Source Labs Logo" width="200"/>
 
 <p>
   <a href="https://discord.gg/wD9d5Er7a"><img src="https://raw.githubusercontent.com/codemolabs/.github/main/media/icons/discord.svg?v=cosl-purple" width="22" height="22" align="absmiddle" alt="Discord" /></a>
