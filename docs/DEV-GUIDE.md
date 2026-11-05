@@ -174,7 +174,7 @@ graph TD
 
 ### Clone Repository
 ```bash
-git clone git@github.com:codemoteams/Brave-Music.git
+git clone git@github.com:codemolabs/Brave-Music.git
 cd Brave-Music
 ```
 

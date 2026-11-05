@@ -1,5 +1,5 @@
 {
-  "name": "@codemoteams/brave-music",
+  "name": "@codemolabs/brave-music",
   "version": "1.0.18",
   "description": "Brave Music OTT Platform - Ad-free YouTube, Spotify and Built-in Offline Music Engine (Linux Desktop)",
   "main": "main.js",
@@ -13,12 +13,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/codemoteams/Brave-Music.git"
+    "url": "git+https://github.com/codemolabs/Brave-Music.git"
   },
   "bugs": {
-    "url": "https://github.com/codemoteams/Brave-Music/issues"
+    "url": "https://github.com/codemolabs/Brave-Music/issues"
   },
-  "homepage": "https://github.com/codemoteams/Brave-Music#readme",
+  "homepage": "https://github.com/codemolabs/Brave-Music#readme",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },

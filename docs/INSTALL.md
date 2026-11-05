@@ -11,12 +11,12 @@ Brave Music is tested and officially supported on 64-bit (`x86_64` / `amd64`) ar
 | Platform | Minimum Version | Installation Package | Status |
 | :--- | :--- | :--- | :--- |
 | **Windows** | Windows 10 (1809+) / Windows 11 | Setup (`.exe`) / Portable (`.zip`) / WinUI 3 | Fully Supported (v1.0.18) |
-| **Ubuntu** | 20.04 LTS, 22.04 LTS, 24.04 LTS | Debian (`.deb`) / npm (`@codemoteams/brave-music`) | Fully Supported |
-| **Debian** | 11 (Bullseye), 12 (Bookworm) | Debian (`.deb`) / npm (`@codemoteams/brave-music`) | Fully Supported |
-| **Linux Mint** | 20, 21, 22 | Debian (`.deb`) / npm (`@codemoteams/brave-music`) | Fully Supported |
-| **Pop!_OS** | 22.04 LTS+ | Debian (`.deb`) / npm (`@codemoteams/brave-music`) | Fully Supported |
-| **Fedora** | 38, 39, 40 | npm (`@codemoteams/brave-music`) / Source Build | Fully Supported |
-| **Arch Linux / Manjaro** | Rolling | npm (`@codemoteams/brave-music`) / Source Build | Fully Supported |
+| **Ubuntu** | 20.04 LTS, 22.04 LTS, 24.04 LTS | Debian (`.deb`) / npm (`@codemolabs/brave-music`) | Fully Supported |
+| **Debian** | 11 (Bullseye), 12 (Bookworm) | Debian (`.deb`) / npm (`@codemolabs/brave-music`) | Fully Supported |
+| **Linux Mint** | 20, 21, 22 | Debian (`.deb`) / npm (`@codemolabs/brave-music`) | Fully Supported |
+| **Pop!_OS** | 22.04 LTS+ | Debian (`.deb`) / npm (`@codemolabs/brave-music`) | Fully Supported |
+| **Fedora** | 38, 39, 40 | npm (`@codemolabs/brave-music`) / Source Build | Fully Supported |
+| **Arch Linux / Manjaro** | Rolling | npm (`@codemolabs/brave-music`) / Source Build | Fully Supported |
 
 ---
 
@@ -25,12 +25,12 @@ Brave Music is tested and officially supported on 64-bit (`x86_64` / `amd64`) ar
 Brave Music offers two distribution formats for Windows 10/11 alongside the open-source WinUI 3 onboarding project:
 
 ### Option A: Windows Setup Suite (`.exe` - Recommended)
-1. Download **[BraveMusic-Setup-1.0.18.exe](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/BraveMusic-Setup-1.0.18.exe)** from the official release page.
+1. Download **[BraveMusic-Setup-1.0.18.exe](https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/BraveMusic-Setup-1.0.18.exe)** from the official release page.
 2. Double-click the installer. The native suite unpacks to `%LOCALAPPDATA%\Programs\BraveMusic` with all Windows runtime libraries and launches Brave Music automatically.
 3. Media extraction (`yt-dlp.exe`) and CastLabs Widevine CDM are bundled self-contained—no extra dependencies or python installation required.
 
 ### Option B: Portable Windows Suite (`.zip`)
-1. Download **[brave-music_1.0.18_win64.zip](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_win64.zip)**.
+1. Download **[brave-music_1.0.18_win64.zip](https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_win64.zip)**.
 2. Extract the archive into any folder of your choice (e.g. `C:\Tools\BraveMusic`).
 3. Run `brave-music.exe`.
 
@@ -50,29 +50,33 @@ For developers exploring Microsoft UI XAML and modern Windows 11 Fluent Design:
 
 ## 2. Installing on Linux via npm (GitHub Packages)
 
-Brave Music is published to GitHub Packages as [**`@codemoteams/brave-music`**](https://github.com/orgs/codemoteams/packages/npm/package/brave-music).
+Brave Music is published to GitHub Packages as [**`@codemolabs/brave-music`**](https://github.com/orgs/codemolabs/packages/npm/package/brave-music).
 
 > [!NOTE]
 > Currently, the npm package is scoped exclusively for Linux (`x86_64` / `arm64`). Windows installation via npm is currently deferred pending platform-specific runtime constraints; Windows users should use the native Windows Setup Suite (`.exe`) or Portable package (`.zip`) above.
 
 ### Step 1: Configure npm Registry
-Configure npm to route the `@codemoteams` scope to GitHub Packages:
+Configure npm to route the `@codemolabs` scope to GitHub Packages:
 ```bash
-npm config set @codemoteams:registry https://npm.pkg.github.com
+npm config set @codemolabs:registry https://npm.pkg.github.com
 ```
 
 ### Step 2: Authenticate with GitHub Packages
-GitHub Packages requires authentication even for downloading public packages. You will need a GitHub Personal Access Token (classic) with `read:packages` scope:
+GitHub Packages requires an authenticated token for package requests. You will need a GitHub Personal Access Token (classic) with `read:packages` scope:
 
-**Method A: Interactive npm login**
+**Method A: npm config set (Recommended)**
 ```bash
-npm login --registry=https://npm.pkg.github.com --scope=@codemoteams
-# Username: <your-github-username>
-# Password: <your-personal-access-token-with-read:packages>
-# Email: <your-email>
+npm config set //npm.pkg.github.com/:_authToken YOUR_GITHUB_PAT
 ```
 
-**Method B: User .npmrc file**
+**Method B: Interactive npm login**
+```bash
+npm login --registry=https://npm.pkg.github.com --scope=@codemolabs
+# Username: <your-github-username>
+# Password: <your-personal-access-token-with-read:packages>
+```
+
+**Method C: User .npmrc file**
 Append the following line to `~/.npmrc`:
 ```bash
 echo "//npm.pkg.github.com/:_authToken=YOUR_GITHUB_PAT" >> ~/.npmrc
@@ -81,13 +85,13 @@ echo "//npm.pkg.github.com/:_authToken=YOUR_GITHUB_PAT" >> ~/.npmrc
 ### Step 3: Install Globally or Run via npx
 Install globally:
 ```bash
-npm install -g @codemoteams/brave-music
+npm install -g @codemolabs/brave-music
 brave-music
 ```
 
 Or run directly with npx without installing globally:
 ```bash
-npx @codemoteams/brave-music
+npx @codemolabs/brave-music
 ```
 
 ---
@@ -99,10 +103,10 @@ The official standalone Debian package installs Brave Music with all system menu
 ### Step 1: Download or Build the Package
 Download the latest verified package directly from GitHub Releases:
 ```bash
-wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb
+wget https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb
 ```
 
-Direct binary download: [**brave-music_1.0.18_amd64.deb (120 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb)
+Direct binary download: [**brave-music_1.0.18_amd64.deb (28 MB)**](https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb)
 
 Or build it locally from source:
 ```bash
@@ -159,7 +163,7 @@ npm -v
 
 ### Step 2: Clone Repository
 ```bash
-git clone git@github.com:codemoteams/Brave-Music.git
+git clone git@github.com:codemolabs/Brave-Music.git
 cd Brave-Music
 ```
 
@@ -200,7 +204,7 @@ sudo apt install --only-upgrade ./brave-music_<new_version>_amd64.deb
 ```
 Or if installed via npm:
 ```bash
-npm update -g @codemoteams/brave-music
+npm update -g @codemolabs/brave-music
 ```
 
 ---
@@ -214,7 +218,7 @@ sudo apt remove brave-music
 ```
 Or if installed via npm:
 ```bash
-npm uninstall -g @codemoteams/brave-music
+npm uninstall -g @codemolabs/brave-music
 ```
 
 ### Complete Purge

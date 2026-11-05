@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   publish:
-    name: Publish @codemoteams/brave-music to GitHub Packages
+    name: Publish @codemolabs/brave-music to GitHub Packages
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -25,11 +25,12 @@ jobs:
         with:
           node-version: 22
           registry-url: 'https://npm.pkg.github.com'
-          scope: '@codemoteams'
+          scope: '@codemolabs'
 
       - name: Configure Registry Authentication
         run: |
-          echo "@codemoteams:registry=https://npm.pkg.github.com" > .npmrc
+          echo "@codemolabs:registry=https://npm.pkg.github.com" > .npmrc
+          echo "@codemoteams:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
           echo "//npm.pkg.github.com/:always-auth=true" >> .npmrc
         env:
@@ -42,7 +43,7 @@ jobs:
         run: |
           CURRENT_VER=$(node -p "require('./package.json').version")
           echo "Current package version: $CURRENT_VER"
-          if npm view @codemoteams/brave-music@$CURRENT_VER version >/dev/null 2>&1; then
+          if npm view @codemolabs/brave-music@$CURRENT_VER version >/dev/null 2>&1; then
             echo "Version $CURRENT_VER is already published on GitHub Packages."
           else
             echo "Publishing version $CURRENT_VER to GitHub Packages..."

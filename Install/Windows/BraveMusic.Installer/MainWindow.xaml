@@ -72,7 +72,7 @@
 
         <!-- Footer Actions -->
         <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Bottom">
-            <HyperlinkButton Content="https://github.com/codemoteams/Brave-Music" NavigateUri="https://github.com/codemoteams/Brave-Music" VerticalAlignment="Center"/>
+            <HyperlinkButton Content="https://github.com/codemolabs/Brave-Music" NavigateUri="https://github.com/codemolabs/Brave-Music" VerticalAlignment="Center"/>
 
             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
                 <Button x:Name="SecondaryButton" Content="Documentation" Click="OnDocClicked" />

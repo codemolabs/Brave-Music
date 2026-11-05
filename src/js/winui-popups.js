@@ -2,7 +2,7 @@
  * WinUI 3 & Microsoft Fluent UI Popup and Dialog Library
  * Compliant with microsoft-ui-xaml (WinUI 3 / Windows App SDK)
  * Designed for Brave Music Windows & Cross-Platform Suite
- * Provider: COSL Codemo Open Source Labs (https://github.com/codemoteams)
+ * Provider: COSL Codemo Open Source Labs (https://github.com/codemolabs)
  */
 
 (function (window, document) {

@@ -11,7 +11,7 @@ namespace BraveMusic.Installer
 {
     public sealed partial class MainWindow : Window
     {
-        private const string PackageUriString = "https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/BraveMusic-1.0.18.msix";
+        private const string PackageUriString = "https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/BraveMusic-1.0.18.msix";
         private const string LocalZipName = "brave-music_1.0.18_win64.zip";
 
         public MainWindow()
@@ -138,12 +138,12 @@ namespace BraveMusic.Installer
             catch { }
 
             // Or launch via protocol
-            _ = Windows.System.Launcher.LaunchUriAsync(new Uri("https://github.com/codemoteams/Brave-Music"));
+            _ = Windows.System.Launcher.LaunchUriAsync(new Uri("https://github.com/codemolabs/Brave-Music"));
         }
 
         private void OnDocClicked(object sender, RoutedEventArgs e)
         {
-            _ = Windows.System.Launcher.LaunchUriAsync(new Uri("https://github.com/codemoteams/Brave-Music/blob/main/README.md"));
+            _ = Windows.System.Launcher.LaunchUriAsync(new Uri("https://github.com/codemolabs/Brave-Music/blob/main/README.md"));
         }
     }
 }

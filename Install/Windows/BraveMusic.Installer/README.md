@@ -1,7 +1,7 @@
 # Brave Music Windows Native Installer & Suite (WinUI 3 / Windows App SDK)
 
 Provider: **Codemo Open Source Labs (COSL)**  
-Repository: [https://github.com/codemoteams/Brave-Music](https://github.com/codemoteams/Brave-Music)  
+Repository: [https://github.com/codemolabs/Brave-Music](https://github.com/codemolabs/Brave-Music)  
 Release: **v1.0.18**
 
 ---

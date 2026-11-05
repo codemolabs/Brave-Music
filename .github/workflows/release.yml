@@ -60,8 +60,8 @@ jobs:
           body: |
             ## Brave Music ${{ github.ref_name }} Stable Suite Release
 
-            Provider: **Codemo Open Source Labs (COSL)** — [https://github.com/codemoteams](https://github.com/codemoteams)
-            Official Repository: [https://github.com/codemoteams/Brave-Music](https://github.com/codemoteams/Brave-Music)
+            Provider: **Codemo Open Source Labs (COSL)** — [https://github.com/codemolabs](https://github.com/codemolabs)
+            Official Repository: [https://github.com/codemolabs/Brave-Music](https://github.com/codemolabs/Brave-Music)
 
             ### Highlights & What's New:
             - **Windows Native Executable Suite (`.exe` & `.zip`)**: Full Windows 64-bit desktop build with embedded CastLabs Widevine CDM DRM runtime, bundling seamless ad-free YouTube Music, Spotify Web, and offline playback on Windows 10/11.

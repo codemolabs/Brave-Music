@@ -1,287 +1,148 @@
 <div align="center">
 
-<img src="src/assets/app-icon.svg" alt="Brave Music Application Icon" width="112" height="112" />
+<img src="src/assets/app-icon.svg" alt="Brave Music Icon" width="108" height="108" />
 
 # Brave Music
 
-### Your Music. Your Privacy. Your Control
+**Your Music. Your Privacy. Your Control.**
 
-**An open-source music streaming and offline playback platform.**
-
-Brave Music combines YouTube Music, Spotify Web, and an embedded native C++ audio engine into one unified desktop experience. Engineered around privacy, performance, DRM-compatible playback, and offline music management.
+An open-source desktop music streaming and offline audio engine combining YouTube Music, Spotify Web, and local playback into a unified, privacy-focused experience.
 
 <br/>
+
+<a href="https://github.com/codemolabs/Brave-Music/blob/main/docs/INSTALL.md"><img src="src/assets/buttons/install-app.svg" alt="Install Brave Music" height="42"/></a>
+
+<br/><br/>
 
 <table border="0" align="center">
 <tr>
 <td align="center">
-<a href="Install/Linux/brave-music_1.0.18_amd64.deb"><img src="https://thumb.wikimedia.org/wikipedia/commons/thumb/3/35/Tux.svg/960px-Tux.svg.png?_=20260427133119" alt="Linux Tux Logo" width="36" height="36"/></a><br/>
-<sub><strong>Linux (.deb)</strong></sub>
+<a href="https://github.com/codemolabs/Brave-Music/blob/main/docs/INSTALL.md#2-installing-on-linux-via-npm-github-packages"><img src="https://thumb.wikimedia.org/wikipedia/commons/thumb/3/35/Tux.svg/960px-Tux.svg.png?_=20260427133119" alt="Linux Tux Logo" width="32" height="32"/></a><br/>
+<sub><a href="https://github.com/codemolabs/Brave-Music/blob/main/docs/INSTALL.md#2-installing-on-linux-via-npm-github-packages"><strong>Linux</strong></a></sub>
 </td>
-<td width="28"></td>
+<td width="36"></td>
 <td align="center">
-<a href="Install/Windows/BraveMusic-Setup-1.0.18.exe"><img src="src/assets/icons/microsoft.svg" alt="Microsoft Windows Logo" width="36" height="36"/></a><br/>
-<sub><strong>Windows (.exe)</strong></sub>
+<a href="https://github.com/codemolabs/Brave-Music/blob/main/docs/INSTALL.md#1-installing-on-windows"><img src="src/assets/icons/microsoft.svg" alt="Microsoft Windows Logo" width="32" height="32"/></a><br/>
+<sub><a href="https://github.com/codemolabs/Brave-Music/blob/main/docs/INSTALL.md#1-installing-on-windows"><strong>Windows</strong></a></sub>
 </td>
-<td width="28"></td>
+<td width="36"></td>
 <td align="center">
-<a href="#platform-availability"><img src="src/assets/icons/android.svg" alt="Android Logo" width="36" height="36"/></a><br/>
-<sub><strong>Android</strong></sub>
+<a href="https://github.com/codemolabs/Brave-Music/blob/main/docs/INSTALL.md"><img src="src/assets/icons/android.svg" alt="Android Logo" width="32" height="32"/></a><br/>
+<sub><a href="https://github.com/codemolabs/Brave-Music/blob/main/docs/INSTALL.md"><strong>Android (Roadmap)</strong></a></sub>
 </td>
 </tr>
 </table>
 
 <br/>
 
-<table align="center" border="0">
-<tr>
-<td align="center"><strong>140 MB</strong><br/><sub>Package Size</sub></td>
-<td width="20"></td>
-<td align="center"><strong>C++</strong><br/><sub>Audio Engine</sub></td>
-<td width="20"></td>
-<td align="center"><strong>GPL-3.0</strong><br/><sub>License</sub></td>
-<td width="20"></td>
-<td align="center"><strong>v1.0.18</strong><br/><sub>Release</sub></td>
-</tr>
-</table>
-
-<br/>
-
-<a href="Install/Windows/BraveMusic-Setup-1.0.18.exe"><img src="src/assets/buttons/install-app.svg" alt="Install Windows Suite" height="42"/></a><a href="Install/Linux/brave-music_1.0.18_amd64.deb"><img src="src/assets/buttons/install-app.svg" alt="Install Linux Debian" height="42"/></a><a href="#developer-portal"><img src="src/assets/buttons/developer-portal.svg" alt="Developer Portal" height="42"/></a><a href="docs/RELEASE.md"><img src="src/assets/buttons/release-notes.svg" alt="Release Notes" height="42"/></a><a href="docs/CONTRIBUTION.md"><img src="src/assets/buttons/contribute.svg" alt="Contribute" height="42"/></a>
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+[![Latest Release](https://img.shields.io/badge/Release-v1.0.18-green.svg)](https://github.com/codemolabs/Brave-Music/releases)
+[![npm package](https://img.shields.io/badge/npm-@codemolabs/brave--music-red.svg)](https://github.com/orgs/codemolabs/packages/npm/package/brave-music)
+[![COSL Org](https://img.shields.io/badge/Org-@codemolabs-purple.svg)](https://github.com/codemolabs)
 
 </div>
 
 ---
 
-## Product Overview
+## Overview
 
-Brave Music is an integrated desktop music environment that combines web-based streaming services with native offline audio capabilities.
+Brave Music brings together streaming services, DRM-protected playback, and a native C++ audio engine in a single, lightweight desktop client built for performance and privacy.
 
-Built using privacy-focused browser technology and an embedded Musikcube audio engine, it provides a unified interface for streaming, downloading, organizing, and playing music.
-
-### Core Capabilities
-
-| Feature | Description |
-| :--- | :--- |
-| **YouTube Music** | Integrated YouTube Music streaming experience. |
-| **Spotify Web** | Embedded Spotify Web Player with supported Widevine DRM playback. |
-| **Native Audio Engine** | Embedded C++ Musikcube audio playback engine. |
-| **Offline Music** | Local music management and offline playback. |
-| **Music Downloads** | Integrated download functionality using yt-dlp. |
-| **Privacy Protection** | Brave Shields integration and reduced third-party tracking. |
-| **Desktop Experience** | Unified desktop application with a native Linux installation package. |
+- **Unified Streaming**: Seamless YouTube Music and Spotify Web playback in one interface.
+- **Embedded C++ Audio Engine**: Local playback powered by an integrated Musikcube daemon supporting high-fidelity formats.
+- **Offline Media Extraction**: Built-in download manager leveraging `yt-dlp` for local music collections.
+- **Native Brave Shields**: Blocks third-party trackers, telemetry, and intrusive web audio advertisements.
+- **Zero Telemetry**: Completely self-contained and on-device. No telemetry, no activity tracking, and no required accounts.
 
 ---
 
-## Product Experience
-
-Explore the Brave Music interface and its primary application components.
+## Application Showcase
 
 <div align="center">
 
-### YouTube Music Integration
+<img src="testimonials/yt-music.png" alt="YouTube Music Streaming Interface" width="90%"/>
+<br/><sub>Integrated music discovery and streaming via YouTube Music</sub><br/><br/>
 
-<a href="testimonials/yt-music.png">
-<img src="testimonials/yt-music.png" alt="Brave Music YouTube Music Interface" width="90%"/>
-</a>
+<img src="testimonials/spotify.png" alt="Spotify Web Player Interface" width="90%"/>
+<br/><sub>DRM-compatible Spotify Web playback via CastLabs Widevine CDM</sub><br/><br/>
 
-<sub>Integrated music discovery and streaming experience.</sub>
+<img src="testimonials/downloads.png" alt="Offline Music Downloads and Local Library" width="90%"/>
+<br/><sub>Native C++ offline music management and download engine</sub><br/><br/>
 
-<br/><br/>
-
-### Spotify Web Integration
-
-<a href="testimonials/spotify.png">
-<img src="testimonials/spotify.png" alt="Brave Music Spotify Web Interface" width="90%"/>
-</a>
-
-<sub>Embedded Spotify Web Player with supported DRM playback.</sub>
-
-<br/><br/>
-
-### Offline Downloads and Native Engine
-
-<a href="testimonials/downloads.png">
-<img src="testimonials/downloads.png" alt="Brave Music Offline Downloads Interface" width="90%"/>
-</a>
-
-<sub>Offline music downloads and native playback management.</sub>
+<img src="testimonials/Ads-Blocker.gif" alt="Brave Shields Ad Protection" width="280"/>
+<br/><sub>Automated Brave Shields blocking tracking scripts and web advertisements</sub>
 
 </div>
 
 ---
 
-## Installation
+## Quick Installation
 
-<a id="platform-availability"></a>
+For full installation guides, source builds, and verification checksums, see **[docs/INSTALL.md](https://github.com/codemolabs/Brave-Music/blob/main/docs/INSTALL.md)**.
 
-### 1. Linux npm Package (GitHub Packages)
-
-<sub>AVAILABLE NOW · VERSION 1.0.18 · X86_64 / ARM64</sub>
-
-Brave Music is published to GitHub Packages as [**`@codemoteams/brave-music`**](https://github.com/orgs/codemoteams/packages/npm/package/brave-music) (Linux desktop only).
+### Linux (npm / npx)
 
 ```bash
-# 1. Route @codemoteams scope to GitHub Packages
-npm config set @codemoteams:registry https://npm.pkg.github.com
+# 1. Route @codemolabs scope to GitHub Packages
+npm config set @codemolabs:registry https://npm.pkg.github.com
 
-# 2. Authenticate with GitHub Packages (requires PAT with read:packages)
+# 2. Authenticate with GitHub Packages token (read:packages scope)
 npm config set //npm.pkg.github.com/:_authToken YOUR_GITHUB_PAT
-# Or via interactive login: npm login --registry=https://npm.pkg.github.com --scope=@codemoteams
 
-# 3. Install globally or launch directly via npx
-npm install -g @codemoteams/brave-music
-brave-music
-
-# Or run instantly without installation:
-npx @codemoteams/brave-music
+# 3. Launch directly with npx or install globally
+npx @codemolabs/brave-music
+# or: npm install -g @codemolabs/brave-music
 ```
 
-> [!NOTE]
-> Currently, the npm package is scoped for Linux (`"os": ["linux"]`). Windows users should install the official native Windows Setup Suite (`.exe`) or Portable package (`.zip`) below.
-
-### 2. Linux Desktop (.deb Package)
-
-<sub>AVAILABLE NOW · VERSION 1.0.18 · AMD64</sub>
-
-Brave Music provides a standalone Debian installation package for compatible Linux distributions (Ubuntu, Debian, Linux Mint, Pop!_OS).
+### Linux (Debian Package)
 
 ```bash
-# 1. Download official v1.0.18 Debian package
-wget https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb
-
-# 2. Install package via APT
+wget https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb
 sudo apt install ./brave-music_1.0.18_amd64.deb
-
-# 3. Launch from desktop application menu or terminal
 brave-music
 ```
 
-Direct binary download: [**brave-music_1.0.18_amd64.deb (28 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb)
+### Windows (Setup Suite)
 
-### 3. Windows 10 / 11 Native Suite
-
-<sub>AVAILABLE NOW · VERSION 1.0.18 · WIN64</sub>
-
-- **Setup Installer (`.exe`)**: [**BraveMusic-Setup-1.0.18.exe (139 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/BraveMusic-Setup-1.0.18.exe) — Self-contained Windows installer with bundled yt-dlp, Widevine CDM, and WinUI 3 Fluent popups.
-- **Portable Suite (`.zip`)**: [**brave-music_1.0.18_win64.zip (194 MB)**](https://github.com/codemoteams/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_win64.zip) — Zero-install standalone archive.
-- **WinUI 3 Modern Suite**: Open-source C# project in `Install/Windows/BraveMusic.Installer/` showcasing Windows App SDK package deployment.
-
-For complete installation steps, building from source, dependency management, and uninstallation, see [**docs/INSTALL.md**](docs/INSTALL.md).
-
-### Installation Resources
-
-| Resource | Description |
-| :--- | :--- |
-| [Installation Guide](docs/INSTALL.md) | Complete installation and configuration instructions. |
-| [Developer Guide](docs/DEV-GUIDE.md) | Build the application from source. |
-| [Release Notes](docs/RELEASE.md) | Review available versions and release information. |
+Download and run the self-contained installer:
+- **Setup Installer (`.exe`)**: [**BraveMusic-Setup-1.0.18.exe**](https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/BraveMusic-Setup-1.0.18.exe) (139 MB)
+- **Portable Suite (`.zip`)**: [**brave-music_1.0.18_win64.zip**](https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_win64.zip) (194 MB)
 
 ---
 
-## Technical Specifications
+## Technical Architecture
 
-| Component | Technology |
-| :--- | :--- |
-| Application | Brave Music Desktop |
-| Embedded Browser | CastLabs Chromium Runtime |
-| DRM Technology | Widevine |
-| Native Audio Engine | Musikcube (C++) |
-| Download Integration | yt-dlp |
-| Browser Protection | Brave Shields |
-| Distribution Format | Debian Package |
-| Supported Architecture | Linux x64 |
-| Software License | GPL-3.0 |
-
-### Privacy and Protection
-
-Brave Music integrates Brave Shields to help reduce intrusive advertisements, unwanted trackers, and third-party tracking within supported browsing contexts.
-
-<div align="center">
-
-<img src="testimonials/Ads-Blocker.gif" alt="Brave Shields Protection Demonstration" width="260"/>
-
-<sub>Brave Shields protection demonstration.</sub>
-
-</div>
-
----
-
-## Developer Portal
-
-**Everything developers need to understand, build, secure, and contribute to Brave Music.**
-
-The developer portal provides technical documentation, architecture references, design standards, contribution guidelines, and organizational policies.
-
-### Documentation Directory
-
-| Documentation | Scope | Description |
+| Layer | Component | Implementation |
 | :--- | :--- | :--- |
-| [INSTALL.md](docs/INSTALL.md) | Installation | System requirements, dependencies, installation, and setup. |
-| [DEV-GUIDE.md](docs/DEV-GUIDE.md) | Engineering | Application architecture, Mermaid diagrams, DRM integration, and build pipeline. |
-| [DESIGN-GUIDE.md](docs/DESIGN-GUIDE.md) | UI / UX | Interface specifications, design tokens, typography, and visual standards. |
-| [CONTRIBUTION.md](docs/CONTRIBUTION.md) | Development | Contribution requirements, pull requests, Android milestone, and community participation. |
-| [RELEASE.md](docs/RELEASE.md) | Releases | Version history, changelogs, SHA-256 checksums, and roadmap. |
-| [SECURITY.md](docs/SECURITY.md) | Security | Vulnerability reporting and security boundaries. |
-| [RULES.md](docs/RULES.md) | Governance | Product ownership, organizational authority, and developer policies. |
-| [CREDITS.md](docs/CREDITS.md) | Acknowledgments | Third-party technologies, upstream projects, and contributors. |
-
-### Developer Resources
-
-- **Architecture:** Review the application architecture and embedded component integration.
-- **Build Environment:** Follow the official build and dependency instructions.
-- **Interface Standards:** Follow the established UI/UX design specifications.
-- **Security:** Review the security policy before reporting or investigating vulnerabilities.
-- **Contributions:** Follow the official contribution guidelines before submitting changes.
+| **Runtime** | CastLabs Chromium Electron | Widevine CDM hardware-decoded streaming |
+| **Audio Daemon** | Musikcube (C++) | Standalone background engine for low-latency offline playback |
+| **Downloader** | yt-dlp Engine | Local media extraction with automatic metadata tagging |
+| **Privacy** | Brave Shields Engine | Network request filtering and tracker suppression |
+| **System Integration** | Linux MPRIS2 / Windows WinUI 3 | Native system media controls and taskbar progress synchronization |
 
 ---
 
-## Organization
+## Documentation
 
-<div align="center">
-
-<img src="src/assets/cosl-logo.png" alt="Codemo Open Source Labs Logo" width="190"/>
-
-### Codemo Open Source Labs
-
-**Engineering · Innovation · Open Source**
-
-</div>
-
-Brave Music is an official open-source software project created and governed by **Codemo Open Source Labs (Codemo OSL)**.
-
-Codemo OSL develops open-source software solutions, promotes technical education, and provides a collaborative environment for developers to advance their engineering capabilities through practical projects, technical documentation, and community participation.
-
-### Official Community
-
-| Channel | Information |
+| Document | Purpose |
 | :--- | :--- |
-| **Official Website** | [codemoteams.org](https://codemoteams.org) |
-| **Developer Community** | Codemo Teams Discord Server |
-| **Project Collaboration** | Official GitHub repositories |
-| **Contributor Recognition** | Subject to organizational participation requirements |
-
-Developers interested in contributing should review the official contribution documentation and organizational participation policies.
+| [**docs/INSTALL.md**](docs/INSTALL.md) | Complete installation instructions across Linux, Windows, and npm |
+| [**docs/DEV-GUIDE.md**](docs/DEV-GUIDE.md) | Local development setup, component architecture, and build pipeline |
+| [**docs/DESIGN-GUIDE.md**](docs/DESIGN-GUIDE.md) | UI tokens, dark themes, and Microsoft UI XAML Fluent Design specs |
+| [**docs/CONTRIBUTION.md**](docs/CONTRIBUTION.md) | Pull request guidelines, branch conventions, and testing standards |
+| [**docs/RELEASE.md**](docs/RELEASE.md) | Version changelogs, binary SHA-256 hashes, and roadmap |
+| [**docs/SECURITY.md**](docs/SECURITY.md) | Security policy and coordinated vulnerability reporting |
+| [**docs/RULES.md**](docs/RULES.md) | Project governance and intellectual property terms |
+| [**docs/CREDITS.md**](docs/CREDITS.md) | Upstream acknowledgments and open-source licenses |
 
 ---
 
-## Governance and Legal Information
+## Community & Governance
 
-| Property | Information |
-| :--- | :--- |
-| Product Name | Brave Music |
-| Current Version | `v1.0.18` |
-| Product Organization | Codemo Open Source Labs |
-| Product Authority | Codemo OSL |
-| Software License | GPL-3.0 |
-| Documentation Directory | `docs/` |
+Brave Music is an official open-source product repository governed by **[Codemo Open Source Labs (COSL)](https://github.com/codemolabs)** within the **[Codemo Teams](https://codemoteams.org)** ecosystem.
 
-### Ownership and Intellectual Property
-
-Brave Music is an official software product created and governed by Codemo Open Source Labs.
-
-Codemo OSL retains its applicable organizational rights, product branding, and governance authority over official Brave Music releases and affiliated distribution channels.
-
-The software codebase is distributed under the terms of the [GNU General Public License v3.0](LICENSE).
-
-For complete organizational policies, ownership information, and developer requirements, refer to [docs/RULES.md](docs/RULES.md).
+- **Organization**: [Codemo Open Source Labs (@codemolabs)](https://github.com/codemolabs)
+- **COSL Portal**: [cosl.codemoteams.org](https://cosl.codemoteams.org)
+- **Discord Community**: [Join Discord](https://discord.gg/wD9d5Er7a)
+- **Contact / Inquiries**: `cosl@codemoteams.org`
+- **License**: [GNU General Public License v3.0 (GPL-3.0)](LICENSE)

@@ -46,7 +46,7 @@ Follow these steps to submit contributions:
 
 ### Step 1: Fork and Clone
 ```bash
-git clone git@github.com:codemoteams/Brave-Music.git
+git clone git@github.com:codemolabs/Brave-Music.git
 cd Brave-Music
 ```
 
@@ -72,7 +72,7 @@ git commit -m "feat(android): implement initial background audio interface"
 ```
 
 ### Step 5: Submit Pull Request
-Open a PR against the `main` branch of `codemoteams/Brave-Music`. Your PR description must include:
+Open a PR against the `main` branch of `codemolabs/Brave-Music`. Your PR description must include:
 - A clear summary of the changes.
 - Which issue it closes or resolves.
 - Confirmation that you tested the code locally.
