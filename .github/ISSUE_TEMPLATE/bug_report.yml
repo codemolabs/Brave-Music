@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for reporting an issue to Brave Music. Please check existing issues before submitting.
+        Thank you for reporting an issue to Brave Music. Please check existing issues and [docs/INSTALL.md](../docs/INSTALL.md) before submitting.
   - type: textarea
     id: description
     attributes:
@@ -35,7 +35,9 @@ body:
         - Brave Shields Ad-Blocking
         - Offline Downloader (yt-dlp)
         - Embedded Musikcube Audio Engine
-        - Debian Package Installation
+        - Debian Package (.deb)
+        - Windows Installer (.exe / .zip)
+        - npm / npx Package
         - Other
     validations:
       required: true
@@ -43,10 +45,25 @@ body:
     id: environment
     attributes:
       label: System Environment
-      description: Linux distribution and versions.
+      description: Operating system, audio server, and versions.
       placeholder: |
-        - OS: Ubuntu 24.04 LTS (x86_64)
-        - Sound Server: PipeWire
-        - Brave Music Version: v1.0.0
+        - OS: Ubuntu 24.04 LTS (x86_64) or Windows 11
+        - Sound Server / Audio: PipeWire / PulseAudio / WASAPI
+        - Brave Music Version: v1.0.18
     validations:
       required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Screenshots
+      description: Paste terminal output, error logs, or attach screenshots. (Do NOT include private credentials or tokens).
+      render: shell
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Contributor Checklist
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate.
+          required: true
+        - label: I have not included any sensitive personal data, secrets, or API tokens.
+          required: true

@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Have an idea to improve Brave Music? We welcome proposals that align with our roadmap.
+        Have an idea to improve Brave Music? We welcome proposals that align with our roadmap in [docs/CONTRIBUTION.md](../docs/CONTRIBUTION.md).
   - type: textarea
     id: problem
     attributes:
@@ -28,8 +28,19 @@ body:
       options:
         - Linux Desktop
         - Android Milestone
-        - Windows
+        - Windows Suite
         - macOS
-        - Backend / Engine
+        - Backend / C++ Audio Engine
     validations:
       required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Describe any alternative solutions or features you've considered.
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Willingness to Contribute
+      options:
+        - label: I am willing to submit a Pull Request to help implement this!
