@@ -135,7 +135,6 @@ Download and run the self-contained installer:
 Brave Music is an official open-source product repository governed by **[Codemo Open Source Labs (COSL)](https://github.com/codemolabs)** within the **[Codemo Teams](https://codemoteams.org)** ecosystem.
 
 - **Organization**: [Codemo Open Source Labs (@codemolabs)](https://github.com/codemolabs)
-- **COSL Portal**: [cosl.codemoteams.org](https://cosl.codemoteams.org)
 - **Discord Community**: [Join Discord](https://discord.gg/wD9d5Er7a)
 - **Contact / Inquiries**: `cosl@codemoteams.org`
 - **License**: [GNU General Public License v3.0 (GPL-3.0)](LICENSE)
