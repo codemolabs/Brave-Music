@@ -12,11 +12,15 @@ An open-source desktop music streaming and offline audio engine combining YouTub
 
 <table align="center">
   <tr>
-    <td align="center" width="140">
+    <td align="center" width="130">
       <img src="https://api.iconify.design/logos/linux-tux.svg" width="36" height="36" alt="Linux" /><br/>
       <b>Linux</b>
     </td>
-    <td align="center" width="140">
+    <td align="center" width="130">
+      <img src="https://api.iconify.design/simple-icons/windows11.svg?color=%230078D4" width="36" height="36" alt="Windows" /><br/>
+      <b>Windows</b>
+    </td>
+    <td align="center" width="130">
       <img src="https://api.iconify.design/simple-icons/android.svg?color=%233DDC84" width="36" height="36" alt="Android" /><br/>
       <b>Android</b>
     </td>
