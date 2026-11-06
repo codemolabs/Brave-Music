@@ -4,12 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const backend = require('./backend');
 
-const isWindows = process.platform === 'win32';
-
 // Standard Google Chrome User-Agent matching underlying Chromium 146
-const CHROME_USER_AGENT = isWindows
-  ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.216 Safari/537.36'
-  : 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.216 Safari/537.36';
+const CHROME_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.216 Safari/537.36';
 const SHARED_PARTITION = 'persist:bravemusic';
 
 // Set global fallback User-Agent so no internal Electron requests leak 'Electron'
@@ -64,24 +60,16 @@ function openLoginModal(authUrl, callerContents) {
 function ensureWidevineCdm() {
   const homeDir = os.homedir();
   const cdmVersion = '4.10.3112.0';
-  const cdmBinaryName = isWindows ? 'widevinecdm.dll' : 'libwidevinecdm.so';
-  const platformArch = isWindows ? 'win_x64' : 'linux_x64';
+  const cdmBinaryName = 'libwidevinecdm.so';
+  const platformArch = 'linux_x64';
 
-  const userDataDir = isWindows
-    ? path.join(process.env.APPDATA || path.join(homeDir, 'AppData', 'Roaming'), 'brave-music')
-    : path.join(homeDir, '.config', 'brave-music');
+  const userDataDir = path.join(homeDir, '.config', 'brave-music');
   const targetCdmDir = path.join(userDataDir, 'WidevineCdm');
   const targetVerDir = path.join(targetCdmDir, cdmVersion);
   const targetPlatformDir = path.join(targetVerDir, '_platform_specific', platformArch);
   const targetPointerFile = path.join(targetCdmDir, 'latest-component-updated-widevine-cdm');
 
-  const localAppData = process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local');
-  const candidateSources = isWindows ? [
-    path.join(process.resourcesPath || __dirname, 'WidevineCdm'),
-    path.join(localAppData, 'Google', 'Chrome', 'User Data', 'WidevineCdm', cdmVersion),
-    path.join(localAppData, 'Microsoft', 'Edge', 'User Data', 'WidevineCdm', cdmVersion),
-    path.join(localAppData, 'BraveSoftware', 'Brave-Browser', 'User Data', 'WidevineCdm', cdmVersion)
-  ] : [
+  const candidateSources = [
     '/opt/brave-music/WidevineCdm',
     '/opt/google/chrome/WidevineCdm',
     path.join(homeDir, '.config', 'Codex', 'WidevineCdm', cdmVersion),
@@ -105,10 +93,8 @@ function ensureWidevineCdm() {
     const libCandidates = [
       sourceDir ? path.join(sourceDir, '_platform_specific', platformArch, cdmBinaryName) : null,
       sourceDir ? path.join(sourceDir, cdmBinaryName) : null,
-      isWindows
-        ? path.join(localAppData, 'Google', 'Chrome', 'User Data', 'WidevineCdm', cdmVersion, '_platform_specific', 'win_x64', 'widevinecdm.dll')
-        : '/opt/google/chrome/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so',
-      !isWindows ? path.join(homeDir, '.config', 'Codex', 'WidevineCdm', cdmVersion, '_platform_specific', 'linux_x64', 'libwidevinecdm.so') : null
+      '/opt/google/chrome/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so',
+      path.join(homeDir, '.config', 'Codex', 'WidevineCdm', cdmVersion, '_platform_specific', 'linux_x64', 'libwidevinecdm.so')
     ].filter(Boolean);
 
     for (const lib of libCandidates) {
@@ -124,8 +110,8 @@ function ensureWidevineCdm() {
     // Locate and copy manifest.json
     const manifestCandidates = [
       sourceDir ? path.join(sourceDir, 'manifest.json') : null,
-      isWindows ? path.join(localAppData, 'Google', 'Chrome', 'User Data', 'WidevineCdm', cdmVersion, 'manifest.json') : '/opt/google/chrome/WidevineCdm/manifest.json',
-      !isWindows ? path.join(homeDir, '.config', 'Codex', 'WidevineCdm', cdmVersion, 'manifest.json') : null
+      '/opt/google/chrome/WidevineCdm/manifest.json',
+      path.join(homeDir, '.config', 'Codex', 'WidevineCdm', cdmVersion, 'manifest.json')
     ].filter(Boolean);
 
     for (const man of manifestCandidates) {
@@ -301,7 +287,6 @@ ipcMain.handle('open-external', (event, url) => {
 
 ipcMain.handle('get-platform-info', () => ({
   platform: process.platform,
-  isWindows: process.platform === 'win32',
   isLinux: process.platform === 'linux',
   isMac: process.platform === 'darwin'
 }));
@@ -352,7 +337,7 @@ app.whenReady().then(async () => {
       s.setPreloads([shieldsPreloadPath]);
     }
 
-    // Sanitize headers to look 100% like genuine Google Chrome on host OS (Windows/Linux)
+    // Sanitize headers to look 100% like genuine Google Chrome on host OS (Linux)
     s.webRequest.onBeforeSendHeaders((details, callback) => {
       const headers = details.requestHeaders;
       headers['User-Agent'] = CHROME_USER_AGENT;
@@ -364,8 +349,8 @@ app.whenReady().then(async () => {
       // Google checks Client Hints (sec-ch-ua). Provide authentic Chrome 146 client hints
       headers['sec-ch-ua'] = '"Google Chrome";v="146", "Chromium";v="146", "Not?A_Brand";v="24"';
       headers['sec-ch-ua-mobile'] = '?0';
-      headers['sec-ch-ua-platform'] = isWindows ? '"Windows"' : '"Linux"';
-      headers['sec-ch-ua-platform-version'] = isWindows ? '"15.0.0"' : '"6.8.0"';
+      headers['sec-ch-ua-platform'] = '"Linux"';
+      headers['sec-ch-ua-platform-version'] = '"6.8.0"';
       headers['sec-ch-ua-arch'] = '"x86"';
       headers['sec-ch-ua-bitness'] = '"64"';
       headers['sec-ch-ua-full-version-list'] = '"Google Chrome";v="146.0.7680.216", "Chromium";v="146.0.7680.216", "Not?A_Brand";v="24.0.0.0"';

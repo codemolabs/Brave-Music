@@ -17,7 +17,7 @@ Closes #
 ## Verification & Testing
 <!-- How did you test your changes? Include command lines, test results, or screenshots -->
 - [ ] Ran automated tests and build checks (`npm start`, `npm run build`)
-- [ ] Verified locally in desktop environment (Linux / Windows)
+- [ ] Verified locally in desktop environment (Linux Desktop)
 - [ ] No regressions or unexpected side effects detected
 
 ## Contributor Checklist

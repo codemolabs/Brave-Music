@@ -36,7 +36,6 @@ body:
         - Offline Downloader (yt-dlp)
         - Embedded Musikcube Audio Engine
         - Debian Package (.deb)
-        - Windows Installer (.exe / .zip)
         - npm / npx Package
         - Other
     validations:
@@ -47,8 +46,8 @@ body:
       label: System Environment
       description: Operating system, audio server, and versions.
       placeholder: |
-        - OS: Ubuntu 24.04 LTS (x86_64) or Windows 11
-        - Sound Server / Audio: PipeWire / PulseAudio / WASAPI
+        - OS: Ubuntu 24.04 LTS (x86_64) / Debian 12
+        - Sound Server / Audio: PipeWire / PulseAudio / ALSA
         - Brave Music Version: v1.0.18
     validations:
       required: true

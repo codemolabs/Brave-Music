@@ -8,8 +8,7 @@
   },
   "scripts": {
     "start": "electron . --no-sandbox",
-    "build:deb": "bash Install/Linux/build-deb.sh",
-    "build:win": "bash Install/Windows/build-win.sh"
+    "build:deb": "bash Install/Linux/build-deb.sh"
   },
   "repository": {
     "type": "git",

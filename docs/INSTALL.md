@@ -1,16 +1,15 @@
-# Installing Brave Music (Linux & Windows)
+# Installing Brave Music (Linux)
 
-This guide provides official instructions for installing, configuring, verifying, and updating Brave Music on supported Windows and Linux environments.
+This guide provides official instructions for installing, configuring, verifying, and updating Brave Music on supported Linux environments.
 
 ---
 
 ## Supported Operating Systems
 
-Brave Music is tested and officially supported on 64-bit (`x86_64` / `amd64`) architectures:
+Brave Music is tested and officially supported on 64-bit (`x86_64` / `amd64`) Linux distributions:
 
 | Platform | Minimum Version | Installation Package | Status |
 | :--- | :--- | :--- | :--- |
-| **Windows** | Windows 10 (1809+) / Windows 11 | Setup (`.exe`) / Portable (`.zip`) / WinUI 3 | Fully Supported (v1.0.18) |
 | **Ubuntu** | 20.04 LTS, 22.04 LTS, 24.04 LTS | Debian (`.deb`) / npm (`@codemolabs/brave-music`) | Fully Supported |
 | **Debian** | 11 (Bullseye), 12 (Bookworm) | Debian (`.deb`) / npm (`@codemolabs/brave-music`) | Fully Supported |
 | **Linux Mint** | 20, 21, 22 | Debian (`.deb`) / npm (`@codemolabs/brave-music`) | Fully Supported |
@@ -20,40 +19,12 @@ Brave Music is tested and officially supported on 64-bit (`x86_64` / `amd64`) ar
 
 ---
 
-## 1. Installing on Windows
-
-Brave Music offers two distribution formats for Windows 10/11 alongside the open-source WinUI 3 onboarding project:
-
-### Option A: Windows Setup Suite (`.exe` - Recommended)
-1. Download **[BraveMusic-Setup-1.0.18.exe](https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/BraveMusic-Setup-1.0.18.exe)** from the official release page.
-2. Double-click the installer. The native suite unpacks to `%LOCALAPPDATA%\Programs\BraveMusic` with all Windows runtime libraries and launches Brave Music automatically.
-3. Media extraction (`yt-dlp.exe`) and CastLabs Widevine CDM are bundled self-contained—no extra dependencies or python installation required.
-
-### Option B: Portable Windows Suite (`.zip`)
-1. Download **[brave-music_1.0.18_win64.zip](https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_win64.zip)**.
-2. Extract the archive into any folder of your choice (e.g. `C:\Tools\BraveMusic`).
-3. Run `brave-music.exe`.
-
-### Option C: WinUI 3 & Windows App SDK Native Installer
-For developers exploring Microsoft UI XAML and modern Windows 11 Fluent Design:
-1. Navigate to `Install/Windows/BraveMusic.Installer/`.
-2. Built with `Microsoft.WindowsAppSDK` (v1.6+) and `Microsoft.Windows.SDK.BuildTools`.
-3. Demonstrates `PackageDeploymentManager.AddPackageByUriAsync` and `ContentDialog` (with `dialog.XamlRoot` visual tree binding).
-4. Package using the Microsoft `winapp` CLI:
-   ```powershell
-   winget install Microsoft.winappcli --source winget
-   winapp build
-   winapp package
-   ```
-
----
-
-## 2. Installing on Linux via npm (GitHub Packages)
+## 1. Installing on Linux via npm (GitHub Packages)
 
 Brave Music is published to GitHub Packages as [**`@codemolabs/brave-music`**](https://github.com/orgs/codemolabs/packages/npm/package/brave-music).
 
 > [!NOTE]
-> Currently, the npm package is scoped exclusively for Linux (`x86_64` / `arm64`). Windows installation via npm is currently deferred pending platform-specific runtime constraints; Windows users should use the native Windows Setup Suite (`.exe`) or Portable package (`.zip`) above.
+> The npm package is currently scoped for Linux distributions (`x86_64` / `arm64`).
 
 ### Step 1: Configure npm Registry
 Configure npm to route the `@codemolabs` scope to GitHub Packages:
@@ -96,7 +67,7 @@ npx @codemolabs/brave-music
 
 ---
 
-## 3. Installing on Linux via Debian Package (`.deb`)
+## 2. Installing on Linux via Debian Package (`.deb`)
 
 The official standalone Debian package installs Brave Music with all system menu entries, desktop shortcuts, native C++ audio shared libraries, and executable symlinks.
 
@@ -134,7 +105,7 @@ sudo apt install ./brave-music_1.0.18_amd64.deb
 
 ---
 
-## 4. Directory Layout and File System Placement
+## 3. Directory Layout and File System Placement
 
 When installed via package, Brave Music adheres to Linux Filesystem Hierarchy Standards (FHS):
 
@@ -150,7 +121,7 @@ When installed via package, Brave Music adheres to Linux Filesystem Hierarchy St
 
 ---
 
-## 5. Running from Source (Developer Installation)
+## 4. Running from Source (Developer Installation)
 
 If you are developing or testing without system installation:
 
@@ -183,7 +154,7 @@ Or execute the local launcher:
 
 ---
 
-## 6. Command-Line Options and Execution Flags
+## 5. Command-Line Options and Execution Flags
 
 The `brave-music` launcher accepts Chromium and Electron runtime flags:
 
@@ -195,7 +166,7 @@ The `brave-music` launcher accepts Chromium and Electron runtime flags:
 
 ---
 
-## 7. Updating Brave Music
+## 6. Updating Brave Music
 
 To update to a new release when a new package is published:
 ```bash
@@ -209,7 +180,7 @@ npm update -g @codemolabs/brave-music
 
 ---
 
-## 8. Uninstallation and System Cleanup
+## 7. Uninstallation and System Cleanup
 
 ### Standard Removal
 To remove the application while retaining your local offline music downloads and playlists:
@@ -231,7 +202,7 @@ rm -rf ~/.config/musikcube
 
 ---
 
-## 9. Troubleshooting Matrix
+## 8. Troubleshooting Matrix
 
 | Issue | Root Cause | Resolution |
 | :--- | :--- | :--- |

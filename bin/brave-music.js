@@ -8,8 +8,7 @@ const fs = require('fs');
 // Ensure operating system is Linux as specified
 if (process.platform !== 'linux') {
   console.error('\n[Brave Music] Error: Currently this npm package is only supported on Linux.');
-  console.error('Windows native packages (.exe and .zip) are available at:');
-  console.error('https://github.com/codemolabs/Brave-Music/releases\n');
+  console.error('For more information, visit: https://github.com/codemolabs/Brave-Music\n');
   process.exit(1);
 }
 

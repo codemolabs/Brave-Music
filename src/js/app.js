@@ -1377,36 +1377,6 @@ Observed Behavior:
     });
   }
 
-  // WinUI 3 Windows Suite & Package Downloader Modal trigger
-  const btnWinuiSuite = document.getElementById('btn-winui-suite');
-  btnWinuiSuite?.addEventListener('click', () => {
-    if (window.winui) {
-      window.winui.showDownloadSuite({
-        title: 'Brave Music Windows Suite (WinUI 3)',
-        version: '1.0.18'
-      });
-      let p = 0;
-      const interval = setInterval(() => {
-        p += 12;
-        if (p <= 100) {
-          window.winui.updateDownloadSuite({
-            percent: p,
-            speed: '14.2 MB/s',
-            transferred: `${Math.round(p * 1.25)} MB / 125 MB`,
-            eta: `${Math.max(0, Math.round((100 - p) / 12))}s`,
-            status: p < 35 ? 'Downloading CastLabs Widevine runtime…' : (p < 75 ? 'Verifying SHA256 integrity…' : 'Finalizing local audio engine…')
-          });
-        }
-        if (p >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            window.winui.downloadSuite.complete({ message: 'Windows Suite verification complete. All components ready!' });
-          }, 600);
-        }
-      }, 300);
-    }
-  });
-
   btnOpenFolder?.addEventListener('click', () => {
     window.braveApi?.openDownloadsFolder();
   });

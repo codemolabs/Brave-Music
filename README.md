@@ -12,15 +12,11 @@ An open-source desktop music streaming and offline audio engine combining YouTub
 
 <table align="center">
   <tr>
-    <td align="center" width="130">
+    <td align="center" width="140">
       <img src="https://api.iconify.design/logos/linux-tux.svg" width="36" height="36" alt="Linux" /><br/>
       <b>Linux</b>
     </td>
-    <td align="center" width="130">
-      <img src="https://api.iconify.design/simple-icons/windows11.svg?color=%230078D4" width="36" height="36" alt="Windows" /><br/>
-      <b>Windows</b>
-    </td>
-    <td align="center" width="130">
+    <td align="center" width="140">
       <img src="https://api.iconify.design/simple-icons/android.svg?color=%233DDC84" width="36" height="36" alt="Android" /><br/>
       <b>Android</b>
     </td>
@@ -83,12 +79,6 @@ sudo apt install ./brave-music_1.0.18_amd64.deb
 brave-music
 ```
 
-### Windows (Setup Suite)
-
-Download and run the self-contained installer:
-- **Setup Installer (`.exe`)**: [**BraveMusic-Setup-1.0.18.exe**](https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/BraveMusic-Setup-1.0.18.exe) (139 MB)
-- **Portable Suite (`.zip`)**: [**brave-music_1.0.18_win64.zip**](https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_win64.zip) (194 MB)
-
 ## Technical Architecture
 
 | Layer | Component | Implementation |
@@ -97,15 +87,15 @@ Download and run the self-contained installer:
 | **Audio Daemon** | Musikcube (C++) | Standalone background engine for low-latency offline playback |
 | **Downloader** | yt-dlp Engine | Local media extraction with automatic metadata tagging |
 | **Privacy** | Brave Shields Engine | Network request filtering and tracker suppression |
-| **System Integration** | Linux MPRIS2 / Windows WinUI 3 | Native system media controls and taskbar progress synchronization |
+| **System Integration** | Linux MPRIS2 | Native system media controls and taskbar playback synchronization |
 
 ## Documentation
 
 | Document | Purpose |
 | :--- | :--- |
-| [**docs/INSTALL.md**](docs/INSTALL.md) | Complete installation instructions across Linux, Windows, and npm |
+| [**docs/INSTALL.md**](docs/INSTALL.md) | Complete installation instructions across Linux distributions and npm |
 | [**docs/DEV-GUIDE.md**](docs/DEV-GUIDE.md) | Local development setup, component architecture, and build pipeline |
-| [**docs/DESIGN-GUIDE.md**](docs/DESIGN-GUIDE.md) | UI tokens, dark themes, and Microsoft UI XAML Fluent Design specs |
+| [**docs/DESIGN-GUIDE.md**](docs/DESIGN-GUIDE.md) | UI design tokens, dark themes, and layout guidelines |
 | [**docs/CONTRIBUTION.md**](docs/CONTRIBUTION.md) | Pull request guidelines, branch conventions, and testing standards |
 | [**docs/RELEASE.md**](docs/RELEASE.md) | Version changelogs, binary SHA-256 hashes, and roadmap |
 | [**docs/SECURITY.md**](docs/SECURITY.md) | Security policy and coordinated vulnerability reporting |

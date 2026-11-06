@@ -16,7 +16,7 @@ All comprehensive project guides and architectural specifications are located in
 | **Developer Guide** | Environment setup, Electron runtime, native C++ audio daemon, and build pipeline | [**docs/DEV-GUIDE.md**](../docs/DEV-GUIDE.md) |
 | **Design Specifications** | Fluent UI tokens, color palettes, dark theme specs, and typography | [**docs/DESIGN-GUIDE.md**](../docs/DESIGN-GUIDE.md) |
 | **Project Rules & Legal** | Governance, product ownership, licensing terms, and IP compliance | [**docs/RULES.md**](../docs/RULES.md) |
-| **Installation & Setup** | Multi-platform installation via npm, Debian package, and Windows installer | [**docs/INSTALL.md**](../docs/INSTALL.md) |
+| **Installation & Setup** | Installation via npm, Debian package, and source builds | [**docs/INSTALL.md**](../docs/INSTALL.md) |
 | **Changelog & Roadmap** | Release changelogs, binary SHA-256 checksums, and release process | [**docs/RELEASE.md**](../docs/RELEASE.md) |
 | **Security Policy** | Vulnerability disclosure channels, sandboxing, and response timelines | [**docs/SECURITY.md**](../docs/SECURITY.md) |
 | **Credits & Licenses** | Upstream technologies, dependencies, and core acknowledgments | [**docs/CREDITS.md**](../docs/CREDITS.md) |

@@ -24,7 +24,7 @@ If you discover a security vulnerability in Brave Music:
 1. **Email:** Send a detailed report to **[security@codemoteams.org](mailto:security@codemoteams.org)** and CC **[cosl@codemoteams.org](mailto:cosl@codemoteams.org)**.
 2. **Subject line:** Use the format `[SECURITY] Brave Music - <Brief Description>`.
 3. **Report contents:**
-   - Affected version, commit hash, and operating system (Linux / Windows).
+   - Affected version, commit hash, and operating system (Linux).
    - Clear description of the vulnerability and its potential impact.
    - Step-by-step reproduction instructions or a minimal proof of concept (PoC).
    - Any suggested mitigations or remediation steps, if known.

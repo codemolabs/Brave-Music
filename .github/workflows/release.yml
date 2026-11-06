@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   release:
-    name: Build & Publish Release (Windows & Linux)
+    name: Build & Publish Release (Linux Debian)
     runs-on: ubuntu-latest
 
     steps:
@@ -27,7 +27,7 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y dpkg-dev yt-dlp 7zip p7zip-full python3-pip
+          sudo apt-get install -y dpkg-dev yt-dlp python3-pip
 
       - name: Install Node Dependencies
         run: npm install
@@ -35,43 +35,31 @@ jobs:
       - name: Build Linux Debian Package
         run: bash Install/Linux/build-deb.sh
 
-      - name: Build Windows Suite Package (.exe & .zip)
-        run: bash Install/Windows/build-win.sh
-
       - name: Generate Checksums
         run: |
-          sha256sum Install/Windows/BraveMusic-Setup-*.exe > SHA256SUMS.txt
-          sha256sum Install/Windows/brave-music_*_win64.zip >> SHA256SUMS.txt
-          sha256sum Install/Linux/brave-music_*_amd64.deb >> SHA256SUMS.txt
+          sha256sum Install/Linux/brave-music_*_amd64.deb > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Brave Music ${{ github.ref_name }} (Windows & Linux Suite)
+          name: Brave Music ${{ github.ref_name }} (Linux)
           tag_name: ${{ github.ref_name }}
           files: |
-            Install/Windows/BraveMusic-Setup-*.exe
-            Install/Windows/brave-music_*_win64.zip
             Install/Linux/brave-music_*_amd64.deb
             SHA256SUMS.txt
           draft: false
           prerelease: false
           body: |
-            ## Brave Music ${{ github.ref_name }} Stable Suite Release
+            ## Brave Music ${{ github.ref_name }} Stable Release
 
             Provider: **Codemo Open Source Labs (COSL)** — [https://github.com/codemolabs](https://github.com/codemolabs)
             Official Repository: [https://github.com/codemolabs/Brave-Music](https://github.com/codemolabs/Brave-Music)
 
             ### Highlights & What's New:
-            - **Windows Native Executable Suite (`.exe` & `.zip`)**: Full Windows 64-bit desktop build with embedded CastLabs Widevine CDM DRM runtime, bundling seamless ad-free YouTube Music, Spotify Web, and offline playback on Windows 10/11.
-            - **Bundled yt-dlp Engine**: Bundles `yt-dlp.exe` for immediate out-of-the-box offline music downloads on Windows with zero setup required.
-            - **Windows Native Theme Popup Library & Microsoft UI XAML**: Fluent Design system tokens, Mica/Acrylic glass blur dialogs, and a dedicated Windows "Shows Downloading" Suite modal with real-time transfer stats and Windows 11 taskbar progress sync.
-            - **WinUI 3 & Windows App SDK Architecture**: C# suite project under `Install/Windows/BraveMusic.Installer/` implementing `PackageDeploymentManager.AddPackageByUriAsync` and `ContentDialog` (enforcing `dialog.XamlRoot = this.Content.XamlRoot`).
-            - **Multi-Platform Folder Scheme**: Release pipeline standardized under `Install/` (`Install/Linux/`, `Install/Windows/`, `Install/Android/`, `Install/MacOS/`).
-            - **Zero Telemetry**: All operations run 100% locally on the user end without analytics, telemetry, or forced installation.
+            - **Linux Debian Package (`.deb`)**: Full 64-bit Debian/Ubuntu package bundling seamless ad-free YouTube Music, Spotify Web, and offline playback.
+            - **Zero Telemetry**: All operations run 100% locally on the user end without analytics, telemetry, or forced background tracking.
+            - **Native Desktop Integration**: Linux MPRIS2 media controller and tray synchronization.
 
             ### Downloads:
-            - **Windows Setup**: `BraveMusic-Setup-1.0.18.exe`
-            - **Windows Portable**: `brave-music_1.0.18_win64.zip`
             - **Linux Debian**: `brave-music_1.0.18_amd64.deb`

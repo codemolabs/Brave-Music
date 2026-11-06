@@ -6,17 +6,10 @@ This document tracks official version releases, changelogs, binary checksums, an
 
 - **Release Tag**: `v1.0.18`
 - **npm GitHub Package (`@codemolabs/brave-music`)**: Published package to GitHub Packages ([`@codemolabs/brave-music`](https://github.com/orgs/codemolabs/packages/npm/package/brave-music)), specifically scoped for Linux environments (`"os": ["linux"]`, `x64` / `arm64`) with executable CLI launcher `bin/brave-music.js` and zero-install `npx @codemolabs/brave-music` support.
-- **Windows Native Release & Suite (.exe / .zip)**: Complete Windows x64 release package with native Windows libraries, bundled `yt-dlp.exe`, CastLabs Widevine CDM DRM support, and Microsoft UI XAML (WinUI 3) design language.
-- **Windows Suite "Shows Downloading" UI**: Dedicated Windows native download and onboarding suite with real-time progress bar, throughput metrics, ETA, and Windows 11 taskbar integration.
-- **WinUI 3 & Windows App SDK Architecture**: Full C# WinUI 3 suite project in `Install/Windows/BraveMusic.Installer/` implementing `PackageDeploymentManager.AddPackageByUriAsync` and `ContentDialog` (with critical `dialog.XamlRoot = this.Content.XamlRoot` visual tree association).
-- **New Multi-Platform Release Folder Scheme**: Structured under `Install/` with `Install/Linux/`, `Install/Windows/`, `Install/MacOS/`, and `Install/Android/`.
+- **Multi-Platform Folder Scheme**: Structured under `Install/` with `Install/Linux/`, `Install/MacOS/`, and `Install/Android/`.
 - **Zero Telemetry & Local Execution**: 100% on-device processing with zero data collection, no telemetry, and no forced installation. Developed and governed by Codemo Open Source Labs (COSL).
 - **Debian Package (Linux)**: `Install/Linux/brave-music_1.0.18_amd64.deb`
 - **Linux SHA-256**: `f198ef99d80d1eb61cff82d4f3b5667cd89b0182c82d66fc7fb7ee9b65d2b41b`
-- **Windows Setup Executable**: `Install/Windows/BraveMusic-Setup-1.0.18.exe`
-- **Windows Setup SHA-256**: `cc85d9e8e5964ad3cc011ed62fb24642b485a9f14a71c417585e73adf6b42d20`
-- **Windows Portable Suite**: `Install/Windows/brave-music_1.0.18_win64.zip`
-- **Windows Portable SHA-256**: `f333261575c64abd6d72588360ee33b416d74927f9724f1694b04c863a5b10d4`
 
 ### Release v1.0.17
 

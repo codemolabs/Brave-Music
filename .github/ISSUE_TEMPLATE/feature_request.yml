@@ -28,7 +28,7 @@ body:
       options:
         - Linux Desktop
         - Android Milestone
-        - Windows Suite
+        - Windows (Roadmap)
         - macOS
         - Backend / C++ Audio Engine
     validations:

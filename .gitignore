@@ -7,8 +7,6 @@ build/
 bin/*
 !bin/brave-music.js
 tools/
-Install/Windows/tools/
-Install/Windows/dist/
 Install/Linux/dist/
 *.deb
 *.rpm

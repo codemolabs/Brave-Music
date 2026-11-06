@@ -33,7 +33,7 @@ All official manuals and troubleshooting guides are maintained in the [`docs/`](
 
 | Document | Description |
 | :--- | :--- |
-| [**docs/INSTALL.md**](../docs/INSTALL.md) | Linux npm / deb installation, Windows installer, and troubleshooting |
+| [**docs/INSTALL.md**](../docs/INSTALL.md) | Linux npm / deb installation, source setup, and troubleshooting |
 | [**docs/DEV-GUIDE.md**](../docs/DEV-GUIDE.md) | Building from source, running in dev mode, and architecture overview |
 | [**docs/CONTRIBUTION.md**](../docs/CONTRIBUTION.md) | Contributor guidelines, Android roadmap, and PR review process |
 | [**docs/SECURITY.md**](../docs/SECURITY.md) | Security vulnerability disclosure process and policies |
@@ -45,3 +45,4 @@ All official manuals and troubleshooting guides are maintained in the [`docs/`](
 
 - **General Inquiries:** `cosl@codemoteams.org`
 - **Security Vulnerabilities:** Please report security issues privately to **[security@codemoteams.org](mailto:security@codemoteams.org)** (or **[cosl@codemoteams.org](mailto:cosl@codemoteams.org)**) rather than opening a public issue. See [SECURITY.md](SECURITY.md).
+
