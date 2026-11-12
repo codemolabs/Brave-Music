@@ -1,0 +1,1 @@
+{"main-window":{"identifier":"main-window","description":"Tauri core access for the trusted local Brave Music preview.","local":true,"windows":["*"],"webviews":["*"],"permissions":["core:default"]}}

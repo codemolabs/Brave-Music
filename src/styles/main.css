@@ -52,6 +52,12 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+html {
+  font-size: 14px;
+  -webkit-overflow-scrolling: touch;
+  text-rendering: optimizeLegibility;
+}
+
 html, body {
   width: 100%;
   height: 100%;
@@ -65,6 +71,38 @@ html, body {
 body {
   display: flex;
   flex-direction: column;
+}
+
+/* Universal Smooth Dark Scrollbars */
+*::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
 
 /* ==========================================================================
@@ -83,6 +121,7 @@ body {
   z-index: 50;
   flex-shrink: 0;
   box-shadow: var(--inner-highlight);
+  transform: translateZ(0);
 }
 
 .header-left,
@@ -95,6 +134,46 @@ body {
   align-items: center;
   justify-content: flex-start;
   min-width: 0;
+}
+
+/* In-App History Navigation Controls (< Back, > Forward) */
+.header-history-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.nav-history-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-elevated);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.nav-history-btn:hover:not(:disabled) {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+  border-color: var(--border-glow);
+}
+
+.nav-history-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.nav-history-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .header-center {
@@ -159,9 +238,10 @@ body {
   font-weight: 500;
   cursor: pointer;
   position: relative;
-  transition: all 0.28s var(--spring-physics);
+  transition: color 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, padding 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   white-space: nowrap;
   outline: none;
+  transform: translateZ(0);
 }
 
 .nav-tab:hover {
@@ -170,7 +250,8 @@ body {
 }
 
 .nav-tab:active {
-  transform: scale(0.97);
+  transform: scale(0.97) translateZ(0);
+  transition-duration: 80ms;
 }
 
 /* Active tab expands to show label */
@@ -211,20 +292,18 @@ body {
   overflow: hidden;
   white-space: nowrap;
   margin-left: 0;
-  transform: scaleX(0.85);
-  transform-origin: left center;
-  transition: max-width 0.28s var(--spring-physics),
-              opacity 0.2s ease,
-              margin-left 0.25s ease,
-              transform 0.25s var(--spring-physics);
+  transition: max-width 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.18s ease,
+              margin-left 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
+  transform: translateZ(0);
+  will-change: max-width, opacity;
 }
 
 .nav-tab.active .tab-label {
   max-width: 140px;
   opacity: 1;
   margin-left: 9px;
-  transform: scaleX(1);
   pointer-events: auto;
 }
 
@@ -372,15 +451,40 @@ body {
   display: flex;
 }
 
+/* Layout isolation: when in YouTube Music / Spotify streaming mode, eliminate app-main from layout */
+body.stream-view-active .app-main {
+  display: none !important;
+}
+
+body.modal-open {
+  overflow: hidden !important;
+}
+
+body.modal-open #auth-sync-modal,
+body.modal-open #about-modal,
+body.modal-open .modal-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99999 !important;
+}
+
 .view-panel {
   position: absolute;
   inset: 0;
-  display: none;
+  display: flex;
   flex-direction: column;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.15s ease;
 }
 
 .view-panel.active {
-  display: flex;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 10;
 }
 
 webview {
@@ -396,11 +500,14 @@ webview {
 
 .downloads-container {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   max-width: 1360px;
   margin: 0 auto;
   width: 100%;
-  padding: 32px 44px;
+  padding: 32px 44px 56px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -573,18 +680,19 @@ webview {
   top: calc(100% + 6px);
   left: 0;
   min-width: 220px;
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-subtle);
+  background: #141724;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), var(--inner-highlight);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75), var(--inner-highlight);
   padding: 6px;
   z-index: 100;
   display: none;
   flex-direction: column;
   gap: 2px;
   animation: selectMenuIn 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .custom-select-wrapper.open .custom-select-dropdown {
@@ -592,8 +700,8 @@ webview {
 }
 
 @keyframes selectMenuIn {
-  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(-6px) translateZ(0); }
+  to { opacity: 1; transform: translateY(0) translateZ(0); }
 }
 
 .custom-select-option {
@@ -733,8 +841,8 @@ webview {
 }
 
 @keyframes slideDown {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(-8px) translateZ(0); }
+  to { opacity: 1; transform: translateY(0) translateZ(0); }
 }
 
 .progress-info {
@@ -756,10 +864,11 @@ webview {
   border-top-color: var(--accent-brave);
   border-radius: 50%;
   animation: spin 800ms linear infinite;
+  transform: translateZ(0);
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to { transform: rotate(360deg) translateZ(0); }
 }
 
 .progress-title {
@@ -928,7 +1037,7 @@ webview {
 }
 
 .tracks-table tbody tr {
-  transition: background var(--duration-fast);
+  transition: background-color 0.12s ease;
 }
 
 .tracks-table tbody tr:hover {
@@ -1207,8 +1316,8 @@ webview {
 }
 
 @keyframes toastIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(8px) translateZ(0); }
+  to { opacity: 1; transform: translateY(0) translateZ(0); }
 }
 
 /* ==========================================================================
@@ -1425,15 +1534,15 @@ webview {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(4, 5, 9, 0.78);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: rgba(4, 5, 9, 0.82);
   z-index: 200;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
-  animation: modalFadeIn 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: modalFadeIn 180ms ease-out forwards;
+  transform: translateZ(0);
+  will-change: opacity;
 }
 
 @keyframes modalFadeIn {
@@ -1444,17 +1553,21 @@ webview {
 .modal-card {
   width: 100%;
   max-width: 580px;
-  background: linear-gradient(165deg, rgba(20, 24, 36, 0.95) 0%, rgba(10, 13, 20, 0.98) 100%);
+  background: linear-gradient(165deg, rgba(20, 24, 36, 0.98) 0%, rgba(10, 13, 20, 0.99) 100%);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.05);
   overflow: hidden;
-  animation: modalScaleIn 260ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: modalScaleIn 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 @keyframes modalScaleIn {
-  from { transform: scale(0.94) translateY(8px); opacity: 0; }
-  to { transform: scale(1) translateY(0); opacity: 1; }
+  from { transform: translateY(14px) translateZ(0); opacity: 0; }
+  to { transform: translateY(0) translateZ(0); opacity: 1; }
 }
 
 .modal-header {
@@ -1607,14 +1720,25 @@ webview {
 }
 
 /* Navbar Shield Count Pulse Animation */
+.ads-blocked-label {
+  cursor: pointer;
+  transition: transform 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.ads-blocked-label:hover {
+  color: var(--text-primary);
+  border-color: var(--border-glow);
+}
+
 .ads-blocked-label.pulse-counter {
-  animation: counterPulse 400ms ease;
+  animation: counterPulse 450ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes counterPulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.08); color: #ff6b57; border-color: rgba(255, 78, 69, 0.4); }
-  100% { transform: scale(1); }
+  0% { transform: scale(1) translateZ(0); }
+  25% { transform: scale(1.08) translateZ(0); color: #ff5e48; border-color: rgba(255, 94, 72, 0.65); box-shadow: 0 0 10px rgba(255, 94, 72, 0.4); }
+  60% { transform: scale(0.98) translateZ(0); }
+  100% { transform: scale(1) translateZ(0); }
 }
 
 @media (max-width: 600px) {
@@ -1693,9 +1817,7 @@ webview {
 .runtime-player-bar {
   height: 66px;
   min-height: 66px;
-  background: rgba(13, 15, 20, 0.96);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  background: #0d0f17;
   border-top: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
@@ -1706,6 +1828,10 @@ webview {
   flex-shrink: 0;
   box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.55), var(--inner-highlight);
   box-sizing: border-box;
+  transform: translateZ(0);
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 /* Left Group: Artwork + Metadata + Control Buttons */
@@ -1771,6 +1897,7 @@ webview {
   width: 100%;
   height: 100%;
   overflow: visible;
+  shape-rendering: geometricPrecision;
 }
 
 .wave-line-1 {
@@ -1778,6 +1905,8 @@ webview {
   stroke-dashoffset: 0;
   animation: waveSineFlow 1.8s linear infinite, waveSineOscillate 0.85s ease-in-out infinite alternate;
   transform-origin: center;
+  transform: translateZ(0);
+  will-change: stroke-dashoffset, transform;
 }
 
 .wave-line-2 {
@@ -1785,6 +1914,8 @@ webview {
   stroke-dashoffset: 0;
   animation: waveSineFlow 1.3s linear infinite reverse, waveSineOscillate 0.95s ease-in-out infinite alternate-reverse;
   transform-origin: center;
+  transform: translateZ(0);
+  will-change: stroke-dashoffset, transform;
 }
 
 @keyframes waveSineFlow {
@@ -1793,9 +1924,9 @@ webview {
 }
 
 @keyframes waveSineOscillate {
-  0% { transform: scaleY(0.4); opacity: 0.7; }
-  50% { transform: scaleY(1.3); opacity: 1; }
-  100% { transform: scaleY(0.7); opacity: 0.85; }
+  0% { transform: scaleY(0.4) translateZ(0); opacity: 0.7; }
+  50% { transform: scaleY(1.3) translateZ(0); opacity: 1; }
+  100% { transform: scaleY(0.7) translateZ(0); opacity: 0.85; }
 }
 
 .player-track-artist {
@@ -2000,13 +2131,11 @@ webview {
   right: -4px;
   width: 48px;
   height: 190px;
-  background: var(--bg-surface-elevated);
-  border: 1px solid var(--border-subtle);
+  background: #141724;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 24px;
   padding: 12px 6px;
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.75), var(--inner-highlight);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.8), var(--inner-highlight);
   z-index: 100;
   display: flex;
   flex-direction: column;
@@ -2014,11 +2143,14 @@ webview {
   justify-content: space-between;
   animation: verticalVolFadeIn 180ms cubic-bezier(0.16, 1, 0.3, 1);
   box-sizing: border-box;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 @keyframes verticalVolFadeIn {
-  from { opacity: 0; transform: translateY(8px) scale(0.95); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(10px) translateZ(0); }
+  to { opacity: 1; transform: translateY(0) translateZ(0); }
 }
 
 .volume-val-badge {
@@ -2101,24 +2233,30 @@ webview {
   align-items: flex-end;
   justify-content: center;
   gap: 2px;
-  height: 12px;
+  height: 14px;
   width: 14px;
+  transform: translateZ(0);
 }
 
 .playing-num-eq span {
-  width: 2px;
+  width: 2.5px;
   background: var(--accent-brave);
-  border-radius: 1px;
-  animation: eqBar 650ms ease-in-out infinite alternate;
+  border-radius: 1px 1px 0 0;
+  transform-origin: bottom center;
+  transform: scaleY(0.2) translateZ(0);
+  animation: eqBar 600ms cubic-bezier(0.4, 0, 0.2, 1) infinite alternate;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
-.playing-num-eq span:nth-child(1) { height: 60%; }
-.playing-num-eq span:nth-child(2) { height: 100%; animation-delay: 200ms; }
-.playing-num-eq span:nth-child(3) { height: 40%; animation-delay: 400ms; }
+.playing-num-eq span:nth-child(1) { height: 100%; animation-duration: 520ms; animation-delay: 0ms; }
+.playing-num-eq span:nth-child(2) { height: 100%; animation-duration: 430ms; animation-delay: 150ms; }
+.playing-num-eq span:nth-child(3) { height: 100%; animation-duration: 610ms; animation-delay: 300ms; }
 
 @keyframes eqBar {
-  0% { transform: scaleY(0.2); }
-  100% { transform: scaleY(1); }
+  0% { transform: scaleY(0.18) translateZ(0); }
+  50% { transform: scaleY(0.7) translateZ(0); }
+  100% { transform: scaleY(1) translateZ(0); }
 }
 
 /* ==========================================================================
@@ -2950,12 +3088,12 @@ webview {
   align-items: center;
   justify-content: space-between;
   padding: 14px 28px;
-  background: rgba(12, 14, 20, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: #0d0f17;
   border-bottom: 1px solid var(--border-subtle);
   flex-wrap: wrap;
   gap: 12px;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .playlist-actions-left {
@@ -3432,14 +3570,14 @@ webview {
    ========================================================================== */
 
 #auth-sync-modal.modal-backdrop {
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(4, 5, 9, 0.82);
   z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
+  transform: translateZ(0);
+  will-change: opacity;
 }
 
 /* Modal Dialog Card */
@@ -3457,6 +3595,10 @@ webview {
   overflow: hidden;
   animation: authModalIn 220ms var(--spring-physics) forwards;
   position: relative;
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 /* Modal Header */
@@ -4195,11 +4337,11 @@ webview {
 @keyframes authModalIn {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.98);
+    transform: translateY(14px) translateZ(0);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0) translateZ(0);
   }
 }
 
@@ -4317,11 +4459,11 @@ webview {
 @keyframes slideDownSelection {
   from {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translateY(-8px) translateZ(0);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) translateZ(0);
   }
 }
 
@@ -4518,6 +4660,20 @@ webview {
   align-items: center;
   justify-content: center;
   height: 100%;
+}
+
+/* ==========================================================================
+   ACCESSIBILITY: PREFERS REDUCED MOTION
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 

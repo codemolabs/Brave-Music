@@ -4,14 +4,16 @@ Welcome to the Brave Music developer community under Codemo Open Source Labs (Co
 
 ---
 
-## 1. Project Roadmap: Android and Multi-Platform Target
+## 1. Project Roadmap: Multi-Platform Architecture & Android Target
 
-The current version of Brave Music is stable on Linux desktop. **Our primary engineering target and next milestone is porting and developing Brave Music for Android and other mobile operating systems.**
+With the introduction of release `v1.0.19-r`, Brave Music has established a high-performance cross-platform foundation centered around a modular Rust core (`crates/brave-music-core`) and native webview hosts (`tauri-preview/src-tauri`). **Our active engineering milestone is delivering first-class support for Linux, Windows, macOS, and Android.**
 
-Developers are encouraged to:
-- Build mobile prototypes and native Android shells (using Kotlin, React Native, or Capacitor/Chromium wrappers).
-- Adapt the local audio engine (`musikcube`) and background playback services for mobile runtime constraints.
-- Optimize touch navigation, background battery drain, and offline caching for mobile devices.
+Developers and contributors are actively invited to:
+- **Rust Core & Services (`crates/brave-music-core`)**: Contribute platform-agnostic business logic, metadata parsing, database synchronization, and local HTTP audio serving.
+- **Android Target**: Build native Android hosts using Android System WebView and Kotlin/Rust JNI bindings for background audio service integration.
+- **Windows & macOS Targets**: Adapt and test native webview hosting (WebView2 on Windows, WKWebView on macOS) with Widevine DRM compatibility.
+- **UI & Smooth Animation Polish**: Optimize responsive CSS, dark theme tokens, and GPU-composited scrolling across mobile and desktop viewports.
+- **Brave Shields Filtering Engine**: Refine declarative ad and telemetry blocklists in `src/js/webview-shields.js`.
 
 Before initiating major cross-platform architecture changes, open a Discussion or RFC issue to coordinate with Codemo OSL maintainers.
 

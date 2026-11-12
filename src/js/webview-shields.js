@@ -47,6 +47,15 @@ function runShields() {
 
   function notifyBlocked(detail) {
     try {
+      window.__BRAVE_SHIELDS_BLOCKED_COUNT__ = (window.__BRAVE_SHIELDS_BLOCKED_COUNT__ || 0) + 1;
+      if (typeof fetch === 'function') {
+        // Same-origin ping avoids DNS/TLS issues and is intercepted instantly by Tauri
+        fetch('/__brave_shield_blocked__?t=' + Date.now() + '&source=' + encodeURIComponent(detail || 'in-page'), {
+          method: 'GET',
+          cache: 'no-store',
+          credentials: 'omit'
+        }).catch(() => {});
+      }
       console.log('[BRAVE_SHIELD_BLOCKED]', detail);
     } catch (e) {}
   }
@@ -189,7 +198,27 @@ function runShields() {
       ].join(',\n') + ' { display: none !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }';
     }
 
-    if (!cssRules) return;
+    const smoothScrollRules = `
+* {
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+}
+*::-webkit-scrollbar {
+  width: 7px !important;
+  height: 7px !important;
+}
+*::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14) !important;
+  border-radius: 6px !important;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28) !important;
+}
+`;
+    cssRules += '\n' + smoothScrollRules;
 
     const style = document.createElement('style');
     style.id = 'brave-shields-injected-cosmetics';
@@ -210,6 +239,7 @@ function runShields() {
     }
   }
   injectCosmetics();
+  notifyBlocked('Cosmetics applied');
 
   // ========================================================================
   // 2. YOUTUBE MUSIC IN-FLIGHT TRAFFIC INTERCEPTION
@@ -490,52 +520,76 @@ function runShields() {
     }
 
     if (isSpotify) {
-      // Auto-close promotional upgrade dialogs
-      const upgradeModals = document.querySelectorAll(
-        '[data-testid="upgrade-modal"], [data-testid="dialog-container"]:has([data-testid="upgrade-button"]), .GenericModal:has([data-testid="upgrade-button"])'
-      );
-      upgradeModals.forEach(modal => {
-        const closeBtn = modal.querySelector('button[aria-label="Close"], button[data-testid="dialog-close-button"], [data-testid="modal-close-button"]');
-        if (closeBtn) {
-          try {
-            closeBtn.click();
-            notifyBlocked('Spotify promo closed');
-          } catch (e) {}
-        }
-      });
-
-      // Detect Spotify audio ad break
-      const nowPlayingWidget = document.querySelector('[data-testid="now-playing-widget"]');
-      const adIndicator = document.querySelector('[data-testid="track-info-advertiser"], [aria-label="Advertisement"]');
-      const isAdTrack = adIndicator || (nowPlayingWidget && nowPlayingWidget.textContent.includes('Advertisement'));
-
-      if (isAdTrack) {
-        document.querySelectorAll('audio').forEach(a => {
-          a.muted = true;
-          a.playbackRate = 16.0;
-          if (isFinite(a.duration) && a.duration > 0) {
-            a.currentTime = a.duration || 9999;
+      // Auto-close promotional upgrade dialogs safely
+      try {
+        const upgradeModals = document.querySelectorAll(
+          '[data-testid="upgrade-modal"], [data-testid="dialog-container"], .GenericModal'
+        );
+        upgradeModals.forEach(modal => {
+          if (
+            modal.matches?.('[data-testid="upgrade-modal"]') ||
+            modal.querySelector?.('[data-testid="upgrade-button"]')
+          ) {
+            const closeBtn = modal.querySelector('button[aria-label="Close"], button[data-testid="dialog-close-button"], [data-testid="modal-close-button"]');
+            if (closeBtn) {
+              try {
+                closeBtn.click();
+                notifyBlocked('Spotify promo closed');
+              } catch (e) {}
+            }
           }
         });
+      } catch (e) {}
 
-        const nextBtn = document.querySelector('[data-testid="control-button-skip-forward"]');
-        if (nextBtn) {
-          const now = Date.now();
-          if (now - lastSpotifySkip > 1000) {
-            lastSpotifySkip = now;
-            try {
-              nextBtn.click();
-              notifyBlocked('Spotify ad skipped forward');
-            } catch (e) {}
+      // Detect Spotify audio ad break
+      try {
+        const nowPlayingWidget = document.querySelector('[data-testid="now-playing-widget"]');
+        const adIndicator = document.querySelector('[data-testid="track-info-advertiser"], [aria-label="Advertisement"]');
+        const isAdTrack = adIndicator || (nowPlayingWidget && nowPlayingWidget.textContent?.includes('Advertisement'));
+
+        if (isAdTrack) {
+          document.querySelectorAll('audio').forEach(a => {
+            a.muted = true;
+            a.playbackRate = 16.0;
+            if (isFinite(a.duration) && a.duration > 0) {
+              a.currentTime = a.duration || 9999;
+            }
+          });
+
+          const nextBtn = document.querySelector('[data-testid="control-button-skip-forward"]');
+          if (nextBtn) {
+            const now = Date.now();
+            if (now - lastSpotifySkip > 1000) {
+              lastSpotifySkip = now;
+              try {
+                nextBtn.click();
+                notifyBlocked('Spotify ad skipped forward');
+              } catch (e) {}
+            }
           }
         }
-      }
+      } catch (e) {}
     }
   }
 
-  // Set up MutationObserver to react instantaneously on any DOM changes
+  // Throttled scan scheduler to protect main-thread frame budget during scrolling
+  let scanScheduled = false;
+  let lastScanTime = 0;
+  function scheduleScan() {
+    if (scanScheduled) return;
+    const now = Date.now();
+    const delay = Math.max(0, 350 - (now - lastScanTime));
+    scanScheduled = true;
+    setTimeout(() => {
+      scanScheduled = false;
+      lastScanTime = Date.now();
+      runFastScan();
+    }, delay);
+  }
+
+  // Set up MutationObserver to react on DOM changes without flooding main thread during scrolling
   const observer = new MutationObserver(() => {
-    runFastScan();
+    scheduleScan();
   });
 
   if (document.documentElement) {
@@ -558,8 +612,8 @@ function runShields() {
     });
   }
 
-  // High-frequency backup loop for continuous playback monitoring
-  setInterval(runFastScan, 80);
+  // Low-overhead periodic monitoring loop
+  setInterval(scheduleScan, 1500);
 
   console.log('[Brave Shields] Proactive traffic & glitch prevention engine active on', hostname);
 }

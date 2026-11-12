@@ -56,9 +56,9 @@ export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 export ELECTRON_DISABLE_SECURITY_WARNINGS=true
 cd /opt/brave-music
 if [ -x "/opt/brave-music/node_modules/.bin/electron" ]; then
-  exec /opt/brave-music/node_modules/.bin/electron . --no-sandbox --in-process-gpu "$@"
+  exec /opt/brave-music/node_modules/.bin/electron . --no-sandbox --no-zygote --disable-gpu-sandbox "$@"
 else
-  exec npx --yes electron . --no-sandbox --in-process-gpu "$@"
+  exec npx --yes electron . --no-sandbox --no-zygote --disable-gpu-sandbox "$@"
 fi
 EOF
 chmod +x "$BUILD_DIR/opt/brave-music/run.sh"

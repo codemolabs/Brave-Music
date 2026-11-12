@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="140" height="42" viewBox="0 0 140 42">
+  <defs>
+    <linearGradient id="coslGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5E35B1" />
+      <stop offset="100%" stop-color="#4527A0" />
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-10%" width="110%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+  <rect x="2" y="2" width="136" height="38" rx="19" fill="url(#coslGrad)" stroke="#7E57C2" stroke-width="1" filter="url(#shadow)" />
+  <g fill="#FFFFFF" transform="translate(31, 12)">
+    <path d="M9 2v8h3l-4 4-4-4h3V2h2zm-7 13h12v2H2v-2z" />
+  </g>
+  <text x="53" y="25" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="14" font-weight="600" letter-spacing="0.3">Install</text>
+</svg>

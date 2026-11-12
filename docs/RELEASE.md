@@ -2,6 +2,27 @@
 
 This document tracks official version releases, changelogs, binary checksums, and update schedules for Brave Music under Codemo Open Source Labs (Codemo OSL).
 
+### Release v1.0.19-r (Cross-Platform Architecture & Ultra-Smooth Performance Engine)
+
+- **Release Tag**: `v1.0.19-r`
+- **New Cross-Platform Stack (Rust + Native Webview Core)**: Introduced the new modular, memory-efficient cross-platform stack under `crates/brave-music-core` and `tauri-preview/src-tauri` supporting Linux, Windows, macOS, and mobile Android runtimes with standalone HTTP audio streaming daemon and zero electron runtime dependency.
+- **Preview Runner**: Added `./run.sh --new-stack` (`-n`, `--preview`, `--rust`) to seamlessly launch the ultra-fast native stack alongside the legacy Electron runner.
+- **Zero-Jank Ultra-Smooth Scrolling**:
+  - Eliminated artificial `scroll-behavior: smooth !important` overrides from YouTube Music and Spotify Web Player, curing all rubber-banding, judder, and kinetic friction conflicts with Spotify's `OverlayScrollbars` JS momentum engine.
+  - Removed layout containment (`contain: layout style`) and layer promotion from table rows and offline library containers, allowing the OS GPU compositor to scroll with native 1:1 hardware wheel precision.
+- **Throttled Shields Mutation Engine**:
+  - Replaced unthrottled DOM mutation listener with a 350ms debounced scan scheduler (`scheduleScan`) and relaxed the monitoring interval to 1500ms, completely eliminating main-thread blocking during rapid scrolling.
+- **Eliminated Subpixel Blur & Font Fuzziness**:
+  - Removed fractional `scale()` transforms (`scale(0.94)`, `scale(0.95)`, `scale(0.98)`) on modal dialogs, volume popovers, and custom dropdown menus. Replaced with pure GPU translations (`translateY(14px) translateZ(0)`) using `cubic-bezier(0.16, 1, 0.3, 1)` for razor-sharp typography and crisp borders.
+  - Removed heavy multi-pass `backdrop-filter: blur(28px)` from fixed toolbars and player bars, eliminating expensive GPU frame buffer readbacks during scroll.
+- **Anchored Equalizer & Fluid Pill Navigation**:
+  - Audio visualizer bars now bounce from bottom floor (`transform-origin: bottom center`) with rhythmic staggered curves (`520ms`, `430ms`, `610ms`).
+  - Navigation tab labels expand dynamically via `max-width` + `opacity` transitions with zero font stretching.
+- **High-Fidelity Audio Streaming Engine**:
+  - Built-in multi-threaded local HTTP audio server with full support for `Range: bytes=` HTTP partial content (206 Partial Content), `HEAD` probe queries, instant seeking, and CORS support for local MP3/M4A/FLAC playback.
+- **Debian Package (Linux)**: `Install/Linux/brave-music_1.0.19-r_amd64.deb`
+- **Linux SHA-256**: `b8a35111505e14f5b656c8c0b1c7d9345bc8a3db76800246f7704804d49d6463`
+
 ### Release v1.0.18
 
 - **Release Tag**: `v1.0.18`

@@ -70,6 +70,7 @@ function ensureWidevineCdm() {
   const targetPointerFile = path.join(targetCdmDir, 'latest-component-updated-widevine-cdm');
 
   const candidateSources = [
+    path.join(__dirname, 'WidevineCdm'),
     '/opt/brave-music/WidevineCdm',
     '/opt/google/chrome/WidevineCdm',
     path.join(homeDir, '.config', 'Codex', 'WidevineCdm', cdmVersion),
@@ -143,8 +144,10 @@ function ensureWidevineCdm() {
 
 ensureWidevineCdm();
 
-// Flags for Widevine DRM, seamless autoplay and Wayland GPU stability
-app.commandLine.appendSwitch('in-process-gpu');
+// Flags for Widevine DRM, seamless autoplay and Linux Wayland/X11 webview stability
+app.commandLine.appendSwitch('no-sandbox');
+app.commandLine.appendSwitch('no-zygote');
+app.commandLine.appendSwitch('disable-gpu-sandbox');
 app.commandLine.appendSwitch('enable-features', 'WidevineCdm');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
@@ -174,6 +177,10 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
 
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[Renderer Console] ${message} (${sourceId}:${line})`);
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
@@ -182,12 +189,22 @@ function createWindow() {
 
 // Web Contents Creation Handler: intercept window.open in webviews and popup windows
 app.on('web-contents-created', (event, contents) => {
+  console.log('[App] web-contents-created:', contents.getType(), contents.id);
   const musicSession = session.fromPartition(SHARED_PARTITION);
 
   // Apply genuine Google Chrome desktop User-Agent to every webContents and login popup
   contents.setUserAgent(CHROME_USER_AGENT);
 
   if (contents.getType() === 'webview') {
+    contents.on('console-message', (e, level, message) => {
+      console.log(`[Webview Console] ${message}`);
+    });
+    contents.on('did-fail-load', (e, errorCode, errorDescription, validatedURL) => {
+      console.log(`[Webview Fail Load] ${validatedURL}: ${errorDescription} (${errorCode})`);
+    });
+    contents.on('did-finish-load', () => {
+      console.log(`[Webview Finished Load] ${contents.getURL()}`);
+    });
     // Intercept window.open calls from inside Spotify or YouTube
     contents.setWindowOpenHandler(({ url }) => {
       try {

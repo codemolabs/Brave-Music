@@ -78,19 +78,27 @@ npx @codemolabs/brave-music
 ### Linux (Debian Package)
 
 ```bash
-wget https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb
-sudo apt install ./brave-music_1.0.18_amd64.deb
+wget https://github.com/codemolabs/Brave-Music/releases/download/v1.0.19-r/brave-music_1.0.19-r_amd64.deb
+sudo apt install ./brave-music_1.0.19-r_amd64.deb
 brave-music
+```
+
+### Modern Cross-Platform Stack (Rust + Native Webview)
+
+```bash
+# Launch the high-performance native stack (preview)
+./run.sh --new-stack
 ```
 
 ## Technical Architecture
 
 | Layer | Component | Implementation |
 | :--- | :--- | :--- |
-| **Runtime** | CastLabs Chromium Electron | Widevine CDM hardware-decoded streaming |
-| **Audio Daemon** | Musikcube (C++) | Standalone background engine for low-latency offline playback |
+| **Native Host Core** | Rust + OS Native Webviews | Ultra-lightweight cross-platform shell (`tauri-preview` & `crates/brave-music-core`) |
+| **Desktop Shell** | CastLabs Chromium Electron | Widevine CDM hardware-decoded streaming (Legacy baseline) |
+| **Audio Daemon** | Built-in HTTP Range Server & Musikcube | Multi-threaded local streaming engine with instant 206 Partial Content seeking |
 | **Downloader** | yt-dlp Engine | Local media extraction with automatic metadata tagging |
-| **Privacy** | Brave Shields Engine | Network request filtering and tracker suppression |
+| **Privacy & Shields** | Throttled Brave Shields Engine | Declarative network filtering and debounced DOM ad suppression |
 | **System Integration** | Linux MPRIS2 | Native system media controls and taskbar playback synchronization |
 
 ## Documentation

@@ -227,11 +227,64 @@ Or run the script directly:
 ```bash
 bash Install/Linux/build-deb.sh
 ```
-The script builds the package at `Install/Linux/brave-music_1.0.18_amd64.deb`.
+The script builds the package at `Install/Linux/brave-music_1.0.19-r_amd64.deb`.
 
 ---
 
-## 6. Common Troubleshooting
+## 6. Modern Cross-Platform Stack (Rust + Native Webview Core)
+
+Beginning with release `v1.0.19-r`, Brave Music features a modern, ultra-lightweight cross-platform architecture built on Rust and OS-native webviews (WebKitGTK on Linux, WebView2 on Windows, WebKit on macOS, Android System WebView). This stack eliminates Electron runtime overhead and achieves instantaneous startup, smooth 60fps scrolling, and minimal memory usage.
+
+### Directory Structure
+
+```text
+├── crates/
+│   └── brave-music-core/          # Pure Rust business logic (metadata, storage, library DB)
+├── tauri-preview/
+│   ├── src-tauri/                 # Rust desktop host application
+│   │   ├── src/main.rs            # Host lifecycle, native GTK overlay, audio server
+│   │   └── Cargo.toml             # Rust dependencies (tauri v2, tokio, gtk)
+│   └── ui/                        # High-performance Vanilla frontend assets
+│       ├── index.html             # OneUI-inspired responsive layout
+│       ├── styles/main.css        # Hardware-accelerated dark theme styles
+│       └── js/app.js              # State manager and IPC bridging
+```
+
+### Building and Running the Native Stack
+
+#### System Prerequisites (Ubuntu / Debian)
+```bash
+sudo apt update
+sudo apt install -y cargo rustc libwebkit2gtk-4.1-dev libgtk-3-dev
+```
+
+#### Launching the Native Preview
+Run with the `--new-stack` flag:
+```bash
+./run.sh --new-stack
+# Shortcuts: ./run.sh -n  or  ./run.sh --preview  or  ./run.sh --rust
+```
+
+#### Compiling Production Release Binary
+```bash
+cargo build --release --manifest-path tauri-preview/src-tauri/Cargo.toml
+cp tauri-preview/src-tauri/target/release/brave-music-linux-preview ~/.cargo/bin/brave-music-linux-preview
+```
+
+### Key Technical Features
+
+1. **Independent HTTP Range Audio Engine**:
+   - Built-in multi-threaded HTTP server (`handle_stream_client`) handling `Range: bytes=` requests with `206 Partial Content`.
+   - Instant seeking across local MP3, M4A, and FLAC audio files with zero playback delay.
+2. **Hardware-Accelerated Compositing & Native Scrolling**:
+   - Configures WebKitGTK with `WEBKIT_FORCE_COMPOSITING_MODE=1` and pure GPU translation curves (`translateY(14px) translateZ(0)`).
+   - Eliminates expensive `backdrop-filter` readbacks, maintaining locked 60fps during library scrolling.
+3. **Throttled Shields Ad-Filtering**:
+   - `scheduleScan()` debounces DOM inspection to 350ms, allowing smooth infinite scroll in YouTube Music and Spotify without main-thread starvation.
+
+---
+
+## 7. Common Troubleshooting
 
 ### Issue: Spotify Web player reports "Protected Content Not Enabled"
 - **Cause**: Missing or uninitialized Widevine CDM.

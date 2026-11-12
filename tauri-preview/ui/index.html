@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Brave Music</title>
+  <!-- Google Font: Outfit (Clean modern sans-serif) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body class="dark-theme">
+
+  <!-- Top Title & Navigation Bar -->
+  <header class="app-header" data-tauri-drag-region>
+    <!-- Left: Navigation Tabs (Dynamic Pills) & History Controls -->
+    <div class="header-left">
+      <div class="header-history-nav">
+        <button class="nav-history-btn" id="btn-nav-back" title="Go Back (Alt+Left)" aria-label="Go Back" disabled>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <button class="nav-history-btn" id="btn-nav-forward" title="Go Forward (Alt+Right)" aria-label="Go Forward" disabled>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </button>
+      </div>
+
+      <nav class="nav-tabs" role="tablist">
+        <button class="nav-tab active" id="tab-yt" data-target="yt-view" role="tab" aria-selected="true" title="YouTube Music">
+          <span class="tab-icon-wrapper yt-icon-box">
+            <img src="assets/icons/yt-music.svg" alt="YouTube Music" class="tab-icon">
+          </span>
+          <span class="tab-label">YouTube Music</span>
+        </button>
+
+        <button class="nav-tab" id="tab-spotify" data-target="spotify-view" role="tab" aria-selected="false" title="Spotify">
+          <span class="tab-icon-wrapper spotify-icon-box">
+            <img src="assets/icons/spotify.svg" alt="Spotify" class="tab-icon">
+          </span>
+          <span class="tab-label">Spotify</span>
+        </button>
+
+        <button class="nav-tab" id="tab-downloads" data-target="downloads-view" role="tab" aria-selected="false" title="Downloads">
+          <span class="tab-icon-wrapper downloads-icon-box">
+            <svg class="tab-icon download-tab-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </span>
+          <span class="tab-label">Downloads</span>
+          <span class="library-count-pill" id="library-count-badge">0</span>
+        </button>
+      </nav>
+    </div>
+
+    <!-- Center: Brand Name (Centered in Header) -->
+    <div class="header-center">
+      <div class="brand-pill">
+        <span class="brand-name" data-tauri-drag-region>Brave Music</span>
+      </div>
+    </div>
+
+    <!-- Right: Shields Counter, Refresh, Credits & Window Controls -->
+    <div class="header-right">
+      <!-- Ads blocked text label near refresh (no icon) -->
+      <span class="ads-blocked-label" id="shield-count-label">0 ads blocked</span>
+
+      <!-- User Account / Login Button (Simple Empty Profile Icon) -->
+      <button class="icon-action-btn" id="btn-auth-sync" title="Sign In &amp; Account" aria-label="Sign In or Manage Account">
+        <svg class="auth-sync-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+      </button>
+
+      <button class="icon-action-btn" id="btn-reload" title="Refresh current tab" aria-label="Refresh current tab">
+        <svg class="reload-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+      </button>
+
+      <button class="icon-action-btn btn-about-info" id="btn-about" title="About Developer & Credits" aria-label="About Developer & Credits">
+        <svg class="info-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+      </button>
+
+      <div class="window-controls">
+        <button class="win-btn win-min" id="win-min" title="Minimize">
+          <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>
+        </button>
+        <button class="win-btn win-max" id="win-max" title="Maximize">
+          <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
+        </button>
+        <button class="win-btn win-close" id="win-close" title="Close">
+          <svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" stroke-width="1.2"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Viewports Container -->
+  <main class="app-main">
+    <!-- View 1: YouTube Music Webview -->
+    <section class="view-panel active" id="panel-yt-view">
+      <div id="yt-webview" class="webview-host-layer"></div>
+    </section>
+
+    <!-- View 2: Spotify Webview -->
+    <section class="view-panel" id="panel-spotify-view">
+      <div id="spotify-webview" class="webview-host-layer"></div>
+    </section>
+
+    <!-- View 3: Offline Music Downloads & Player View -->
+    <section class="view-panel" id="panel-downloads-view">
+      <div class="downloads-container">
+        
+        <!-- Top Hero Toolbar -->
+        <div class="downloads-hero">
+          <div class="hero-left">
+            <h1 class="hero-title">Offline Music Library</h1>
+            <p class="hero-subtitle">High-fidelity offline music playback and streaming engine</p>
+          </div>
+
+          <div class="hero-right">
+            <button class="ghost-btn" id="btn-create-playlist" title="Create Custom Playlist">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>New Playlist</span>
+            </button>
+            <button class="ghost-btn" id="btn-import-music" title="Add Music from Local Files to Library">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+              <span>Add from Files</span>
+            </button>
+            <div class="folder-action-cluster" style="display: inline-flex; align-items: center; gap: 4px;">
+              <button class="ghost-btn" id="btn-open-folder" title="Open Downloads in File Manager">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <span>Open Folder</span>
+              </button>
+              <button class="ghost-btn icon-only-btn folder-settings-btn" id="btn-folder-settings" title="Customize Download Folder Location" style="width: 36px; height: 36px; padding: 0; justify-content: center;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inline Quick Download Bar -->
+        <div class="download-bar-card">
+          <div class="input-group">
+            <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+            </svg>
+            <input type="text" id="input-download-url" placeholder="Paste YouTube / Spotify track or playlist URL…" autocomplete="off" spellcheck="false">
+          </div>
+
+          <!-- Format Selector (Audio MP3 / FLAC / M4A / Video MP4) -->
+          <div class="custom-select-wrapper" id="format-select-wrapper">
+            <button type="button" class="custom-select-trigger" id="format-trigger" aria-haspopup="listbox" aria-expanded="false">
+              <span class="custom-select-icon" id="format-active-icon">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+              </span>
+              <span class="custom-select-label" id="format-active-label">Audio: MP3 (320k Best)</span>
+              <svg class="custom-select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            <div class="custom-select-dropdown" id="format-dropdown-menu" role="listbox">
+              <div class="custom-select-option selected" data-value="audio-mp3" role="option">
+                <svg class="option-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+                <span class="option-text">Audio: MP3 (320k Best)</span>
+                <svg class="option-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <div class="custom-select-option" data-value="audio-flac" role="option">
+                <svg class="option-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                <span class="option-text">Audio: FLAC (Lossless)</span>
+                <svg class="option-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <div class="custom-select-option" data-value="audio-m4a" role="option">
+                <svg class="option-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>
+                <span class="option-text">Audio: M4A / AAC</span>
+                <svg class="option-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <div class="custom-select-divider"></div>
+              <div class="custom-select-option" data-value="video-mp4" role="option">
+                <svg class="option-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                <span class="option-text">Video: MP4 (1080p Best)</span>
+                <svg class="option-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+              <div class="custom-select-option" data-value="video-720p" role="option">
+                <svg class="option-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M17 2l-5 5-5-5"></path></svg>
+                <span class="option-text">Video: MP4 (720p)</span>
+                <svg class="option-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
+            </div>
+            <input type="hidden" id="select-download-format" value="audio-mp3">
+          </div>
+
+          <div class="download-type-toggles">
+            <button class="toggle-pill active" id="toggle-song" data-type="song">Single Music</button>
+            <button class="toggle-pill" id="toggle-playlist" data-type="playlist">Full Playlist</button>
+          </div>
+
+          <button class="primary-btn" id="btn-execute-download">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 3v11m0 0l-4-4m4 4l4-4"></path>
+              <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
+            </svg>
+            <span>Download</span>
+          </button>
+        </div>
+
+        <!-- Live Download Progress Banner (Hidden by default) -->
+        <div class="active-download-card" id="download-progress-box" style="display: none;">
+          <div class="progress-info">
+            <div class="progress-details">
+              <div class="spinner-ring"></div>
+              <span class="progress-title" id="progress-status-label">Downloading track from provider…</span>
+            </div>
+            <div class="progress-stats">
+              <span class="progress-metric" id="progress-speed">0.0 MB/s</span>
+              <span class="progress-percent" id="progress-percent-val">0%</span>
+              <button class="ghost-btn" id="btn-cancel-download" title="Cancel active download" style="height: 24px; padding: 0 8px; font-size: 0.72rem; border-radius: 4px; color: #f87171; border: 1px solid rgba(248, 113, 113, 0.3); margin-left: 6px;">Cancel</button>
+            </div>
+          </div>
+          <div class="progress-track">
+            <div class="progress-fill" id="progress-fill-bar" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- Filter, Sort & Search Toolbar -->
+        <div class="filter-bar">
+          <div class="toolbar-left">
+            <div class="segmented-control">
+              <button class="segment-btn active" id="filter-all-music" data-view="all">
+                <span>All Music</span>
+                <span class="segment-badge" id="badge-all-music">0</span>
+              </button>
+              <button class="segment-btn" id="filter-playlists" data-view="playlists">
+                <span>Playlists</span>
+                <span class="segment-badge" id="badge-playlists">0</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="toolbar-right">
+            <!-- 1. Select Button (Positioned on Left Place of Sort Button) -->
+            <button class="ghost-btn select-mode-btn" id="btn-toggle-select-mode" title="Select multiple tracks to manage or delete">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="9 11 12 14 22 4"></polyline>
+                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>
+              </svg>
+              <span id="btn-select-mode-text">Select</span>
+            </button>
+
+            <!-- 2. Sort Dropdown Control (In the Middle) -->
+            <div class="custom-select-wrapper" id="sort-select-wrapper">
+              <button type="button" class="custom-select-trigger sort-trigger" id="sort-trigger" aria-haspopup="listbox" aria-expanded="false" title="Sort offline tracks">
+                <svg class="custom-select-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="4" y1="6" x2="20" y2="6"></line>
+                  <line x1="4" y1="12" x2="14" y2="12"></line>
+                  <line x1="4" y1="18" x2="8" y2="18"></line>
+                </svg>
+                <span class="custom-select-label" id="sort-active-label">Recently Added</span>
+                <svg class="custom-select-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+              </button>
+              <div class="custom-select-dropdown sort-dropdown" id="sort-dropdown-menu" role="listbox">
+                <div class="custom-select-option selected" data-value="recent" role="option">
+                  <span class="option-text">Recently Added</span>
+                  <svg class="option-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
+                <div class="custom-select-option" data-value="title-asc" role="option">
+                  <span class="option-text">Title (A - Z)</span>
+                  <svg class="option-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
+                <div class="custom-select-option" data-value="title-desc" role="option">
+                  <span class="option-text">Title (Z - A)</span>
+                  <svg class="option-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
+                <div class="custom-select-option" data-value="artist-asc" role="option">
+                  <span class="option-text">Artist (A - Z)</span>
+                  <svg class="option-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
+                <div class="custom-select-option" data-value="duration-desc" role="option">
+                  <span class="option-text">Duration (Longest)</span>
+                  <svg class="option-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
+                <div class="custom-select-option" data-value="duration-asc" role="option">
+                  <span class="option-text">Duration (Shortest)</span>
+                  <svg class="option-check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
+              </div>
+              <input type="hidden" id="sort-tracks-select" value="recent">
+            </div>
+
+            <!-- 3. Search Bar (Positioned on Right Side of Sort Button) -->
+            <div class="search-box">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="text" id="search-local-library" placeholder="Search downloaded tracks…">
+            </div>
+          </div>
+        </div>
+
+        <!-- Bulk Selection Action Bar (Shown when select mode is active) -->
+        <div class="selection-action-bar" id="selection-action-bar" style="display: none;">
+          <div class="selection-bar-left">
+            <label class="custom-checkbox-wrap" id="select-all-label" title="Select or deselect all visible tracks">
+              <input type="checkbox" id="checkbox-select-all" class="custom-checkbox">
+              <span class="custom-checkbox-box"></span>
+              <span class="selection-all-text" id="selection-all-text">Select All</span>
+            </label>
+            <div class="selection-divider"></div>
+            <div class="selection-badge-wrap">
+              <span class="selection-count-badge" id="selection-count-badge">0</span>
+              <span class="selection-count-label">selected</span>
+            </div>
+          </div>
+
+          <div class="selection-bar-right">
+            <button class="bulk-delete-btn" id="btn-delete-selected" disabled title="Delete selected tracks from offline storage">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              <span id="btn-delete-selected-text">Delete Selected</span>
+            </button>
+            <button class="ghost-btn selection-done-btn" id="btn-cancel-selection" title="Exit selection mode (Esc)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <span>Done</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Library Content: All Songs View -->
+        <div class="library-view-section active" id="view-all-music">
+          <div class="tracks-table-container">
+            <table class="tracks-table" id="tracks-table">
+              <thead>
+                <tr>
+                  <th class="col-num" id="th-col-num">
+                    <span id="th-num-label">#</span>
+                    <label class="custom-checkbox-wrap" id="th-checkbox-wrap" style="display: none; justify-content: center; margin: 0;" title="Select or deselect all visible tracks">
+                      <input type="checkbox" id="th-select-all-checkbox" class="custom-checkbox">
+                      <span class="custom-checkbox-box"></span>
+                    </label>
+                  </th>
+                  <th class="col-title">TITLE</th>
+                  <th class="col-artist">ARTIST</th>
+                  <th class="col-album">ALBUM / PLAYLIST</th>
+                  <th class="col-duration">DURATION</th>
+                  <th class="col-actions">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody id="tracks-table-body">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Empty State (when 0 tracks) -->
+          <div class="empty-state" id="empty-state-box">
+            <div class="empty-icon-wrap">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+            </div>
+            <h3 class="empty-heading">No Downloaded Music Yet</h3>
+            <p class="empty-desc">Paste any YouTube Music or Spotify song or playlist link above to save high-fidelity offline audio.</p>
+            <div class="quick-samples">
+              <span class="samples-label">Quick test links:</span>
+              <button class="sample-tag" data-url="https://www.youtube.com/watch?v=dQw4w9WgXcQ">Rick Astley - Never Gonna Give You Up</button>
+              <button class="sample-tag" data-url="https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b">The Weeknd - Blinding Lights (Spotify)</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Library Content: Playlists Bento Grid View -->
+        <div class="library-view-section" id="view-playlists" style="display: none;">
+          <div class="playlists-view-header">
+            <div class="playlists-header-info">
+              <h2 class="playlists-header-title">Playlists & Collections</h2>
+              <p class="playlists-header-subtitle">Your custom playlists and downloaded albums</p>
+            </div>
+            <button class="primary-btn" id="btn-create-playlist-banner">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>New Playlist</span>
+            </button>
+          </div>
+          <div class="playlists-bento-grid" id="playlists-grid">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Docked Built-in Runtime Player Bar (Offline Music Engine) -->
+      <div class="runtime-player-bar minimal-player" id="runtime-player-bar">
+        <audio id="runtime-audio-element" preload="auto" crossorigin="anonymous"></audio>
+
+        <!-- Left Side: Track Artwork + Metadata + Player Buttons -->
+        <div class="player-left-group">
+          <div class="player-track-art">
+            <img id="player-art-img" src="assets/empty-music.svg" alt="" onerror="this.src='assets/empty-music.svg'">
+          </div>
+          <div class="player-track-meta">
+            <div class="player-title-row">
+              <span class="player-track-title" id="player-track-title">Select a track to play</span>
+            </div>
+            <span class="player-track-artist" id="player-track-artist">Offline Library</span>
+          </div>
+
+          <!-- Player Buttons Right After Music Title on Left Side -->
+          <div class="player-buttons" id="player-buttons-group">
+            <button class="player-ctrl-btn" id="player-shuffle-btn" title="Toggle Shuffle">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="16 3 21 3 21 8"></polyline>
+                <line x1="4" y1="20" x2="21" y2="3"></line>
+                <polyline points="21 16 21 21 16 21"></polyline>
+                <line x1="15" y1="15" x2="21" y2="21"></line>
+                <line x1="4" y1="4" x2="9" y2="9"></line>
+              </svg>
+            </button>
+
+            <button class="player-ctrl-btn" id="player-prev-btn" title="Previous Track">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="19 20 9 12 19 4 19 20"></polygon>
+                <line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"></line>
+              </svg>
+            </button>
+
+            <button class="player-play-btn" id="player-play-pause-btn" title="Play / Pause">
+              <svg class="play-icon" id="player-play-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+              <svg class="pause-icon" id="player-pause-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="display: none;">
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+              </svg>
+            </button>
+
+            <button class="player-ctrl-btn" id="player-next-btn" title="Next Track">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 4 15 12 5 20 5 4"></polygon>
+                <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"></line>
+              </svg>
+            </button>
+
+            <button class="player-ctrl-btn" id="player-repeat-btn" title="Toggle Repeat">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="17 1 21 5 17 9"></polyline>
+                <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                <polyline points="7 23 3 19 7 15"></polyline>
+                <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Center: Straight OneUI Play Bar (Straight Capsule Track, Active Pill Fill, Timestamps) -->
+        <div class="player-playbar-section">
+          <span class="player-time" id="player-current-time">0:00</span>
+          <div class="oneui-bar-wrap player-scrub-bar-wrap straight-scrubber" id="player-scrub-wrap">
+            <div class="oneui-bar-track player-scrub-track straight-track" id="player-scrub-track">
+              <div class="oneui-bar-fill player-scrub-fill" id="player-seek-fill" style="width: 0%;"></div>
+            </div>
+            <input type="range" class="oneui-bar-slider seek-slider" id="player-seek-slider" min="0" max="100" value="0" step="0.1" aria-label="Seek track">
+          </div>
+          <span class="player-time" id="player-total-time">0:00</span>
+        </div>
+
+        <!-- Right: Volume Icon with Vertical OneUI Capsule Popover -->
+        <div class="player-right-group">
+          <div class="volume-control-wrap" id="volume-control-wrap">
+            <button class="player-ctrl-btn volume-icon-btn" id="player-mute-btn" title="Volume Control" aria-haspopup="true" aria-expanded="false">
+              <svg class="vol-icon" id="player-vol-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+              </svg>
+            </button>
+
+            <!-- Floating Vertical Volume Capsule Bar -->
+            <div class="volume-popover-card vertical-volume-card" id="player-volume-popover" style="display: none;">
+              <span class="volume-val-badge" id="player-vol-percent">85%</span>
+              <div class="volume-vertical-track-wrap" id="volume-vertical-track-wrap" title="Drag to adjust volume">
+                <div class="volume-vertical-track" id="volume-vertical-track">
+                  <div class="volume-vertical-fill" id="player-volume-fill" style="height: 85%;"></div>
+                </div>
+              </div>
+              <button class="vol-quick-mute" id="btn-quick-mute" title="Toggle Mute">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Create Playlist Modal Dialog with Cover Customization -->
+  <div class="modal-backdrop" id="create-playlist-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="create-playlist-title">
+    <div class="modal-card modal-card-sm create-playlist-modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="create-playlist-title">Create Collection</h3>
+        <button class="modal-close-btn" id="btn-close-create-playlist" title="Close" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body create-playlist-body">
+        <p class="about-desc">Organize your offline music into dedicated collections with custom covers.</p>
+        
+        <div class="modal-input-wrap">
+          <label for="input-playlist-name" class="modal-label">Name</label>
+          <input type="text" id="input-playlist-name" class="modal-input" placeholder="e.g. Chill Beats, Road Trip, Workout…" maxlength="50" autocomplete="off">
+        </div>
+
+        <div class="modal-input-wrap">
+          <label class="modal-label">Cover Artwork</label>
+          <div class="cover-customizer-row">
+            <div class="cover-preview-box" id="playlist-cover-preview" style="background: linear-gradient(135deg, #fb542b 0%, #ff8243 100%);">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2">
+                <path d="M9 18V5l12-2v13"></path>
+                <circle cx="6" cy="18" r="3"></circle>
+                <circle cx="18" cy="16" r="3"></circle>
+              </svg>
+            </div>
+            <div class="cover-customizer-controls">
+              <span class="cover-control-hint">Select a color preset or upload an image:</span>
+              <div class="cover-presets-row" id="cover-presets-row">
+                <button type="button" class="preset-cover-chip active" data-preset="gradient-brave" style="background: linear-gradient(135deg, #fb542b 0%, #ff8243 100%);" title="Brave Flame"></button>
+                <button type="button" class="preset-cover-chip" data-preset="gradient-purple" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);" title="Cosmic Purple"></button>
+                <button type="button" class="preset-cover-chip" data-preset="gradient-emerald" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%);" title="Emerald Wave"></button>
+                <button type="button" class="preset-cover-chip" data-preset="gradient-cyber" style="background: linear-gradient(135deg, #0284c7 0%, #06b6d4 100%);" title="Cyber Cyan"></button>
+                <button type="button" class="preset-cover-chip" data-preset="gradient-dark" style="background: linear-gradient(135deg, #1e293b 0%, #334155 100%);" title="Midnight Steel"></button>
+              </div>
+              <div class="cover-upload-action">
+                <button type="button" class="ghost-btn-sm" id="btn-upload-cover">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                    <polyline points="21 15 16 10 5 21"></polyline>
+                  </svg>
+                  <span>Upload Image</span>
+                </button>
+                <input type="file" id="input-cover-file" accept="image/*" style="display: none;">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer-actions">
+          <button class="ghost-btn" id="btn-cancel-create-playlist">Cancel</button>
+          <button class="primary-btn" id="btn-submit-create-playlist">Create</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="modal-backdrop" id="delete-playlist-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="delete-playlist-title">
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header">
+        <h3 class="modal-title" id="delete-playlist-title">Delete Collection</h3>
+        <button class="modal-close-btn" id="btn-close-delete-playlist" title="Close" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="about-desc">
+          How would you like to delete <strong id="delete-playlist-target-name" style="color: #ffffff;"></strong>?
+        </p>
+        <div class="delete-options-list">
+          <button class="delete-choice-card" id="btn-delete-playlist-only">
+            <div class="delete-choice-icon-wrap icon-safe">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </div>
+            <div class="delete-choice-text">
+              <span class="delete-choice-title">Remove from Library</span>
+              <span class="delete-choice-sub">Removes the collection, but preserves all music files in your library</span>
+            </div>
+          </button>
+
+          <button class="delete-choice-card delete-choice-danger" id="btn-delete-playlist-and-files">
+            <div class="delete-choice-icon-wrap icon-danger">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </div>
+            <div class="delete-choice-text">
+              <span class="delete-choice-title">Delete Collection & Music Files</span>
+              <span class="delete-choice-sub">Permanently deletes this collection and removes its downloaded audio files from disk</span>
+            </div>
+          </button>
+        </div>
+        <div class="modal-footer-actions">
+          <button class="ghost-btn" id="btn-cancel-delete-playlist">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add to Playlist Modal Dialog -->
+  <div class="modal-backdrop" id="add-to-playlist-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="add-to-playlist-title">
+    <div class="modal-card modal-card-sm">
+      <div class="modal-header">
+        <h3 class="modal-title" id="add-to-playlist-title">Add Track to Playlist</h3>
+        <button class="modal-close-btn" id="btn-close-add-playlist" title="Close" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="about-desc" id="add-playlist-track-name">Select which playlist to assign this song to:</p>
+        <div class="playlists-checklist" id="playlists-checklist">
+          <!-- Populated dynamically -->
+        </div>
+        <div class="modal-footer-actions">
+          <button class="primary-btn" id="btn-done-add-playlist">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dedicated Playlist View / Music List Modal Dialog -->
+  <div class="modal-backdrop" id="playlist-detail-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="playlist-detail-title">
+    <div class="modal-card modal-card-xl playlist-detail-modal-card">
+      <div class="modal-header playlist-detail-modal-header">
+        <div class="playlist-header-meta-group">
+          <div class="playlist-detail-cover" id="playlist-detail-cover">
+            <!-- Dynamically populated cover (gradient, image or thumb) -->
+          </div>
+          <div class="playlist-detail-titles">
+            <h2 class="playlist-detail-title" id="playlist-detail-title">Collection</h2>
+            <div class="playlist-detail-meta-row">
+              <span id="playlist-detail-count">0 songs</span>
+              <span class="meta-dot">•</span>
+              <span id="playlist-detail-duration">0:00</span>
+              <span class="meta-dot">•</span>
+              <span>Offline Library</span>
+            </div>
+          </div>
+        </div>
+        <button class="modal-close-btn" id="btn-close-playlist-detail" title="Close" aria-label="Close">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Action Toolbar: Iconic Play, Shuffle, Random, Player Only, Delete -->
+      <div class="playlist-detail-toolbar">
+        <div class="playlist-actions-left">
+          <button class="theme-icon-btn theme-play-btn" id="btn-playlist-play-all" title="Play All" aria-label="Play All">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+          </button>
+
+          <button class="theme-icon-btn" id="btn-playlist-shuffle" title="Shuffle Play" aria-label="Shuffle Play">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 3 21 3 21 8"></polyline>
+              <line x1="4" y1="20" x2="21" y2="3"></line>
+              <polyline points="21 16 21 21 16 21"></polyline>
+              <line x1="15" y1="15" x2="21" y2="21"></line>
+              <line x1="4" y1="4" x2="9" y2="9"></line>
+            </svg>
+          </button>
+
+          <button class="theme-icon-btn" id="btn-playlist-random" title="Random Song" aria-label="Random Song">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"></path>
+            </svg>
+          </button>
+
+          <div class="toolbar-v-divider"></div>
+
+          <button class="theme-toggle-btn" id="btn-playlist-player-only" title="Lock queue to this collection" aria-label="Player Only Mode">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="4"></rect>
+              <polygon points="10 8 16 12 10 16 10 8" fill="currentColor"></polygon>
+            </svg>
+            <span id="label-player-only-mode">Player Only</span>
+          </button>
+        </div>
+
+        <div class="playlist-actions-right">
+          <button class="theme-danger-btn" id="btn-playlist-delete-from-detail" title="Delete this collection" aria-label="Delete">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            <span>Delete</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Dedicated Playlist Tracks Table -->
+      <div class="playlist-tracks-scrollable">
+        <table class="tracks-table playlist-tracks-table">
+          <thead>
+            <tr>
+              <th style="width: 44px;">#</th>
+              <th>Title</th>
+              <th>Artist</th>
+              <th style="width: 80px;">Time</th>
+              <th style="width: 140px; text-align: right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="playlist-detail-tracks-body">
+            <!-- Populated dynamically -->
+          </tbody>
+        </table>
+
+        <!-- Empty State inside playlist -->
+        <div class="playlist-empty-state" id="playlist-detail-empty" style="display: none;">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.6">
+            <path d="M9 18V5l12-2v13"></path>
+            <circle cx="6" cy="18" r="3"></circle>
+            <circle cx="18" cy="16" r="3"></circle>
+          </svg>
+          <h4 style="color: #ffffff; font-size: 0.95rem; margin-top: 10px;">No songs in this playlist</h4>
+          <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 4px;">Go to "All Music" tab and click the "+" button on any downloaded song to add it here.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Redesigned Professional White Information / About Modal Dialog -->
+  <div class="modal-backdrop" id="about-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="about-title">
+    <div class="modal-card modal-card-about-white">
+      <div class="modal-header modal-header-about-white">
+        <h3 class="about-white-modal-title" id="about-title">Brave Music</h3>
+        <button class="modal-close-btn-white" id="btn-close-about" title="Close modal" aria-label="Close modal">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body about-white-scrollable">
+        <!-- 1st: Centered Codemo Open Source Labs Identity -->
+        <div class="about-cosl-center-hero">
+          <div class="about-cosl-logo-wrap">
+            <img src="assets/cosl-logo.png" alt="Codemo Open Source Labs" class="about-cosl-center-logo">
+          </div>
+          <h4 class="about-cosl-center-title">Product Owned by Codemo Open Source Labs</h4>
+          <p class="about-cosl-center-sub">Open Source Collective &amp; Engineering Lab</p>
+          <span class="about-cosl-center-version" id="about-app-version">Version v1.0.19-r</span>
+        </div>
+
+        <div class="about-white-divider"></div>
+
+        <!-- Developer Section: Lead Architect & Developer Below Name -->
+        <div class="about-dev-section-white">
+          <div class="about-dev-card-white">
+            <div class="about-dev-avatar-wrap-white">
+              <img class="about-dev-avatar-img-white" id="about-dev-avatar" src="https://github.com/uzairshahidgithub.png" alt="Uzair Shahid" onerror="this.src='assets/app-icon.svg'">
+            </div>
+            <div class="about-dev-info-white">
+              <div class="about-dev-name-row-white">
+                <span class="about-dev-fullname-white">Uzair Shahid</span>
+              </div>
+              <span class="about-dev-role-subtitle">Lead Architect &amp; Developer</span>
+              <a href="https://github.com/uzairshahidgithub" class="about-dev-gh-link-white" id="link-dev-github" target="_blank" rel="noopener noreferrer">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+                </svg>
+                <span>github.com/uzairshahidgithub</span>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div class="about-white-divider"></div>
+
+        <!-- Legalization Statement (Clean Simple Bubble) -->
+        <div class="about-legal-bubble">
+          <p class="about-legal-text-white">
+            The blocker and this OTT making purpose is to improve our daily life productivity activity of One Solid Music Platform with No Messy Subscription Forcing Model and also its Open Source Run Based on Donations So if you want to Donate you Email us Through <strong>cosl@codemoteams.org</strong> we send bank information. But Requires your Valid Identity and if Any Query you Contact through this Email.
+          </p>
+        </div>
+
+        <!-- Action Buttons Outside the Bubble: Donation Email & Report Issue -->
+        <div class="about-external-actions-row">
+          <button class="about-white-action-btn" id="btn-email-donation" title="Contact / Donate via cosl@codemoteams.org">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+              <polyline points="22,6 12,13 2,6"></polyline>
+            </svg>
+            <span>cosl@codemoteams.org</span>
+          </button>
+
+          <button class="about-white-action-btn btn-report-issue-highlight" id="btn-report-issue" title="Press to report bug or issue">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <span>Report an Issue (Press me)</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Compact service account dialog -->
+  <div class="modal-backdrop" id="auth-sync-modal" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <div class="modal-dialog login-modal-sheet login-modal-white">
+      <!-- Modal Header -->
+      <div class="login-modal-header">
+        <div class="login-header-brand">
+          <div class="login-header-avatar">
+            <img id="auth-service-icon" src="assets/icons/yt-music.svg" alt="YouTube Music" />
+          </div>
+          <div>
+            <h3 class="login-modal-title" id="auth-title">YouTube Music</h3>
+            <p class="login-modal-subtitle">Sign in to continue</p>
+          </div>
+        </div>
+        <button class="login-modal-close" id="btn-close-auth-sync" title="Close dialog" aria-label="Close dialog">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <!-- Navigation Tabs (Clean Segmented Switcher) -->
+      <div class="login-tabs-bar">
+        <div class="login-tabs-nav">
+          <button class="login-tab-pill active" data-tab="ytm" id="tab-btn-ytm" title="YouTube Music Sign-In">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            <span>YouTube Music</span>
+          </button>
+          <button class="login-tab-pill" data-tab="spotify" id="tab-btn-spotify" title="Spotify Sign-In">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+            <span>Spotify</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="login-modal-body">
+        <!-- TAB 1: YOUTUBE MUSIC -->
+        <div class="login-tab-panel active" id="auth-tab-ytm">
+          <!-- Saved User Account Card (Shows persistently when user is logged in) -->
+          <div class="saved-account-card" id="ytm-saved-account-card" style="display: none;">
+            <div class="saved-account-header">
+              <div class="saved-account-avatar-wrap">
+                <img class="saved-account-avatar-img" id="ytm-account-avatar" src="" alt="User Avatar" style="display: none;">
+                <div class="saved-account-avatar-fallback" id="ytm-account-initials">YM</div>
+              </div>
+              <div class="saved-account-info">
+                <div class="saved-account-name-row">
+                  <span class="saved-account-name" id="ytm-account-name">YouTube Music Account</span>
+                </div>
+                <span class="saved-account-email" id="ytm-account-email">Active Google Session</span>
+                <span class="saved-account-time" id="ytm-account-time">Saved on this device</span>
+              </div>
+            </div>
+            <div class="saved-account-actions">
+              <button class="btn-account-action btn-account-refresh" id="btn-ytm-resync" title="Refresh session and player">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                <span>Refresh Player</span>
+              </button>
+              <button class="btn-account-action btn-account-signout" id="btn-ytm-signout-card" title="Sign out this account">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Section title for Sign In / Re-auth -->
+          <div class="login-subheading" id="ytm-signin-header" style="display: none;">
+            <span>Or Switch / Re-authenticate Account</span>
+          </div>
+
+          <!-- Status Row (used when not logged in or during sync) -->
+          <div class="login-status-row" id="ytm-status-row">
+            <div class="login-status-chip" id="ytm-status-chip">
+              <span class="status-indicator-dot" id="ytm-status-dot"></span>
+              <span class="status-text" id="ytm-status-label">Not logged in</span>
+            </div>
+            <button class="btn-login-signout" id="btn-ytm-signout" style="display: none;">Sign Out</button>
+          </div>
+
+          <!-- Primary Action Box -->
+          <div class="login-action-card" id="ytm-login-action-card">
+            <div class="login-step-instruction">
+              <span class="login-step-badge">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </span>
+              <div>
+                <p class="login-step-title">Browser Session Sync</p>
+                <p class="login-step-desc">Sign in via your default browser. Brave Music automatically captures your session without credentials stored.</p>
+              </div>
+            </div>
+
+            <button class="btn-primary-login btn-ytm-brand" id="btn-start-ytm-cdp">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+              <span id="btn-ytm-cdp-label">Sign in to YouTube Music</span>
+            </button>
+
+            <!-- Active feedback & cancel -->
+            <div class="login-live-feedback" id="ytm-cdp-status" style="display: none;"></div>
+            <button class="btn-login-cancel" id="btn-cancel-ytm-cdp" style="display: none;">Cancel Sign-In</button>
+          </div>
+
+          <!-- Clean JSON Cookie File Import -->
+          <div class="login-file-import-card" id="ytm-file-import-card">
+            <div class="file-import-header">
+              <span class="file-import-title">Alternative: Import Cookies (.json)</span>
+            </div>
+            <p class="file-import-hint">Import an exported session JSON file from your browser to link manually.</p>
+            <div class="file-import-action">
+              <label for="input-ytm-cookies-file" class="btn-choose-json">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                <span>Choose JSON File</span>
+              </label>
+              <input type="file" id="input-ytm-cookies-file" accept=".json" class="hidden-file-input">
+              <span class="file-chosen-name" id="ytm-file-name">No file selected</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: SPOTIFY -->
+        <div class="login-tab-panel" id="auth-tab-spotify" style="display: none;">
+          <!-- Saved User Account Card (Shows persistently when Spotify is logged in) -->
+          <div class="saved-account-card" id="spotify-saved-account-card" style="display: none;">
+            <div class="saved-account-header">
+              <div class="saved-account-avatar-wrap">
+                <img class="saved-account-avatar-img" id="spotify-account-avatar" src="" alt="User Avatar" style="display: none;">
+                <div class="saved-account-avatar-fallback spotify-fallback" id="spotify-account-initials">SP</div>
+              </div>
+              <div class="saved-account-info">
+                <div class="saved-account-name-row">
+                  <span class="saved-account-name" id="spotify-account-name">Spotify Account</span>
+                </div>
+                <span class="saved-account-email" id="spotify-account-email">Active Spotify Session</span>
+                <span class="saved-account-time" id="spotify-account-time">Saved on this device</span>
+              </div>
+            </div>
+            <div class="saved-account-actions">
+              <button class="btn-account-action btn-account-refresh" id="btn-spotify-resync" title="Refresh Spotify player">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                <span>Refresh Player</span>
+              </button>
+              <button class="btn-account-action btn-account-signout" id="btn-spotify-signout-card" title="Sign out Spotify">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Section title for Sign In / Re-auth -->
+          <div class="login-subheading" id="spotify-signin-header" style="display: none;">
+            <span>Or Switch / Re-authenticate Account</span>
+          </div>
+
+          <!-- Status Row -->
+          <div class="login-status-row" id="spotify-status-row">
+            <div class="login-status-chip" id="spotify-status-chip">
+              <span class="status-indicator-dot" id="spotify-status-dot"></span>
+              <span class="status-text" id="spotify-status-label">Not logged in</span>
+            </div>
+            <button class="btn-login-signout" id="btn-spotify-signout" style="display: none;">Sign Out</button>
+          </div>
+
+          <!-- Primary Action Box -->
+          <div class="login-action-card" id="spotify-login-action-card">
+            <div class="login-step-instruction">
+              <span class="login-step-badge">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </span>
+              <div>
+                <p class="login-step-title">Spotify Session Sync</p>
+                <p class="login-step-desc">Sign in via your default browser. Your Spotify playlists, favorites, and player will synchronize automatically.</p>
+              </div>
+            </div>
+
+            <button class="btn-primary-login btn-spotify-brand" id="btn-start-spotify-login">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+              <span id="btn-spotify-login-label">Sign in to Spotify</span>
+            </button>
+
+            <!-- Active feedback & cancel -->
+            <div class="login-live-feedback" id="spotify-login-status" style="display: none;"></div>
+            <button class="btn-login-cancel" id="btn-cancel-spotify-login" style="display: none;">Cancel Sign-In</button>
+          </div>
+
+          <!-- Clean JSON Cookie File Import -->
+          <div class="login-file-import-card" id="spotify-file-import-card">
+            <div class="file-import-header">
+              <span class="file-import-title">Alternative: Import Cookies (.json)</span>
+            </div>
+            <p class="file-import-hint">Import an exported session JSON file from your browser to link manually.</p>
+            <div class="file-import-action">
+              <label for="input-spotify-cookies-file" class="btn-choose-json">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>
+                <span>Choose JSON File</span>
+              </label>
+              <input type="file" id="input-spotify-cookies-file" accept=".json" class="hidden-file-input">
+              <span class="file-chosen-name" id="spotify-file-name">No file selected</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="login-modal-footer">
+        <button class="btn-login-done" id="btn-cancel-auth-sync">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="js/appApi.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

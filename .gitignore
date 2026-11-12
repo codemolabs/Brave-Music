@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+**/target/
+WidevineCdm/
 
 # Production build artifacts and packages
 dist/

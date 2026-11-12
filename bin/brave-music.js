@@ -36,13 +36,16 @@ if (!electronBin) {
   }
 }
 
+const childEnv = {
+  ...process.env,
+  ELECTRON_DISABLE_SECURITY_WARNINGS: 'true'
+};
+delete childEnv.ELECTRON_RUN_AS_NODE;
+
 const args = [appRoot, '--no-sandbox', '--in-process-gpu', ...process.argv.slice(2)];
 const child = spawn(electronBin, args, {
   stdio: 'inherit',
-  env: {
-    ...process.env,
-    ELECTRON_DISABLE_SECURITY_WARNINGS: 'true'
-  }
+  env: childEnv
 });
 
 child.on('close', (code) => {

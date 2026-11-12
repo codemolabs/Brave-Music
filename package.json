@@ -1,6 +1,6 @@
 {
   "name": "@codemolabs/brave-music",
-  "version": "1.0.18",
+  "version": "1.0.19-r",
   "description": "Brave Music OTT Platform - Ad-free YouTube, Spotify and Built-in Offline Music Engine (Linux Desktop)",
   "main": "main.js",
   "bin": {

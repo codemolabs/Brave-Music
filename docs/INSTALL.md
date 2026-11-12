@@ -74,10 +74,10 @@ The official standalone Debian package installs Brave Music with all system menu
 ### Step 1: Download or Build the Package
 Download the latest verified package directly from GitHub Releases:
 ```bash
-wget https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb
+wget https://github.com/codemolabs/Brave-Music/releases/download/v1.0.19-r/brave-music_1.0.19-r_amd64.deb
 ```
 
-Direct binary download: [**brave-music_1.0.18_amd64.deb (28 MB)**](https://github.com/codemolabs/Brave-Music/releases/download/v1.0.18/brave-music_1.0.18_amd64.deb)
+Direct binary download: [**brave-music_1.0.19-r_amd64.deb**](https://github.com/codemolabs/Brave-Music/releases/download/v1.0.19-r/brave-music_1.0.19-r_amd64.deb)
 
 Or build it locally from source:
 ```bash
@@ -87,13 +87,13 @@ npm run build:deb
 ### Step 2: Verify Package Integrity (SHA-256)
 Before installing, verify that the package hash matches the official release record:
 ```bash
-sha256sum brave-music_1.0.18_amd64.deb
+sha256sum brave-music_1.0.19-r_amd64.deb
 ```
 
 ### Step 3: Install Package via APT
 Use `apt install` so that any missing distribution dependencies are automatically resolved:
 ```bash
-sudo apt install ./brave-music_1.0.18_amd64.deb
+sudo apt install ./brave-music_1.0.19-r_amd64.deb
 ```
 
 ### Step 4: Launch Brave Music

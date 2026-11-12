@@ -57,9 +57,8 @@ jobs:
             Official Repository: [https://github.com/codemolabs/Brave-Music](https://github.com/codemolabs/Brave-Music)
 
             ### Highlights & What's New:
+            - **Modern Native Stack**: High-performance Rust & native webview foundation alongside legacy Electron runner.
+            - **Ultra-Smooth 60fps Scrolling**: Hardware-accelerated compositing and elimination of virtual-scroll conflicts.
             - **Linux Debian Package (`.deb`)**: Full 64-bit Debian/Ubuntu package bundling seamless ad-free YouTube Music, Spotify Web, and offline playback.
             - **Zero Telemetry**: All operations run 100% locally on the user end without analytics, telemetry, or forced background tracking.
             - **Native Desktop Integration**: Linux MPRIS2 media controller and tray synchronization.
-
-            ### Downloads:
-            - **Linux Debian**: `brave-music_1.0.18_amd64.deb`

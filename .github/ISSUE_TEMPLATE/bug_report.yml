@@ -48,7 +48,7 @@ body:
       placeholder: |
         - OS: Ubuntu 24.04 LTS (x86_64) / Debian 12
         - Sound Server / Audio: PipeWire / PulseAudio / ALSA
-        - Brave Music Version: v1.0.18
+        - Brave Music Version: v1.0.19-r
     validations:
       required: true
   - type: textarea
