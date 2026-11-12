@@ -169,7 +169,9 @@ function createWindow() {
       webviewTag: true,
       sandbox: false
     },
-    icon: path.join(__dirname, 'src', 'assets', 'app-icon.svg')
+    icon: fs.existsSync(path.join(__dirname, 'src', 'assets', 'app-icon.png'))
+      ? path.join(__dirname, 'src', 'assets', 'app-icon.png')
+      : path.join(__dirname, 'src', 'assets', 'app-icon.svg')
   });
 
   // Initialize modular backend services & IPC

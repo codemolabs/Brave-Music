@@ -85,9 +85,19 @@ Keywords=Music;YouTube;Spotify;Download;Audio;Player;
 EOF
 chmod 644 "$BUILD_DIR/usr/share/applications/brave-music.desktop"
 
-# 6. Copy App Icon to /usr/share/icons/hicolor/scalable/apps/brave-music.svg
+# 6. Copy App Icon to /usr/share/icons/hicolor/ and /usr/share/pixmaps/
+mkdir -p "$BUILD_DIR/usr/share/pixmaps"
+cp "$ROOT_DIR/src/assets/app-icon.png" "$BUILD_DIR/usr/share/pixmaps/brave-music.png"
+chmod 644 "$BUILD_DIR/usr/share/pixmaps/brave-music.png"
+
 cp "$ROOT_DIR/src/assets/app-icon.svg" "$BUILD_DIR/usr/share/icons/hicolor/scalable/apps/brave-music.svg"
 chmod 644 "$BUILD_DIR/usr/share/icons/hicolor/scalable/apps/brave-music.svg"
+
+for SIZE in 16 24 32 48 64 128 256 512; do
+  mkdir -p "$BUILD_DIR/usr/share/icons/hicolor/${SIZE}x${SIZE}/apps"
+  python3 -c "from PIL import Image; Image.open('$ROOT_DIR/src/assets/app-icon.png').resize(($SIZE, $SIZE), Image.Resampling.LANCZOS).save('$BUILD_DIR/usr/share/icons/hicolor/${SIZE}x${SIZE}/apps/brave-music.png')"
+  chmod 644 "$BUILD_DIR/usr/share/icons/hicolor/${SIZE}x${SIZE}/apps/brave-music.png"
+done
 
 # 7. Package with dpkg-deb
 echo "Packaging with dpkg-deb..."
