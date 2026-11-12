@@ -52,10 +52,13 @@ chmod +x "$BUILD_DIR/opt/brave-music/backend/engine/musikcube/musikcubed" 2>/dev
 # 3. Create /opt/brave-music/run.sh
 cat << 'EOF' > "$BUILD_DIR/opt/brave-music/run.sh"
 #!/bin/bash
+unset ELECTRON_RUN_AS_NODE
 export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 export ELECTRON_DISABLE_SECURITY_WARNINGS=true
 cd /opt/brave-music
-if [ -x "/opt/brave-music/node_modules/.bin/electron" ]; then
+if [ -x "/opt/brave-music/node_modules/electron/dist/electron" ]; then
+  exec /opt/brave-music/node_modules/electron/dist/electron /opt/brave-music --no-sandbox --no-zygote --disable-gpu-sandbox "$@"
+elif [ -x "/opt/brave-music/node_modules/.bin/electron" ]; then
   exec /opt/brave-music/node_modules/.bin/electron . --no-sandbox --no-zygote --disable-gpu-sandbox "$@"
 else
   exec npx --yes electron . --no-sandbox --no-zygote --disable-gpu-sandbox "$@"

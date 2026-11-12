@@ -1,1 +1,1 @@
-d337c4ef3c547298121045427c11add9ae5522789949402a5a6e195d7fe193b9  Install/Linux/brave-music_1.0.19-r_amd64.deb
+c5bc8a61b71d92e745546a9bbd61794294d64aba5e98e4be52de5233843e58e8  Install/Linux/brave-music_1.0.19-r_amd64.deb

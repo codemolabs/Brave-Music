@@ -401,46 +401,21 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       navigator.clipboard?.writeText('cosl@codemoteams.org');
     } catch (e) {}
-    showToast('Donation contact email copied: cosl@codemoteams.org');
+    showToast('Contact email copied: cosl@codemoteams.org');
+  });
+
+  const btnCheckUpdate = document.getElementById('btn-check-update');
+  btnCheckUpdate?.addEventListener('click', () => {
+    const releaseUrl = 'https://github.com/codemolabs/Brave-Music/releases';
+    window.braveApi?.openExternal(releaseUrl);
+    showToast('Opening Brave Music current release page...');
   });
 
   const btnReportIssue = document.getElementById('btn-report-issue');
-  btnReportIssue?.addEventListener('click', async () => {
-    let appVer = '1.0.3';
-    try {
-      if (window.braveApi?.getAppVersion) {
-        appVer = await window.braveApi.getAppVersion();
-      }
-    } catch (e) {}
-    const subject = encodeURIComponent(`Brave Music v${appVer} Issue Report`);
-    const bodyText = `[Brave Music Issue Report]
-App Version: v${appVer} Stable (Codemo Release)
-Platform: Linux x86_64
-Timestamp: ${new Date().toISOString()}
-
-Issue Summary:
-[Please describe the issue or bug encountered]
-
-Steps to Reproduce:
-1.
-2.
-3.
-
-Expected Behavior:
-[What should have happened]
-
-Observed Behavior:
-[What actually happened]`;
-
-    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=cosl@codemoteams.org&su=${subject}&body=${encodeURIComponent(bodyText)}`;
-    const mailtoUrl = `mailto:cosl@codemoteams.org?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
-
-    // Try opening Gmail web compose or standard mailto client
-    window.braveApi?.openExternal(gmailUrl);
-    try {
-      navigator.clipboard?.writeText(bodyText);
-    } catch (e) {}
-    showToast('Report template copied & Gmail composer opened for cosl@codemoteams.org');
+  btnReportIssue?.addEventListener('click', () => {
+    const issuesUrl = 'https://github.com/codemolabs/Brave-Music/issues';
+    window.braveApi?.openExternal(issuesUrl);
+    showToast('Opening Brave Music issue reporting page...');
   });
 
   // ==========================================================================

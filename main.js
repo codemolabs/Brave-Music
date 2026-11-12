@@ -9,11 +9,13 @@ const CHROME_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (K
 const SHARED_PARTITION = 'persist:bravemusic';
 
 // Set global fallback User-Agent so no internal Electron requests leak 'Electron'
-app.userAgentFallback = CHROME_USER_AGENT;
+if (app) {
+  app.userAgentFallback = CHROME_USER_AGENT;
 
-// Natively remove AutomationControlled flag so navigator.webdriver is false
-app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
-app.commandLine.removeSwitch('enable-automation');
+  // Natively remove AutomationControlled flag so navigator.webdriver is false
+  app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled');
+  app.commandLine.removeSwitch('enable-automation');
+}
 
 function isAuthUrl(targetUrl) {
   if (!targetUrl || typeof targetUrl !== 'string') return false;
@@ -144,12 +146,14 @@ function ensureWidevineCdm() {
 
 ensureWidevineCdm();
 
-// Flags for Widevine DRM, seamless autoplay and Linux Wayland/X11 webview stability
-app.commandLine.appendSwitch('no-sandbox');
-app.commandLine.appendSwitch('no-zygote');
-app.commandLine.appendSwitch('disable-gpu-sandbox');
-app.commandLine.appendSwitch('enable-features', 'WidevineCdm');
-app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+if (app) {
+  // Flags for Widevine DRM, seamless autoplay and Linux Wayland/X11 webview stability
+  app.commandLine.appendSwitch('no-sandbox');
+  app.commandLine.appendSwitch('no-zygote');
+  app.commandLine.appendSwitch('disable-gpu-sandbox');
+  app.commandLine.appendSwitch('enable-features', 'WidevineCdm');
+  app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+}
 app.commandLine.appendSwitch('disable-features', 'HardwareMediaKeyHandling');
 
 let mainWindow = null;

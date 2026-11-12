@@ -42,7 +42,7 @@ const childEnv = {
 };
 delete childEnv.ELECTRON_RUN_AS_NODE;
 
-const args = [appRoot, '--no-sandbox', '--in-process-gpu', ...process.argv.slice(2)];
+const args = [appRoot, '--no-sandbox', '--no-zygote', '--disable-gpu-sandbox', ...process.argv.slice(2)];
 const child = spawn(electronBin, args, {
   stdio: 'inherit',
   env: childEnv
