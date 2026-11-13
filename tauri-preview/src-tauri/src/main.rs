@@ -1178,6 +1178,99 @@ fn handle_stream_client(app: &AppHandle, stream: &mut std::net::TcpStream) {
     }
 }
 
+fn resolve_bundled_bin(name: &str) -> Option<PathBuf> {
+    if let Ok(snap) = std::env::var("SNAP") {
+        let p1 = PathBuf::from(&snap).join("opt/brave-music/backend/bin").join(name);
+        if p1.exists() {
+            return Some(p1);
+        }
+        let p2 = PathBuf::from(&snap).join("bin").join(name);
+        if p2.exists() {
+            return Some(p2);
+        }
+    }
+    let candidates = [
+        PathBuf::from("/home/uzairserver/Workspace/Repositories/brave-music/backend/bin").join(name),
+        PathBuf::from("/opt/brave-music/backend/bin").join(name),
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_default()
+            .join(".local/bin")
+            .join(name),
+        PathBuf::from("/usr/local/bin").join(name),
+        PathBuf::from("/usr/bin").join(name),
+        PathBuf::from("/bin").join(name),
+    ];
+    for c in candidates {
+        if c.exists() {
+            return Some(c);
+        }
+    }
+    None
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct SpotifyEmbedTrack {
+    title: String,
+    artist: String,
+    duration: u64,
+    thumbnail: String,
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct SpotifyEmbedMetadata {
+    kind: String,
+    name: String,
+    #[serde(rename = "coverUrl")]
+    cover_url: String,
+    tracks: Vec<SpotifyEmbedTrack>,
+}
+
+fn fetch_spotify_embed_metadata(url: &str) -> Option<SpotifyEmbedMetadata> {
+    let py_script = r#"
+import sys, re, json, urllib.request
+url = sys.argv[1].strip()
+m = re.search(r'open\.spotify\.com/(track|album|playlist|episode)/([a-zA-Z0-9]+)', url, re.I) or re.search(r'spotify:(track|album|playlist):([a-zA-Z0-9]+)', url, re.I)
+if not m:
+    sys.exit(1)
+kind, sid = m.group(1).lower(), m.group(2)
+embed_url = f'https://open.spotify.com/embed/{kind}/{sid}'
+req = urllib.request.Request(embed_url, headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0 Safari/537.36'})
+html = urllib.request.urlopen(req, timeout=10).read().decode('utf-8', 'ignore')
+sm = re.search(r'<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)</script>', html)
+if not sm:
+    sys.exit(1)
+entity = json.loads(sm.group(1)).get('props', {}).get('pageProps', {}).get('state', {}).get('data', {}).get('entity', {})
+if not entity:
+    sys.exit(1)
+name = entity.get('name') or entity.get('title') or 'Spotify'
+cover = ((entity.get('coverArt') or {}).get('sources') or [{}])[0].get('url') or ((entity.get('visualIdentity') or {}).get('image') or [{}])[0].get('url') or ''
+if kind in ('playlist', 'album'):
+    tracks = []
+    for t in (entity.get('trackList') or []):
+        t_title = t.get('title') or t.get('name') or ''
+        t_artist = t.get('subtitle') or ', '.join(a.get('name','') for a in (t.get('artists') or [])) or 'Unknown Artist'
+        t_dur = int(round((t.get('duration') or 0) / 1000))
+        if t_title:
+            tracks.append({'title': t_title, 'artist': t_artist, 'duration': t_dur, 'thumbnail': cover})
+    print(json.dumps({'kind': kind, 'name': name, 'coverUrl': cover, 'tracks': tracks}))
+else:
+    artist = ', '.join(a.get('name','') for a in (entity.get('artists') or [])) or entity.get('subtitle') or 'Unknown Artist'
+    dur = int(round((entity.get('duration') or 0) / 1000))
+    print(json.dumps({'kind': 'track', 'name': name, 'coverUrl': cover, 'tracks': [{'title': name, 'artist': artist, 'duration': dur, 'thumbnail': cover}]}))
+"#;
+    let output = std::process::Command::new("python3")
+        .arg("-c")
+        .arg(py_script)
+        .arg(url)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    serde_json::from_slice::<SpotifyEmbedMetadata>(&output.stdout).ok()
+}
+
 #[tauri::command]
 async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value, String> {
     let url = params.url.trim().to_string();
@@ -1189,7 +1282,7 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
     let id_clone = download_id.clone();
     let is_playlist = params.is_playlist.unwrap_or(false);
     let requested_format = params.format.unwrap_or_else(|| "audio-mp3".to_string());
-    let target_playlist = params.playlist_name.unwrap_or_default();
+    let mut target_playlist = params.playlist_name.unwrap_or_default();
 
     let downloads_dir = get_user_downloads_dir(&app);
     let _ = fs::create_dir_all(&downloads_dir);
@@ -1213,192 +1306,300 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
             track_saved: None,
         });
 
-        let output_template = downloads_dir.join("%(title).100B [%(id)s].%(ext)s");
-        let mut cmd = std::process::Command::new("yt-dlp");
+        let ytdlp_bin = resolve_bundled_bin("yt-dlp").unwrap_or_else(|| PathBuf::from("yt-dlp"));
+        let node_bin = resolve_bundled_bin("node");
+        let ffmpeg_bin = resolve_bundled_bin("ffmpeg");
+        let ffprobe_bin = resolve_bundled_bin("ffprobe");
+        let ffmpeg_dir = match (&ffmpeg_bin, &ffprobe_bin) {
+            (Some(f), Some(_)) => f.parent().map(|p| p.to_path_buf()),
+            _ => None,
+        };
+        let has_ffmpeg = ffmpeg_dir.is_some();
 
-        cmd.arg("--newline")
-           .arg("--progress")
-           .arg("--no-warnings")
-           .arg("--continue");
-
-        if requested_format.contains("video") {
-            cmd.arg("-f").arg("mp4");
-        } else if requested_format.contains("flac") {
-            cmd.arg("-x").arg("--audio-format").arg("flac");
-        } else if requested_format.contains("m4a") {
-            cmd.arg("-x").arg("--audio-format").arg("m4a");
+        let is_spotify = url.to_lowercase().contains("open.spotify.com/") || url.to_lowercase().starts_with("spotify:");
+        let spotify_meta = if is_spotify {
+            fetch_spotify_embed_metadata(&url)
         } else {
-            cmd.arg("-x").arg("--audio-format").arg("mp3");
-        }
-
-        if is_playlist {
-            cmd.arg("--yes-playlist");
-        } else {
-            cmd.arg("--no-playlist");
-        }
-
-        cmd.arg("--output").arg(output_template.to_string_lossy().as_ref());
-        cmd.arg("--print").arg("after_move:RECORD:%(filepath)s<DELIM>%(id)s<DELIM>%(title)s<DELIM>%(uploader)s<DELIM>%(duration)s<DELIM>%(thumbnail)s");
-        cmd.arg(&url);
-
-        cmd.stdout(std::process::Stdio::piped());
-        cmd.stderr(std::process::Stdio::piped());
-
-        let mut child = match cmd.spawn() {
-            Ok(c) => c,
-            Err(e) => {
-                let err_msg = format!("Failed to launch yt-dlp: {e}");
-                let _ = app_handle.emit("download-progress", DownloadProgressData {
-                    download_id: id_clone.clone(),
-                    pct: 0,
-                    percent: 0,
-                    item_index: 1,
-                    item_total: 1,
-                    title: "Download Failed".to_string(),
-                    artist: "".to_string(),
-                    speed: "".to_string(),
-                    status: err_msg.clone(),
-                    complete: true,
-                    track_saved: None,
-                });
-                return Ok(serde_json::json!({
-                    "success": false,
-                    "downloadId": id_clone,
-                    "error": err_msg
-                }));
-            }
+            None
         };
 
-        let child_pid = child.id();
-        {
-            let mut map = ACTIVE_DOWNLOADS.lock().unwrap();
-            map.insert(id_clone.clone(), ActiveDownloadProcess {
-                pid: child_pid,
-                canceled: canceled_clone.clone(),
-            });
-        }
+        // Build queue of items to download (supports Spotify playlists, single Spotify tracks, and YouTube URLs)
+        let queue_items: Vec<(String, Option<SpotifyEmbedTrack>)> = if let Some(ref meta) = spotify_meta {
+            if (meta.kind == "playlist" || meta.kind == "album") && !meta.tracks.is_empty() {
+                if target_playlist.is_empty() {
+                    target_playlist = meta.name.clone();
+                }
+                if let Ok(mut doc) = read_library(&app_handle) {
+                    let cover_opt = if meta.cover_url.is_empty() { None } else { Some(Value::String(meta.cover_url.clone())) };
+                    let _ = doc.create_playlist(&target_playlist, cover_opt.clone());
+                    if let Some(c) = cover_opt {
+                        let _ = doc.set_playlist_cover(&target_playlist, c);
+                    }
+                    let _ = write_library(&app_handle, &doc);
+                    let _ = app_handle.emit("library-updated", serde_json::json!({ "status": "playlist_created", "name": target_playlist }));
+                }
+                let suffix = if requested_format.contains("video") { "official music video" } else { "official audio" };
+                meta.tracks
+                    .iter()
+                    .map(|t| {
+                        (
+                            format!("ytsearch1:{} {} {}", t.title, t.artist, suffix),
+                            Some(SpotifyEmbedTrack {
+                                title: t.title.clone(),
+                                artist: t.artist.clone(),
+                                duration: t.duration,
+                                thumbnail: t.thumbnail.clone(),
+                            }),
+                        )
+                    })
+                    .collect()
+            } else if let Some(first) = meta.tracks.first() {
+                let suffix = if requested_format.contains("video") { "official music video" } else { "official audio" };
+                vec![(
+                    format!("ytsearch1:{} {} {}", first.title, first.artist, suffix),
+                    Some(SpotifyEmbedTrack {
+                        title: first.title.clone(),
+                        artist: first.artist.clone(),
+                        duration: first.duration,
+                        thumbnail: first.thumbnail.clone(),
+                    }),
+                )]
+            } else {
+                vec![(url.clone(), None)]
+            }
+        } else {
+            vec![(url.clone(), None)]
+        };
 
-        let stdout = child.stdout.take();
-        let stderr = child.stderr.take();
         let mut downloaded_tracks = Vec::new();
         let mut stderr_lines = Vec::new();
+        let total_queue = queue_items.len() as u32;
 
-        let stderr_thread = std::thread::spawn(move || {
-            let mut lines = Vec::new();
-            if let Some(err) = stderr {
-                use std::io::{BufRead, BufReader};
-                let reader = BufReader::new(err);
-                for line in reader.lines().map_while(Result::ok) {
-                    if !line.trim().is_empty() {
-                        lines.push(line);
-                    }
-                }
+        for (q_idx, (effective_url, sp_override)) in queue_items.into_iter().enumerate() {
+            if canceled_clone.load(Ordering::SeqCst) {
+                break;
             }
-            lines
-        });
 
-        if let Some(out) = stdout {
-            use std::io::{BufRead, BufReader};
-            let reader = BufReader::new(out);
-            for line in reader.lines().map_while(Result::ok) {
-                if canceled_clone.load(Ordering::SeqCst) {
-                    break;
-                }
+            let output_template = downloads_dir.join("%(title).100B [%(id)s].%(ext)s");
+            let mut cmd = std::process::Command::new(&ytdlp_bin);
 
-                if let Some(record) = line.strip_prefix("RECORD:") {
-                    let parts: Vec<&str> = record.split("<DELIM>").collect();
-                    if parts.len() >= 4 {
-                        let filepath = parts[0];
-                        let original_id = parts.get(1).unwrap_or(&"");
-                        let raw_title = parts.get(2).unwrap_or(&"Downloaded Track");
-                        let raw_artist = parts.get(3).unwrap_or(&"Unknown Artist");
-                        let duration_sec: u64 = parts.get(4).and_then(|d| d.parse().ok()).unwrap_or(180);
-                        let thumbnail = parts.get(5).unwrap_or(&"");
+            cmd.arg("--ignore-config")
+               .arg("--no-update")
+               .arg("--extractor-args")
+               .arg("youtube:player_client=tv,web")
+               .arg("--newline")
+               .arg("--progress")
+               .arg("--no-warnings")
+               .arg("--continue");
 
-                        let (clean_title, clean_artist) = clean_track_metadata(raw_title, raw_artist);
+            if let Some(ref nb) = node_bin {
+                cmd.arg("--js-runtimes").arg(format!("node:{}", nb.to_string_lossy()));
+            }
+            if let Some(ref fd) = ffmpeg_dir {
+                cmd.arg("--ffmpeg-location").arg(fd.to_string_lossy().as_ref());
+            }
 
-                        let path_obj = std::path::Path::new(filepath);
-                        let filename = path_obj
-                            .file_name()
-                            .map(|f| f.to_string_lossy().to_string())
-                            .unwrap_or_else(|| "track.mp3".to_string());
+            if requested_format.contains("video") {
+                cmd.arg("-f").arg("best[ext=mp4]/best");
+            } else if has_ffmpeg && requested_format.contains("flac") {
+                cmd.arg("-f").arg("bestaudio/best").arg("-x").arg("--audio-format").arg("flac");
+            } else if has_ffmpeg && requested_format.contains("m4a") {
+                cmd.arg("-f").arg("bestaudio[ext=m4a]/bestaudio/best").arg("-x").arg("--audio-format").arg("m4a");
+            } else if has_ffmpeg {
+                cmd.arg("-f").arg("bestaudio/best").arg("-x").arg("--audio-format").arg("mp3").arg("--audio-quality").arg("0");
+            } else {
+                cmd.arg("-f").arg("bestaudio[ext=m4a]/bestaudio/best");
+            }
 
-                        let size_bytes: u64 = fs::metadata(path_obj).map(|m| m.len()).unwrap_or(0);
+            if is_playlist && sp_override.is_none() {
+                cmd.arg("--yes-playlist");
+            } else {
+                cmd.arg("--no-playlist");
+            }
 
-                        let track_uuid = format!(
-                            "track_{}_{}",
-                            &uuid::Uuid::new_v4().to_string()[..8],
-                            current_timestamp_str()
-                        );
+            cmd.arg("--output").arg(output_template.to_string_lossy().as_ref());
+            cmd.arg("--print").arg("after_move:RECORD:%(filepath)s<DELIM>%(id)s<DELIM>%(title)s<DELIM>%(uploader)s<DELIM>%(duration)s<DELIM>%(thumbnail)s");
+            cmd.arg(&effective_url);
 
-                        let new_track = serde_json::json!({
-                            "id": track_uuid,
-                            "originalId": original_id,
-                            "title": clean_title,
-                            "artist": clean_artist,
-                            "album": if target_playlist.is_empty() { "Downloads".to_string() } else { target_playlist.clone() },
-                            "duration": duration_sec,
-                            "thumbnail": thumbnail,
-                            "filename": filename,
-                            "downloadUrl": url,
-                            "addedAt": current_timestamp_str(),
-                            "sizeBytes": size_bytes,
-                            "playlist": if target_playlist.is_empty() { Value::Null } else { Value::String(target_playlist.clone()) }
-                        });
+            cmd.stdout(std::process::Stdio::piped());
+            cmd.stderr(std::process::Stdio::piped());
 
-                        if let Ok(mut doc) = read_library(&app_handle) {
-                            doc.add_track(new_track.clone());
-                            if !target_playlist.is_empty() {
-                                let _ = doc.create_playlist(&target_playlist, None);
-                                let _ = doc.add_track_to_playlist(
-                                    &serde_json::Value::String(track_uuid.clone()),
-                                    &target_playlist,
-                                );
-                            }
-                            let _ = write_library(&app_handle, &doc);
-                        }
-
-                        downloaded_tracks.push(new_track.clone());
-
-                        let _ = app_handle.emit("download-progress", DownloadProgressData {
-                            download_id: id_clone.clone(),
-                            pct: 95,
-                            percent: 95,
-                            item_index: downloaded_tracks.len() as u32,
-                            item_total: downloaded_tracks.len() as u32,
-                            title: clean_title,
-                            artist: clean_artist,
-                            speed: "".to_string(),
-                            status: "Saved to offline library".to_string(),
-                            complete: false,
-                            track_saved: Some(new_track),
-                        });
-                        let _ = app_handle.emit("library-updated", serde_json::json!({ "status": "updated" }));
-                    }
-                } else if line.contains("[download]") && line.contains('%') {
-                    let pct = parse_download_percentage(&line).unwrap_or(50);
-                    let speed = parse_download_speed(&line).unwrap_or_default();
+            let mut child = match cmd.spawn() {
+                Ok(c) => c,
+                Err(e) => {
+                    let err_msg = format!("Failed to launch yt-dlp: {e}");
                     let _ = app_handle.emit("download-progress", DownloadProgressData {
                         download_id: id_clone.clone(),
-                        pct,
-                        percent: pct,
+                        pct: 0,
+                        percent: 0,
                         item_index: 1,
                         item_total: 1,
-                        title: "Downloading...".to_string(),
+                        title: "Download Failed".to_string(),
                         artist: "".to_string(),
-                        speed: speed.clone(),
-                        status: if speed.is_empty() { format!("Downloading: {pct}%") } else { format!("Downloading: {pct}% • {speed}") },
-                        complete: false,
+                        speed: "".to_string(),
+                        status: err_msg.clone(),
+                        complete: true,
                         track_saved: None,
                     });
+                    return Ok(serde_json::json!({
+                        "success": false,
+                        "downloadId": id_clone,
+                        "error": err_msg
+                    }));
                 }
+            };
+
+            let child_pid = child.id();
+            {
+                let mut map = ACTIVE_DOWNLOADS.lock().unwrap();
+                map.insert(id_clone.clone(), ActiveDownloadProcess {
+                    pid: child_pid,
+                    canceled: canceled_clone.clone(),
+                });
+            }
+
+            let stdout = child.stdout.take();
+            let stderr = child.stderr.take();
+
+            let stderr_thread = std::thread::spawn(move || {
+                let mut lines = Vec::new();
+                if let Some(err) = stderr {
+                    use std::io::{BufRead, BufReader};
+                    let reader = BufReader::new(err);
+                    for line in reader.lines().map_while(Result::ok) {
+                        if !line.trim().is_empty() {
+                            lines.push(line);
+                        }
+                    }
+                }
+                lines
+            });
+
+            if let Some(out) = stdout {
+                use std::io::{BufRead, BufReader};
+                let reader = BufReader::new(out);
+                for line in reader.lines().map_while(Result::ok) {
+                    if canceled_clone.load(Ordering::SeqCst) {
+                        break;
+                    }
+
+                    if let Some(record) = line.strip_prefix("RECORD:") {
+                        let parts: Vec<&str> = record.split("<DELIM>").collect();
+                        if parts.len() >= 4 {
+                            let filepath = parts[0];
+                            let original_id = parts.get(1).unwrap_or(&"");
+                            let raw_title = parts.get(2).unwrap_or(&"Downloaded Track");
+                            let raw_artist = parts.get(3).unwrap_or(&"Unknown Artist");
+                            let duration_sec: u64 = parts.get(4).and_then(|d| d.parse().ok()).unwrap_or(180);
+                            let thumbnail = parts.get(5).unwrap_or(&"");
+
+                            let (clean_title, clean_artist) = if let Some(ref sp) = sp_override {
+                                (sp.title.clone(), sp.artist.clone())
+                            } else {
+                                clean_track_metadata(raw_title, raw_artist)
+                            };
+                            let final_duration = if let Some(ref sp) = sp_override {
+                                if sp.duration > 0 { sp.duration } else { duration_sec }
+                            } else {
+                                duration_sec
+                            };
+                            let final_thumb = if let Some(ref sp) = sp_override {
+                                if !sp.thumbnail.is_empty() { sp.thumbnail.clone() } else { (*thumbnail).to_string() }
+                            } else {
+                                (*thumbnail).to_string()
+                            };
+
+                            let path_obj = std::path::Path::new(filepath);
+                            let filename = path_obj
+                                .file_name()
+                                .map(|f| f.to_string_lossy().to_string())
+                                .unwrap_or_else(|| "track.mp3".to_string());
+
+                            let size_bytes: u64 = fs::metadata(path_obj).map(|m| m.len()).unwrap_or(0);
+
+                            let track_uuid = format!(
+                                "track_{}_{}",
+                                &uuid::Uuid::new_v4().to_string()[..8],
+                                current_timestamp_str()
+                            );
+
+                            let new_track = serde_json::json!({
+                                "id": track_uuid,
+                                "originalId": original_id,
+                                "title": clean_title,
+                                "artist": clean_artist,
+                                "album": if target_playlist.is_empty() { "Downloads".to_string() } else { target_playlist.clone() },
+                                "duration": final_duration,
+                                "thumbnail": final_thumb,
+                                "filename": filename,
+                                "downloadUrl": url,
+                                "addedAt": current_timestamp_str(),
+                                "sizeBytes": size_bytes,
+                                "playlist": if target_playlist.is_empty() { Value::Null } else { Value::String(target_playlist.clone()) }
+                            });
+
+                            if let Ok(mut doc) = read_library(&app_handle) {
+                                doc.add_track(new_track.clone());
+                                if !target_playlist.is_empty() {
+                                    let _ = doc.create_playlist(&target_playlist, None);
+                                    let _ = doc.add_track_to_playlist(
+                                        &serde_json::Value::String(track_uuid.clone()),
+                                        &target_playlist,
+                                    );
+                                }
+                                let _ = write_library(&app_handle, &doc);
+                            }
+
+                            downloaded_tracks.push(new_track.clone());
+
+                            let _ = app_handle.emit("download-progress", DownloadProgressData {
+                                download_id: id_clone.clone(),
+                                pct: 95,
+                                percent: 95,
+                                item_index: (q_idx as u32) + 1,
+                                item_total: total_queue,
+                                title: clean_title,
+                                artist: clean_artist,
+                                speed: "".to_string(),
+                                status: "Saved to offline library".to_string(),
+                                complete: false,
+                                track_saved: Some(new_track),
+                            });
+                            let _ = app_handle.emit("library-updated", serde_json::json!({ "status": "updated" }));
+                        }
+                    } else if line.contains("[download]") && line.contains('%') {
+                        let pct = parse_download_percentage(&line).unwrap_or(50);
+                        let speed = parse_download_speed(&line).unwrap_or_default();
+                        let _ = app_handle.emit("download-progress", DownloadProgressData {
+                            download_id: id_clone.clone(),
+                            pct,
+                            percent: pct,
+                            item_index: (q_idx as u32) + 1,
+                            item_total: total_queue,
+                            title: "Downloading...".to_string(),
+                            artist: "".to_string(),
+                            speed: speed.clone(),
+                            status: if speed.is_empty() { format!("Downloading: {pct}%") } else { format!("Downloading: {pct}% • {speed}") },
+                            complete: false,
+                            track_saved: None,
+                        });
+                    }
+                }
+            }
+
+            let _ = child.wait();
+            if let Ok(err_lines) = stderr_thread.join() {
+                stderr_lines.extend(err_lines);
             }
         }
 
-        let status = child.wait();
-        if let Ok(err_lines) = stderr_thread.join() {
-            stderr_lines = err_lines;
-        }
+        let status: Result<std::process::ExitStatus, std::io::Error> = if !downloaded_tracks.is_empty() {
+            use std::os::unix::process::ExitStatusExt;
+            Ok(std::process::ExitStatus::from_raw(0))
+        } else {
+            use std::os::unix::process::ExitStatusExt;
+            Ok(std::process::ExitStatus::from_raw(256))
+        };
 
         {
             let mut map = ACTIVE_DOWNLOADS.lock().unwrap();

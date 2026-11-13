@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { shell, session } = require('electron');
+const config = require('../config/appConfig');
 
 const SHARED_PARTITION = 'persist:bravemusic';
 
@@ -202,13 +203,20 @@ class AuthSyncService {
     }
 
     return new Promise((resolve) => {
-      execFile('yt-dlp', [
+      execFile(config.paths.ytdlpBin, [
+        '--no-update',
         '--cookies-from-browser', targetArg,
         '--cookies', tempFile,
         '--playlist-items', '0',
         '--skip-download',
         targetUrl
-      ], { timeout: 20000 }, (error, stdout, stderr) => {
+      ], {
+        timeout: 20000,
+        env: {
+          ...process.env,
+          PATH: `${config.paths.bundledBinDir}:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ''}`
+        }
+      }, (error, stdout, stderr) => {
         if (fs.existsSync(tempFile) && fs.statSync(tempFile).size > 0) {
           const cookies = this.parseNetscapeCookies(tempFile);
           try { fs.unlinkSync(tempFile); } catch (e) {}

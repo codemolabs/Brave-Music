@@ -36,11 +36,14 @@ This document tracks official version releases, changelogs, binary checksums, an
   - Navigation tab labels expand dynamically via `max-width` + `opacity` transitions with zero font stretching.
 - **High-Fidelity Audio Streaming Engine**:
   - Built-in multi-threaded local HTTP audio server with full support for `Range: bytes=` HTTP partial content (206 Partial Content), `HEAD` probe queries, instant seeking, and CORS support for local MP3/M4A/FLAC playback.
+- **Self-Contained Media Download & Spotify/YouTube Engine (`backend/bin/`)**:
+  - Bundled standalone `yt-dlp` (with embedded `yt_dlp_ejs` JS challenge solver, `mutagen`, `certifi`, `urllib3`, `requests`, and `websockets`), `node` JS runtime shim (`ELECTRON_RUN_AS_NODE=1`), and `glibc 2.31`-compatible `ffmpeg` + `ffprobe` + `libav*.so`/`libsw*.so` directly inside `backend/bin/`.
+  - Guarantees zero-dependency, out-of-the-box YouTube Music & Spotify track/playlist downloading and 320kbps MP3/M4A/FLAC conversion inside the strict Ubuntu Snap (`core22`) sandbox as well as Debian `.deb` and Cross-Platform Preview runtimes.
 - **Official Linux Packages & Checksums (SHA-256)**:
   - **Ubuntu Snap Package (`.snap` — Official Recommended)**: `Install/Linux/brave-music_1.0.19-r_amd64.snap`
-    - SHA-256: `56382889196d901249c7dfe38575022ab39ba0a8edf7dcd8f232e27627bca9e1`
+    - SHA-256: `070c443e1b6d4d538d5967a51ac914e4a4a7023885796517fd4800f903dfa617`
   - **Debian Package (`.deb`)**: `Install/Linux/brave-music_1.0.19-r_amd64.deb`
-    - SHA-256: `da1ea81fe8c048780e320a1e538ad0d2d32cef5c4a8cdb0bd589b6d6e5a1ab14`
+    - SHA-256: `e8083158b4e0efd738ddf8749497cb39cbe038baebeb46e12d7b89bd865b0703`
 
 ### Release v1.0.18
 

@@ -1,0 +1,12 @@
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+SNAP_ROOT="${SNAP:-$(cd "$ROOT_DIR/../.." 2>/dev/null && pwd)}"
+if [ -d "$SNAP_ROOT/gnome-platform/usr/lib/x86_64-linux-gnu" ]; then
+  export LD_LIBRARY_PATH="$SNAP_ROOT/gnome-platform/usr/lib/x86_64-linux-gnu:$SNAP_ROOT/gnome-platform/lib/x86_64-linux-gnu:$SCRIPT_DIR:${LD_LIBRARY_PATH:-}"
+fi
+if [ -x "$ROOT_DIR/node_modules/electron/dist/electron" ]; then
+  ELECTRON_RUN_AS_NODE=1 exec "$ROOT_DIR/node_modules/electron/dist/electron" "$@"
+elif [ -x "/usr/bin/node" ]; then
+  exec /usr/bin/node "$@"
+fi

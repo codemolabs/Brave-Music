@@ -6,6 +6,8 @@ cd "$DIR"
 unset ELECTRON_RUN_AS_NODE
 export NODE_ENV=production
 export ELECTRON_DISABLE_SECURITY_WARNINGS=true
+export PATH="$DIR/backend/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export LD_LIBRARY_PATH="$DIR/backend/bin:$DIR/backend/engine/musikcube:$DIR/backend/engine/musikcube/lib:${LD_LIBRARY_PATH:-}"
 
 # Launch the new cross-platform native stack (Rust + Native Webview) if requested
 if [ "$1" = "--new-stack" ] || [ "$1" = "--preview" ] || [ "$1" = "--rust" ] || [ "$1" = "-n" ]; then

@@ -8,6 +8,7 @@ const DOWNLOADS_DIR = path.join(DATA_DIR, 'downloads');
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails');
 const DB_FILE = path.join(DATA_DIR, 'library.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const BUNDLED_BIN_DIR = path.resolve(__dirname, '..', 'bin');
 
 // Ensure necessary directories exist
 fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
@@ -30,12 +31,17 @@ let currentDownloadsDir = (savedSettings && savedSettings.downloadsDir && fs.exi
   ? savedSettings.downloadsDir
   : DOWNLOADS_DIR;
 
-// Locate yt-dlp binary
+// Locate yt-dlp binary (prioritizing Snap / bundled standalone engine so it never fails inside sandboxes)
 function resolveYtDlpBinary() {
   const envPath = process.env.YTM_YTDLP || process.env.YTDLP_PATH;
   if (envPath && fs.existsSync(envPath)) return envPath;
 
+  const snapRoot = process.env.SNAP || '';
   const candidatePaths = [
+    snapRoot ? path.join(snapRoot, 'opt', 'brave-music', 'backend', 'bin', 'yt-dlp') : null,
+    snapRoot ? path.join(snapRoot, 'bin', 'yt-dlp') : null,
+    path.join(BUNDLED_BIN_DIR, 'yt-dlp'),
+    '/opt/brave-music/backend/bin/yt-dlp',
     path.join(os.homedir(), '.local', 'bin', 'yt-dlp'),
     '/usr/local/bin/yt-dlp',
     '/usr/bin/yt-dlp',
@@ -49,12 +55,56 @@ function resolveYtDlpBinary() {
   return 'yt-dlp';
 }
 
+// Locate Node JS runtime wrapper for yt-dlp EJS signature decryption
+function resolveNodeBinary() {
+  const snapRoot = process.env.SNAP || '';
+  const candidatePaths = [
+    snapRoot ? path.join(snapRoot, 'opt', 'brave-music', 'backend', 'bin', 'node') : null,
+    path.join(BUNDLED_BIN_DIR, 'node'),
+    '/opt/brave-music/backend/bin/node',
+    '/usr/local/bin/node',
+    '/usr/bin/node',
+    '/bin/node'
+  ];
+
+  for (const p of candidatePaths) {
+    if (p && fs.existsSync(p)) return p;
+  }
+
+  return null;
+}
+
+// Check if both ffmpeg and ffprobe are available for audio postprocessing
+function resolveFfmpegDir() {
+  const snapRoot = process.env.SNAP || '';
+  const candidateDirs = [
+    snapRoot ? path.join(snapRoot, 'opt', 'brave-music', 'backend', 'bin') : null,
+    snapRoot ? path.join(snapRoot, 'usr', 'bin') : null,
+    snapRoot ? path.join(snapRoot, 'bin') : null,
+    BUNDLED_BIN_DIR,
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin'
+  ];
+
+  for (const dir of candidateDirs) {
+    if (dir && fs.existsSync(path.join(dir, 'ffmpeg')) && fs.existsSync(path.join(dir, 'ffprobe'))) {
+      return dir;
+    }
+  }
+
+  return null;
+}
+
 // Locate zotify binary
 function resolveZotifyBinary() {
   const envPath = process.env.BRAVE_MUSIC_ZOTIFY || process.env.ZOTIFY_PATH;
   if (envPath && fs.existsSync(envPath)) return envPath;
 
+  const snapRoot = process.env.SNAP || '';
   const candidatePaths = [
+    snapRoot ? path.join(snapRoot, 'bin', 'zotify') : null,
+    path.join(BUNDLED_BIN_DIR, 'zotify'),
     path.join(os.homedir(), '.local', 'bin', 'zotify'),
     '/usr/local/bin/zotify',
     '/usr/bin/zotify',
@@ -71,6 +121,7 @@ function resolveZotifyBinary() {
 const config = {
   paths: {
     dataDir: DATA_DIR,
+    bundledBinDir: BUNDLED_BIN_DIR,
     get downloadsDir() {
       return currentDownloadsDir;
     },
@@ -90,8 +141,21 @@ const config = {
     thumbnailsDir: THUMBNAILS_DIR,
     dbFile: DB_FILE,
     settingsFile: SETTINGS_FILE,
-    ytdlpBin: resolveYtDlpBinary(),
-    zotifyBin: resolveZotifyBinary()
+    get ytdlpBin() {
+      return resolveYtDlpBinary();
+    },
+    get nodeBin() {
+      return resolveNodeBinary();
+    },
+    get ffmpegDir() {
+      return resolveFfmpegDir();
+    },
+    get hasFfmpeg() {
+      return Boolean(resolveFfmpegDir());
+    },
+    get zotifyBin() {
+      return resolveZotifyBinary();
+    }
   },
   audio: {
     format: 'm4a',

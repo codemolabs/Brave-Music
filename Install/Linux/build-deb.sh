@@ -48,12 +48,17 @@ fi
 chmod +x "$BUILD_DIR/opt/brave-music/node_modules/electron/dist/electron" 2>/dev/null || true
 chmod +x "$BUILD_DIR/opt/brave-music/node_modules/.bin/electron" 2>/dev/null || true
 chmod +x "$BUILD_DIR/opt/brave-music/backend/engine/musikcube/musikcubed" 2>/dev/null || true
+chmod +x "$BUILD_DIR/opt/brave-music/backend/bin/yt-dlp" \
+         "$BUILD_DIR/opt/brave-music/backend/bin/node" \
+         "$BUILD_DIR/opt/brave-music/backend/bin/ffmpeg" \
+         "$BUILD_DIR/opt/brave-music/backend/bin/ffprobe" 2>/dev/null || true
 
 # 3. Create /opt/brave-music/run.sh
 cat << 'EOF' > "$BUILD_DIR/opt/brave-music/run.sh"
 #!/bin/bash
 unset ELECTRON_RUN_AS_NODE
-export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+export PATH="/opt/brave-music/backend/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export LD_LIBRARY_PATH="/opt/brave-music/backend/bin:/opt/brave-music/backend/engine/musikcube:/opt/brave-music/backend/engine/musikcube/lib:${LD_LIBRARY_PATH:-}"
 export ELECTRON_DISABLE_SECURITY_WARNINGS=true
 cd /opt/brave-music
 FLAGS="--no-sandbox --no-zygote --disable-gpu-sandbox --class=brave-music --name=brave-music"

@@ -93,12 +93,13 @@ class DownloadService {
     return new Promise((resolve) => {
       let isSettled = false;
       const child = spawn(config.paths.ytdlpBin, [
+        ...this.getRuntimeYtDlpFlags(),
         '--flat-playlist',
         '--dump-single-json',
         '--no-warnings',
         '--socket-timeout', '15',
         cleanUrl
-      ], { windowsHide: true });
+      ], this.getYtDlpSpawnOptions());
 
       let jsonStr = '';
       child.stdout.on('data', chunk => {
@@ -379,44 +380,84 @@ class DownloadService {
     return { url: trimmed, isSpotify: true };
   }
 
+  getYtDlpSpawnOptions() {
+    const snapGnomeLib = process.env.SNAP
+      ? `${process.env.SNAP}/gnome-platform/usr/lib/x86_64-linux-gnu:${process.env.SNAP}/gnome-platform/lib/x86_64-linux-gnu:`
+      : '';
+    return {
+      windowsHide: true,
+      env: {
+        ...process.env,
+        PATH: `${config.paths.bundledBinDir}:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ''}`,
+        LD_LIBRARY_PATH: `${snapGnomeLib}${config.paths.bundledBinDir}:${process.env.LD_LIBRARY_PATH || ''}`,
+        PYTHONIOENCODING: 'utf-8'
+      }
+    };
+  }
+
+  getRuntimeYtDlpFlags() {
+    const flags = ['--ignore-config', '--no-update', '--extractor-args', 'youtube:player_client=tv,web'];
+    const nodeBin = config.paths.nodeBin;
+    if (nodeBin) {
+      flags.push('--js-runtimes', `node:${nodeBin}`);
+    }
+    const ffmpegDir = config.paths.ffmpegDir;
+    if (ffmpegDir) {
+      flags.push('--ffmpeg-location', ffmpegDir);
+    }
+    return flags;
+  }
+
   // Get format parameters
   getFormatOptions(format = 'audio-mp3') {
+    const hasFfmpeg = config.paths.hasFfmpeg;
+    const runtimeFlags = this.getRuntimeYtDlpFlags();
     switch (format) {
       case 'audio-flac':
         return {
           isVideo: false,
-          ext: 'flac',
+          ext: hasFfmpeg ? 'flac' : 'm4a',
           zotifyCodec: 'flac',
-          ytdlpArgs: ['-f', 'bestaudio/best', '-x', '--audio-format', 'flac']
+          ytdlpArgs: hasFfmpeg
+            ? [...runtimeFlags, '-f', 'bestaudio/best', '-x', '--audio-format', 'flac']
+            : [...runtimeFlags, '-f', 'bestaudio[ext=m4a]/bestaudio/best']
         };
       case 'audio-m4a':
         return {
           isVideo: false,
           ext: 'm4a',
           zotifyCodec: 'aac',
-          ytdlpArgs: ['-f', 'bestaudio[ext=m4a]/bestaudio/best', '-x', '--audio-format', 'm4a']
+          ytdlpArgs: hasFfmpeg
+            ? [...runtimeFlags, '-f', 'bestaudio[ext=m4a]/bestaudio/best', '-x', '--audio-format', 'm4a']
+            : [...runtimeFlags, '-f', 'bestaudio[ext=m4a]/bestaudio/best']
         };
       case 'video-mp4':
         return {
           isVideo: true,
           ext: 'mp4',
           zotifyCodec: null,
-          ytdlpArgs: ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4']
+          ytdlpArgs: hasFfmpeg
+            ? [...runtimeFlags, '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4']
+            : [...runtimeFlags, '-f', 'best[ext=mp4]/best']
         };
       case 'video-720p':
         return {
           isVideo: true,
           ext: 'mp4',
           zotifyCodec: null,
-          ytdlpArgs: ['-f', 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best', '--merge-output-format', 'mp4']
+          ytdlpArgs: hasFfmpeg
+            ? [...runtimeFlags, '-f', 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best', '--merge-output-format', 'mp4']
+            : [...runtimeFlags, '-f', 'best[height<=720][ext=mp4]/best[ext=mp4]/best']
         };
       case 'audio-mp3':
       default:
         return {
           isVideo: false,
-          ext: 'mp3',
+          ext: hasFfmpeg ? 'mp3' : 'm4a',
           zotifyCodec: 'mp3',
-          ytdlpArgs: ['-f', 'bestaudio/best', '-x', '--audio-format', 'mp3', '--audio-quality', '0']
+          ytdlpArgs: hasFfmpeg
+            ? [...runtimeFlags, '-f', 'bestaudio/best', '-x', '--audio-format', 'mp3', '--audio-quality', '0']
+            : [...runtimeFlags, '-f', 'bestaudio[ext=m4a]/bestaudio/best']
         };
     }
   }
@@ -651,7 +692,7 @@ class DownloadService {
       try {
         const savedTrack = await new Promise((resolveTrack) => {
           let trackSettled = false;
-          const child = spawn(config.paths.ytdlpBin, trackArgs, { windowsHide: true });
+          const child = spawn(config.paths.ytdlpBin, trackArgs, this.getYtDlpSpawnOptions());
           this.activeProcesses.set(downloadId, child);
 
           let trackOutput = '';
@@ -838,7 +879,7 @@ class DownloadService {
       try {
         const savedTrack = await new Promise((resolveTrack) => {
           let trackSettled = false;
-          const child = spawn(config.paths.ytdlpBin, trackArgs, { windowsHide: true });
+          const child = spawn(config.paths.ytdlpBin, trackArgs, this.getYtDlpSpawnOptions());
           this.activeProcesses.set(downloadId, child);
 
           let trackOutput = '';
@@ -1082,7 +1123,7 @@ class DownloadService {
 
     return new Promise((resolve) => {
       let isSettled = false;
-      const child = spawn(config.paths.ytdlpBin, baseArgs, { windowsHide: true });
+      const child = spawn(config.paths.ytdlpBin, baseArgs, this.getYtDlpSpawnOptions());
       this.activeProcesses.set(downloadId, child);
 
       // Inactivity timeout: if no output for 90 seconds, terminate stalled download
@@ -1238,7 +1279,7 @@ class DownloadService {
             const rawUploader = parts[5] || '';
             const duration = parseInt(parts[6] || parts[4] || '0', 10);
             const thumbnail = resolved.thumbnail || parts[7] || parts[5] || '';
-            const extractedPlaylist = (parts[8] && parts[8] !== 'NA' && parts[8].trim()) ? parts[8].trim() : null;
+            const extractedPlaylist = (effectiveIsPlaylist && parts[8] && parts[8] !== 'NA' && parts[8].trim()) ? parts[8].trim() : null;
 
             const targetPlaylistName = playlistName || extractedPlaylist || (effectiveIsPlaylist ? 'Downloaded Playlist' : null);
 

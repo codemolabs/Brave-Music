@@ -8,6 +8,8 @@ dist/
 build/
 bin/*
 !bin/brave-music.js
+!backend/bin/
+!backend/bin/**
 tools/
 Install/Linux/dist/
 *.deb

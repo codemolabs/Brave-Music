@@ -69,14 +69,20 @@ parts:
 
       cp -r package.json main.js preload.js backend src node_modules $CRAFT_PART_INSTALL/opt/brave-music/
       cp src/assets/app-icon.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/512x512/apps/brave-music.png
+      chmod +x $CRAFT_PART_INSTALL/opt/brave-music/backend/bin/yt-dlp \
+               $CRAFT_PART_INSTALL/opt/brave-music/backend/bin/node \
+               $CRAFT_PART_INSTALL/opt/brave-music/backend/bin/ffmpeg \
+               $CRAFT_PART_INSTALL/opt/brave-music/backend/bin/ffprobe 2>/dev/null || true
 
       cat << 'EOF' > $CRAFT_PART_INSTALL/bin/brave-music-snap
       #!/bin/bash
       unset ELECTRON_RUN_AS_NODE
       export ELECTRON_DISABLE_SECURITY_WARNINGS=true
       APP_DIR="${SNAP}/opt/brave-music"
+      export PATH="$APP_DIR/backend/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+      export LD_LIBRARY_PATH="${SNAP:+$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu:$SNAP/gnome-platform/lib/x86_64-linux-gnu:}$APP_DIR/backend/bin:$APP_DIR/backend/engine/musikcube:$APP_DIR/backend/engine/musikcube/lib:${LD_LIBRARY_PATH:-}"
       cd "$APP_DIR"
-      FLAGS="--no-sandbox --no-zygote --disable-gpu-sandbox --class=brave-music --name=brave-music"
+      FLAGS="--no-sandbox --no-zygote --disable-gpu-sandbox --disable-dev-shm-usage --class=brave-music --name=brave-music"
       exec "$APP_DIR/node_modules/electron/dist/electron" "$APP_DIR" $FLAGS "$@"
       EOF
       chmod +x $CRAFT_PART_INSTALL/bin/brave-music-snap
