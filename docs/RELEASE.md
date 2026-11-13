@@ -41,7 +41,7 @@ This document tracks official version releases, changelogs, binary checksums, an
   - Guarantees zero-dependency, out-of-the-box YouTube Music & Spotify track/playlist downloading and 320kbps MP3/M4A/FLAC conversion inside the strict Ubuntu Snap (`core22`) sandbox as well as Debian `.deb` and Cross-Platform Preview runtimes.
 - **Official Linux Packages & Checksums (SHA-256)**:
   - **Ubuntu Snap Package (`.snap` — Official Recommended)**: `Install/Linux/brave-music_1.0.19-r_amd64.snap`
-    - SHA-256: `070c443e1b6d4d538d5967a51ac914e4a4a7023885796517fd4800f903dfa617`
+    - SHA-256: `1296bd2ce38c9b0ff55ea2b866ade6a9f817cf7af1e12693408d09a0ee35fd61`
   - **Debian Package (`.deb`)**: `Install/Linux/brave-music_1.0.19-r_amd64.deb`
     - SHA-256: `e8083158b4e0efd738ddf8749497cb39cbe038baebeb46e12d7b89bd865b0703`
 

@@ -31,7 +31,6 @@ license: GPL-3.0+
 base: core22
 grade: stable
 confinement: strict
-compression: lzo
 assumes:
   - snapd2.43
 architectures:
@@ -82,7 +81,6 @@ apps:
   brave-music:
     command: bin/brave-music-snap
     common-id: org.codemolabs.BraveMusic
-    desktop: usr/share/applications/brave-music.desktop
     command-chain:
       - snap/command-chain/desktop-launch
     slots:
