@@ -3219,6 +3219,14 @@ fn provider_url(provider: &str) -> Result<&'static str, &'static str> {
 fn main() {
     #[cfg(target_os = "linux")]
     {
+        if std::env::var_os("SNAP").is_some() {
+            if std::env::var_os("GIO_USE_PROXY_RESOLVER").is_none() {
+                std::env::set_var("GIO_USE_PROXY_RESOLVER", "dummy");
+            }
+            if std::env::var_os("GIO_USE_NETWORK_MONITOR").is_none() {
+                std::env::set_var("GIO_USE_NETWORK_MONITOR", "netlink");
+            }
+        }
         if std::env::var("WEBKIT_FORCE_COMPOSITING_MODE").is_err() {
             std::env::set_var("WEBKIT_FORCE_COMPOSITING_MODE", "1");
         }

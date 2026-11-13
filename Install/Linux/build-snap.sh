@@ -40,6 +40,8 @@ architectures:
 environment:
   SNAP_DESKTOP_RUNTIME: $SNAP/gnome-platform
   GTK_USE_PORTAL: '1'
+  GIO_USE_PROXY_RESOLVER: dummy
+  GIO_USE_NETWORK_MONITOR: netlink
   WEBKIT_EXEC_PATH: $SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1
 layout:
   /usr/share/libdrm:
@@ -171,6 +173,8 @@ if [ ! -d "$APP_DIR" ]; then
 fi
 export PATH="$APP_DIR/backend/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export LD_LIBRARY_PATH="${SNAP:+$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu:$SNAP/gnome-platform/lib/x86_64-linux-gnu:}$APP_DIR/backend/bin:${LD_LIBRARY_PATH:-}"
+export GIO_USE_PROXY_RESOLVER="${GIO_USE_PROXY_RESOLVER:-dummy}"
+export GIO_USE_NETWORK_MONITOR="${GIO_USE_NETWORK_MONITOR:-netlink}"
 export WEBKIT_EXEC_PATH="${SNAP:+$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1}"
 export WEBKIT_FORCE_COMPOSITING_MODE=1
 export WEBKIT_DISABLE_COMPOSITING_MODE=0

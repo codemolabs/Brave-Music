@@ -54,11 +54,11 @@ This document tracks official version releases, changelogs, binary checksums, an
   - Preserved seed video parameters for YouTube / YouTube Music Radio Mixes (`?v=...&list=RD...`) and enforced sequential `1..N` ordering across backend metadata, `LibraryService.syncPlaylistSequence`, `Play All` playback, and Rust preview (`brave-music-linux-preview`).
   - Upgraded MP3 downloads to target 320kbps CBR/V0 with clean ID3v2.3 metadata tagging (`title`, `artist`, `album`, `track=N/Total`) written directly via bundled `ffmpeg`, relaxed YouTube Music search fallbacks, and updated `web_embedded,web,default` extraction flags.
   - Upgraded the Offline Library & Collections UI with Bento collection cards (2x2 album art collages, Spotify/YouTube source pills, duration & format summaries), crisp format pills (`MP3`, `FLAC`, `M4A`, `VIDEO`), clickable collection links, and auto-switching to Full Playlist mode on pasted collection URLs.
-- **Official Linux Packages & Checksums (SHA-256)** (`v1.0.19-r11`):
+- **Official Linux Packages & Checksums (SHA-256)** (`v1.0.19-r12`):
   - **Ubuntu Snap Package (`.snap` — Official Recommended, `core24` Rust/WebKitGTK)**: `Install/Linux/brave-music_1.0.19-r_amd64.snap`
-    - SHA-256: `f56db6569c34917c94ab8b911a6e8ed3b4b7f3447f5c72ebf48e2b1c62b417ad`
+    - SHA-256: `5dc9c92950090155ed81925bccec61e3053e71a88cee16ceb66b140300136a5c`
   - **Debian Package (`.deb`, Rust/WebKitGTK)**: `Install/Linux/brave-music_1.0.19-r_amd64.deb`
-    - SHA-256: `b91958a10264d8fe7bc943e9ec34111913380a89016ac3183a1a10d09dbdf2ea`
+    - SHA-256: `d09d92d389c5348cd5853c84250bb4aa4f4afb1d964737ad279e42d9710bd203`
 
 ### Release v1.0.18
 
