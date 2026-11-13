@@ -26,7 +26,7 @@ fi
 
 echo "=== Launching Brave Music Desktop ==="
 # Hardened flags: --no-sandbox with --no-zygote and --disable-gpu-sandbox (removes conflicting --in-process-gpu to prevent grey screens)
-FLAGS="--no-sandbox --no-zygote --disable-gpu-sandbox"
+FLAGS="--no-sandbox --no-zygote --disable-gpu-sandbox --class=brave-music --name=brave-music"
 
 if [ -x "$DIR/node_modules/.bin/electron" ]; then
   exec "$DIR/node_modules/.bin/electron" . $FLAGS "$@"

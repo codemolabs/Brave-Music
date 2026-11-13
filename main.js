@@ -8,8 +8,32 @@ const backend = require('./backend');
 const CHROME_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.216 Safari/537.36';
 const SHARED_PARTITION = 'persist:bravemusic';
 
-// Set global fallback User-Agent so no internal Electron requests leak 'Electron'
+// Enforce single instance lock: prevent opening duplicate separate app instances
 if (app) {
+  const gotSingleInstanceLock = app.requestSingleInstanceLock();
+  if (!gotSingleInstanceLock) {
+    console.log('[Main] Another instance of Brave Music is already running. Focusing existing instance and quitting.');
+    app.quit();
+    process.exit(0);
+  }
+
+  app.on('second-instance', (event, commandLine, workingDirectory) => {
+    // When clicked again in dock or launcher, focus existing window
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+
+  // Explicitly identify app name & desktop WMClass to group with installed .desktop launcher
+  app.name = 'brave-music';
+  if (typeof app.setName === 'function') {
+    app.setName('brave-music');
+  }
+  if (typeof app.setAppUserModelId === 'function') {
+    app.setAppUserModelId('brave-music');
+  }
   app.userAgentFallback = CHROME_USER_AGENT;
 
   // Natively remove AutomationControlled flag so navigator.webdriver is false
@@ -160,6 +184,7 @@ let mainWindow = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    title: 'Brave Music',
     width: 1360,
     height: 840,
     minWidth: 400,

@@ -21,7 +21,7 @@ This document tracks official version releases, changelogs, binary checksums, an
 - **High-Fidelity Audio Streaming Engine**:
   - Built-in multi-threaded local HTTP audio server with full support for `Range: bytes=` HTTP partial content (206 Partial Content), `HEAD` probe queries, instant seeking, and CORS support for local MP3/M4A/FLAC playback.
 - **Debian Package (Linux)**: `Install/Linux/brave-music_1.0.19-r_amd64.deb`
-- **Linux SHA-256**: `c5bc8a61b71d92e745546a9bbd61794294d64aba5e98e4be52de5233843e58e8`
+- **Linux SHA-256**: `da1ea81fe8c048780e320a1e538ad0d2d32cef5c4a8cdb0bd589b6d6e5a1ab14`
 
 ### Release v1.0.18
 

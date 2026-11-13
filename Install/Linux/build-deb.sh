@@ -56,12 +56,13 @@ unset ELECTRON_RUN_AS_NODE
 export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 export ELECTRON_DISABLE_SECURITY_WARNINGS=true
 cd /opt/brave-music
+FLAGS="--no-sandbox --no-zygote --disable-gpu-sandbox --class=brave-music --name=brave-music"
 if [ -x "/opt/brave-music/node_modules/electron/dist/electron" ]; then
-  exec /opt/brave-music/node_modules/electron/dist/electron /opt/brave-music --no-sandbox --no-zygote --disable-gpu-sandbox "$@"
+  exec /opt/brave-music/node_modules/electron/dist/electron /opt/brave-music $FLAGS "$@"
 elif [ -x "/opt/brave-music/node_modules/.bin/electron" ]; then
-  exec /opt/brave-music/node_modules/.bin/electron . --no-sandbox --no-zygote --disable-gpu-sandbox "$@"
+  exec /opt/brave-music/node_modules/.bin/electron . $FLAGS "$@"
 else
-  exec npx --yes electron . --no-sandbox --no-zygote --disable-gpu-sandbox "$@"
+  exec npx --yes electron . $FLAGS "$@"
 fi
 EOF
 chmod +x "$BUILD_DIR/opt/brave-music/run.sh"
@@ -84,6 +85,7 @@ Terminal=false
 Type=Application
 Categories=AudioVideo;Audio;Player;
 StartupWMClass=brave-music
+StartupNotify=true
 Keywords=Music;YouTube;Spotify;Download;Audio;Player;
 EOF
 chmod 644 "$BUILD_DIR/usr/share/applications/brave-music.desktop"
@@ -102,9 +104,9 @@ for SIZE in 16 24 32 48 64 128 256 512; do
   chmod 644 "$BUILD_DIR/usr/share/icons/hicolor/${SIZE}x${SIZE}/apps/brave-music.png"
 done
 
-# 7. Package with dpkg-deb
+# 7. Package with dpkg-deb (using fast gzip compression to prevent high-memory OOM)
 echo "Packaging with dpkg-deb..."
-dpkg-deb --build --root-owner-group "$BUILD_DIR" "$OUTPUT_DEB"
+dpkg-deb -Zgzip -z1 --root-owner-group --build "$BUILD_DIR" "$OUTPUT_DEB"
 
 echo "=== Successfully built Debian Package: $OUTPUT_DEB ==="
 ls -lh "$OUTPUT_DEB"
