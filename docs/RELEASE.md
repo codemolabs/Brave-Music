@@ -39,11 +39,14 @@ This document tracks official version releases, changelogs, binary checksums, an
 - **Self-Contained Media Download & Spotify/YouTube Engine (`backend/bin/`)**:
   - Bundled standalone `yt-dlp` (with embedded `yt_dlp_ejs` JS challenge solver, `mutagen`, `certifi`, `urllib3`, `requests`, and `websockets`), `node` JS runtime shim (`ELECTRON_RUN_AS_NODE=1`), and `glibc 2.31`-compatible `ffmpeg` + `ffprobe` + `libav*.so`/`libsw*.so` directly inside `backend/bin/`.
   - Guarantees zero-dependency, out-of-the-box YouTube Music & Spotify track/playlist downloading and 320kbps MP3/M4A/FLAC conversion inside the strict Ubuntu Snap (`core22`) sandbox as well as Debian `.deb` and Cross-Platform Preview runtimes.
+- **Native In-Browser Sign-In & Persistent Browser Memory (`persist:bravemusic`)**:
+  - Eliminated external browser forcing during YouTube Music and Spotify authentication; sign-in now occurs directly inside Brave Music's built-in browser (`partition="persist:bravemusic"`) and in-app OAuth popups sharing the same browser session.
+  - Added automatic live browser-memory cookie inspection and disk flushing (`session.cookies.flushStore()` + `syncFromBrowserMemory`) so sessions persist natively across restarts while keeping `cookies.json` import strictly as an emergency manual fallback.
 - **Official Linux Packages & Checksums (SHA-256)**:
   - **Ubuntu Snap Package (`.snap` — Official Recommended)**: `Install/Linux/brave-music_1.0.19-r_amd64.snap`
-    - SHA-256: `1296bd2ce38c9b0ff55ea2b866ade6a9f817cf7af1e12693408d09a0ee35fd61`
+    - SHA-256: `4634a36646fe34f116e5df3784f1201708e712d1e2cb868a756bfe0c5a4bcb94`
   - **Debian Package (`.deb`)**: `Install/Linux/brave-music_1.0.19-r_amd64.deb`
-    - SHA-256: `e8083158b4e0efd738ddf8749497cb39cbe038baebeb46e12d7b89bd865b0703`
+    - SHA-256: `64a4c59f2679fab03d0175ccd3b50941615ceff85bc183dc4b33be5c97c26b74`
 
 ### Release v1.0.18
 

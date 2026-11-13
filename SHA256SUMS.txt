@@ -1,2 +1,2 @@
-1296bd2ce38c9b0ff55ea2b866ade6a9f817cf7af1e12693408d09a0ee35fd61  brave-music_1.0.19-r_amd64.snap
-e8083158b4e0efd738ddf8749497cb39cbe038baebeb46e12d7b89bd865b0703  brave-music_1.0.19-r_amd64.deb
+4634a36646fe34f116e5df3784f1201708e712d1e2cb868a756bfe0c5a4bcb94  brave-music_1.0.19-r_amd64.snap
+64a4c59f2679fab03d0175ccd3b50941615ceff85bc183dc4b33be5c97c26b74  brave-music_1.0.19-r_amd64.deb

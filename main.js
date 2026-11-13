@@ -234,7 +234,14 @@ app.on('web-contents-created', (event, contents) => {
       console.log(`[Webview Fail Load] ${validatedURL}: ${errorDescription} (${errorCode})`);
     });
     contents.on('did-finish-load', () => {
-      console.log(`[Webview Finished Load] ${contents.getURL()}`);
+      const currentUrl = contents.getURL();
+      console.log(`[Webview Finished Load] ${currentUrl}`);
+      try {
+        const ytmDevtoolsAuthService = require('./backend/services/YTMDevtoolsAuthService');
+        if (typeof ytmDevtoolsAuthService.syncFromBrowserMemory === 'function') {
+          ytmDevtoolsAuthService.syncFromBrowserMemory().catch(() => {});
+        }
+      } catch (e) {}
     });
     // Intercept window.open calls from inside Spotify or YouTube
     contents.setWindowOpenHandler(({ url }) => {
@@ -256,10 +263,24 @@ app.on('web-contents-created', (event, contents) => {
           return { action: 'deny' };
         }
 
-        // 2. System browser capability OAuth authentication
+        // 2. Allow in-browser OAuth / authentication popups inside the shared persistent partition
         if (isAuthUrl(url)) {
-          openLoginModal(url, contents);
-          return { action: 'deny' };
+          return {
+            action: 'allow',
+            overrideBrowserWindowOptions: {
+              width: 520,
+              height: 680,
+              autoHideMenuBar: true,
+              title: 'Brave Music — Sign In',
+              backgroundColor: '#0b0d13',
+              webPreferences: {
+                partition: SHARED_PARTITION,
+                nodeIntegration: false,
+                contextIsolation: true,
+                sandbox: false
+              }
+            }
+          };
         }
 
         const parsed = new URL(url);
@@ -284,7 +305,7 @@ app.on('web-contents-created', (event, contents) => {
       return { action: 'deny' };
     });
 
-    // Intercept in-place navigations inside webviews (e.g. clicking 'Sign in')
+    // Intercept in-place navigations inside webviews (allow in-browser sign-in natively)
     contents.on('will-navigate', (e, reqUrl) => {
       if (!reqUrl || typeof reqUrl !== 'string') return;
       const lower = reqUrl.toLowerCase();
@@ -299,11 +320,6 @@ app.on('web-contents-created', (event, contents) => {
         e.preventDefault();
         console.log('[Main] Blocked webview navigation to:', reqUrl);
         return;
-      }
-
-      if (isAuthUrl(reqUrl)) {
-        e.preventDefault();
-        openLoginModal(reqUrl, contents);
       }
     });
   }

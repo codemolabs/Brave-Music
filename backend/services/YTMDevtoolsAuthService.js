@@ -156,75 +156,146 @@ class YTMDevtoolsAuthService {
   }
 
   // =========================================================================
-  // CONTROLLED CDP (Chrome DevTools Protocol) AUTHENTICATION FLOW
+  // IN-BROWSER SESSION MEMORY & AUTHENTICATION FLOW
   // =========================================================================
 
-  async startCdpLogin(service = 'youtube', preferredBrowser = 'auto') {
+  async syncFromBrowserMemory(targetService = 'all') {
+    if (!session) return { ytm: false, spotify: false, ytmCount: 0, spotifyCount: 0 };
+    const s = session.fromPartition(SHARED_PARTITION);
+    if (!s) return { ytm: false, spotify: false, ytmCount: 0, spotifyCount: 0 };
+
+    let allCookies = [];
+    try {
+      allCookies = await s.cookies.get({});
+    } catch (e) {
+      return { ytm: false, spotify: false, ytmCount: 0, spotifyCount: 0 };
+    }
+
+    const ytmCookies = allCookies.filter((c) => {
+      const d = (c.domain || '').toLowerCase();
+      return (
+        d.includes('youtube.com') ||
+        d.includes('google.com') ||
+        d.includes('googleusercontent.com') ||
+        d.includes('gstatic.com')
+      );
+    });
+
+    const spotifyCookies = allCookies.filter((c) => {
+      const d = (c.domain || '').toLowerCase();
+      return (
+        d.includes('spotify.com') ||
+        d.includes('spotifycdn.com') ||
+        d.includes('scdn.co')
+      );
+    });
+
+    const hasYtmLogin =
+      ytmCookies.some((c) => c.name === 'LOGIN_INFO' || c.name === '__Secure-3PAPISID') ||
+      (ytmCookies.some((c) => c.name === 'SAPISID') && ytmCookies.some((c) => c.name === 'SID'));
+
+    const hasSpotifyLogin =
+      spotifyCookies.some((c) => c.name === 'sp_dc') ||
+      (spotifyCookies.some((c) => c.name === 'sp_key') && spotifyCookies.some((c) => c.name === 'sp_t'));
+
+    const checkYtm = targetService === 'all' || targetService === 'youtube' || targetService === 'ytmusic';
+    const checkSpotify = targetService === 'all' || targetService === 'spotify';
+
+    if ((checkYtm && hasYtmLogin) || (checkSpotify && hasSpotifyLogin)) {
+      try {
+        if (typeof s.cookies.flushStore === 'function') {
+          await s.cookies.flushStore();
+        }
+      } catch (e) {}
+    }
+
+    const accounts = this.getSavedAccounts();
+
+    if (checkYtm && hasYtmLogin && ytmCookies.length > 0) {
+      try {
+        fs.writeFileSync(this.ytmSessionPath, JSON.stringify(ytmCookies, null, 2), { mode: 0o600 });
+      } catch (e) {}
+      if (!accounts.youtube || !accounts.youtube.authenticated) {
+        this.saveUserAccount('youtube', {
+          name: accounts.youtube?.name || 'YouTube Music Account',
+          email: accounts.youtube?.email || 'Active Google Session',
+          avatar: accounts.youtube?.avatar || '',
+          authenticated: true,
+          source: 'browser-memory'
+        });
+      }
+    }
+
+    if (checkSpotify && hasSpotifyLogin && spotifyCookies.length > 0) {
+      try {
+        fs.writeFileSync(this.spotifySessionPath, JSON.stringify(spotifyCookies, null, 2), { mode: 0o600 });
+      } catch (e) {}
+      if (!accounts.spotify || !accounts.spotify.authenticated) {
+        this.saveUserAccount('spotify', {
+          name: accounts.spotify?.name || 'Spotify Account',
+          email: accounts.spotify?.email || 'Active Spotify Session',
+          avatar: accounts.spotify?.avatar || '',
+          authenticated: true,
+          source: 'browser-memory'
+        });
+      }
+    }
+
+    return {
+      ytm: hasYtmLogin,
+      spotify: hasSpotifyLogin,
+      ytmCount: ytmCookies.length,
+      spotifyCount: spotifyCookies.length
+    };
+  }
+
+  async startCdpLogin(service = 'youtube', preferredBrowser = 'in-app') {
     this.cancelCdpLogin();
     const attemptId = this.loginAttemptId;
     const normalizedService = (service || 'youtube').toLowerCase() === 'spotify' ? 'spotify' : 'youtube';
     this.activeLoginService = normalizedService;
-    const targetUrl = normalizedService === 'spotify'
-      ? 'https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F'
-      : 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F';
-    const authSyncService = require('./AuthSyncService');
-    const browserTarget = authSyncService.getDefaultBrowserTarget();
-    const opened = await authSyncService.openInDefaultBrowser(targetUrl);
-    if (!opened.success) throw new Error(opened.error || 'Could not open the default browser.');
+    const isSpotify = normalizedService === 'spotify';
 
     this._notify('status', {
       service: normalizedService,
       state: 'waiting_login',
-      message: `Sign in in your default browser. Brave Music will sync the session from ${browserTarget}.`
+      message: `Sign in directly inside Brave Music (${isSpotify ? 'Spotify' : 'YouTube Music'} tab). Session will be saved in browser memory.`
     });
 
     const deadline = Date.now() + 300000;
-    let lastError = '';
     while (Date.now() < deadline && attemptId === this.loginAttemptId) {
-      const result = await authSyncService.extractDefaultBrowserCookies(normalizedService);
-      if (result.success) {
-        const cookies = result.cookies || [];
-        const isSpotify = normalizedService === 'spotify';
-        const hasServiceLogin = isSpotify
-          ? cookies.some((cookie) => cookie.name === 'sp_dc') ||
-            (cookies.some((cookie) => cookie.name === 'sp_key') && cookies.some((cookie) => cookie.name === 'sp_t'))
-          : cookies.some((cookie) => cookie.name === 'LOGIN_INFO') ||
-            (cookies.some((cookie) => cookie.name === 'SAPISID') && cookies.some((cookie) => cookie.name === 'SID'));
+      const memState = await this.syncFromBrowserMemory(normalizedService);
+      const isLoggedIn = isSpotify ? memState.spotify : memState.ytm;
+      const cookieCount = isSpotify ? memState.spotifyCount : memState.ytmCount;
 
-        if (hasServiceLogin && attemptId === this.loginAttemptId) {
-          const applied = await this._injectCdpCookies(cookies, normalizedService);
-          if (!applied.success) throw new Error(applied.error || 'Could not apply browser cookies to the music tabs.');
-          const account = this.saveUserAccount(normalizedService, {
-            name: isSpotify ? 'Spotify Account' : 'Google Account',
-            email: isSpotify ? 'Active Spotify Session' : 'Active Google Session',
-            authenticated: true,
-            source: 'default-browser'
-          });
-          this._notify('status', {
-            service: normalizedService,
-            state: 'complete',
-            count: applied.count,
-            message: 'Sign-in complete. Browser session copied to Brave Music.'
-          });
-          return { ...applied, account: account.account };
-        }
-      } else {
-        lastError = result.error || 'Could not read browser cookies.';
+      if (isLoggedIn && attemptId === this.loginAttemptId) {
+        const account = this.saveUserAccount(normalizedService, {
+          name: isSpotify ? 'Spotify Account' : 'YouTube Music Account',
+          email: isSpotify ? 'Active Spotify Session' : 'Active Google Session',
+          authenticated: true,
+          source: 'browser-memory'
+        });
+        this._notify('status', {
+          service: normalizedService,
+          state: 'complete',
+          count: cookieCount,
+          message: 'Sign-in complete! Session saved in Brave Music browser memory.'
+        });
+        return {
+          success: true,
+          service: normalizedService,
+          count: cookieCount,
+          hasLogin: true,
+          account: account.account
+        };
       }
 
       if (attemptId !== this.loginAttemptId) break;
-      this._notify('status', {
-        service: normalizedService,
-        state: 'waiting_login',
-        message: 'Waiting for sign-in in your default browser…'
-      });
-      await new Promise((resolve) => setTimeout(resolve, 3500));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
     }
 
     if (attemptId !== this.loginAttemptId) throw new Error('Sign-in cancelled.');
-    throw new Error(lastError
-      ? `Sign-in timed out. Could not read the default browser session: ${lastError}`
-      : 'Sign-in timed out. Sign in to the service in your default browser, then try again.');
+    throw new Error('Sign-in timed out. Complete sign-in directly inside the Brave Music tab.');
   }
 
   async _waitForCdpTarget(port, timeoutMs = 20000) {
@@ -491,6 +562,14 @@ class YTMDevtoolsAuthService {
       injectedCount++;
     }
 
+    for (const s of partitions) {
+      try {
+        if (typeof s.cookies.flushStore === 'function') {
+          await s.cookies.flushStore();
+        }
+      } catch (e) {}
+    }
+
     // Save persistent backup snapshot for instant startup loading
     const sessionFilePath = isSpotify ? this.spotifySessionPath : this.ytmSessionPath;
     try {
@@ -685,20 +764,18 @@ class YTMDevtoolsAuthService {
     let hasSpotify = false;
 
     try {
-      if (session) {
-        const s = session.fromPartition(SHARED_PARTITION);
-        const ytmCookies = await s.cookies.get({ domain: 'youtube.com' });
-        if (ytmCookies && ytmCookies.some(c => c.name === 'LOGIN_INFO')) {
-          hasYtm = true;
-        }
-        const spotifyCookies = await s.cookies.get({ domain: 'spotify.com' });
-        if (spotifyCookies && spotifyCookies.some(c => c.name === 'sp_dc')) {
-          hasSpotify = true;
-        }
-      }
+      const memState = await this.syncFromBrowserMemory('all');
+      hasYtm = !!memState.ytm;
+      hasSpotify = !!memState.spotify;
     } catch (e) {}
 
     const savedAccounts = this.getSavedAccounts();
+    if (!hasYtm && savedAccounts.youtube?.authenticated && fs.existsSync(this.ytmSessionPath)) {
+      hasYtm = true;
+    }
+    if (!hasSpotify && savedAccounts.spotify?.authenticated && fs.existsSync(this.spotifySessionPath)) {
+      hasSpotify = true;
+    }
 
     return {
       youtube: { authenticated: hasYtm, account: savedAccounts.youtube },
@@ -743,6 +820,10 @@ class YTMDevtoolsAuthService {
           }
         }
       } catch (e) {}
+    }
+
+    if (s && typeof s.cookies.flushStore === 'function') {
+      try { await s.cookies.flushStore(); } catch (e) {}
     }
 
     return { success: true, service };

@@ -301,11 +301,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function refreshMusicTabsAfterSignIn(service) {
+  function refreshMusicTabsAfterSignIn(service, forceReload = false) {
     const webview = service === 'spotify' ? spotifyWebview : ytWebview;
-    try { webview?.reload?.(); } catch (error) {}
+    const expectedHost = service === 'spotify' ? 'open.spotify.com' : 'music.youtube.com';
+    let currentUrl = '';
+    try {
+      if (webview && typeof webview.getURL === 'function') {
+        currentUrl = webview.getURL() || '';
+      }
+    } catch (e) {}
+    if (forceReload || !currentUrl.includes(expectedHost)) {
+      try { webview?.reload?.(); } catch (error) {}
+    }
     const label = service === 'spotify' ? 'Spotify' : 'YouTube Music';
-    showToast(`${label} sign-in saved. ${label} refreshed.`);
+    showToast(`${label} sign-in saved in browser memory.`);
   }
 
   btnReload?.addEventListener('click', () => {
@@ -839,14 +848,29 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================================
 
   btnStartYtmCdp?.addEventListener('click', async () => {
+    const ytmLoginUrl = 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F';
     closeAuthSyncModal();
     switchTab('yt-view');
-    showToast('Loading YouTube Music sign-in…');
-    try {
-      await window.braveApi.startServiceLogin('youtube', 'auto');
-    } catch (e) {
-      showToast('Error opening sign-in: ' + (e?.message || e));
+    if (ytWebview) {
+      try {
+        if (typeof ytWebview.loadURL === 'function') {
+          ytWebview.loadURL(ytmLoginUrl);
+        } else {
+          ytWebview.src = ytmLoginUrl;
+        }
+      } catch (e) {
+        ytWebview.src = ytmLoginUrl;
+      }
     }
+    if (window.braveApi?.evalScript) {
+      try {
+        window.braveApi.evalScript('yt-view', `window.location.href = ${JSON.stringify(ytmLoginUrl)};`);
+      } catch (e) {}
+    }
+    showToast('Sign in directly inside the YouTube Music tab…');
+    try {
+      await window.braveApi?.startServiceLogin?.('youtube', 'in-app');
+    } catch (e) {}
   });
 
   btnCancelYtmCdp?.addEventListener('click', async () => {
@@ -892,7 +916,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           showToast('Sign-in cookies applied. Refreshing music tabs…');
           refreshAuthStatusUI();
-          refreshMusicTabsAfterSignIn('youtube');
+          refreshMusicTabsAfterSignIn('youtube', true);
           setTimeout(() => closeAuthSyncModal(), 2200);
         } else {
           if (ytmCdpStatus) {
@@ -942,14 +966,29 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================================
 
   btnStartSpotifyLogin?.addEventListener('click', async () => {
+    const spotifyLoginUrl = 'https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F';
     closeAuthSyncModal();
     switchTab('spotify-view');
-    showToast('Loading Spotify sign-in…');
-    try {
-      await window.braveApi.startServiceLogin('spotify', 'auto');
-    } catch (e) {
-      showToast('Error opening sign-in: ' + (e?.message || e));
+    if (spotifyWebview) {
+      try {
+        if (typeof spotifyWebview.loadURL === 'function') {
+          spotifyWebview.loadURL(spotifyLoginUrl);
+        } else {
+          spotifyWebview.src = spotifyLoginUrl;
+        }
+      } catch (e) {
+        spotifyWebview.src = spotifyLoginUrl;
+      }
     }
+    if (window.braveApi?.evalScript) {
+      try {
+        window.braveApi.evalScript('spotify-view', `window.location.href = ${JSON.stringify(spotifyLoginUrl)};`);
+      } catch (e) {}
+    }
+    showToast('Sign in directly inside the Spotify tab…');
+    try {
+      await window.braveApi?.startServiceLogin?.('spotify', 'in-app');
+    } catch (e) {}
   });
 
   btnCancelSpotifyLogin?.addEventListener('click', async () => {
@@ -995,7 +1034,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           showToast('Sign-in cookies applied. Refreshing music tabs…');
           refreshAuthStatusUI();
-          refreshMusicTabsAfterSignIn('spotify');
+          refreshMusicTabsAfterSignIn('spotify', true);
           setTimeout(() => closeAuthSyncModal(), 2200);
         } else {
           if (spotifyLoginStatus) {
@@ -1246,9 +1285,15 @@ document.addEventListener('DOMContentLoaded', () => {
   setupWebviewShields(ytWebview, 'YouTube Music');
   setupWebviewShields(spotifyWebview, 'Spotify');
 
-  // Automatically inspect and sync signed-in user profiles
-  ytWebview?.addEventListener('did-stop-loading', () => inspectAndSaveWebviewUser('youtube'));
-  spotifyWebview?.addEventListener('did-stop-loading', () => inspectAndSaveWebviewUser('spotify'));
+  // Automatically inspect and sync signed-in user profiles & browser session memory
+  ytWebview?.addEventListener('did-stop-loading', () => {
+    inspectAndSaveWebviewUser('youtube');
+    refreshAuthStatusUI();
+  });
+  spotifyWebview?.addEventListener('did-stop-loading', () => {
+    inspectAndSaveWebviewUser('spotify');
+    refreshAuthStatusUI();
+  });
 
   // ==========================================================================
   // DOWNLOAD CONTROLS (OFFLINE AUDIO ENGINE)
