@@ -1,10 +1,10 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 
 use brave_music_core::library::LibraryDocument;
 use serde::Serialize;
@@ -21,10 +21,19 @@ static YTM_BLOCKED_COUNT: AtomicU64 = AtomicU64::new(28);
 static SPOTIFY_BLOCKED_COUNT: AtomicU64 = AtomicU64::new(14);
 static STREAM_SERVER_PORT: AtomicU16 = AtomicU16::new(0);
 static AUTH_LOGIN_CANCELED: AtomicBool = AtomicBool::new(false);
+static APP_SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+static SPOTIFY_WEBVIEW_CREATING: AtomicBool = AtomicBool::new(false);
+static YT_AUTH_COOKIE_HINT: AtomicBool = AtomicBool::new(false);
+static SP_AUTH_COOKIE_HINT: AtomicBool = AtomicBool::new(false);
 static AUTH_ACTIVE_SERVICE: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 static CURRENT_YT_URL: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("https://music.youtube.com/".to_string()));
 static CURRENT_SPOTIFY_URL: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("https://open.spotify.com/".to_string()));
 static LAST_SPOTIFY_BRIDGE_TRIGGER: LazyLock<Mutex<(String, u64)>> = LazyLock::new(|| Mutex::new((String::new(), 0)));
+static ACTIVE_CHILD_PIDS: LazyLock<Mutex<HashSet<u32>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+static CACHED_JS_RUNTIME: OnceLock<Option<String>> = OnceLock::new();
+static CACHED_FFMPEG_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
+static RECOMMENDATIONS_CACHE: LazyLock<Mutex<Option<(String, std::time::Instant, Value)>>> =
+    LazyLock::new(|| Mutex::new(None));
 
 struct ActiveDownloadProcess {
     pid: u32,
@@ -33,6 +42,58 @@ struct ActiveDownloadProcess {
 
 static ACTIVE_DOWNLOADS: LazyLock<Mutex<HashMap<String, ActiveDownloadProcess>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn register_child_pid(pid: u32) {
+    if let Ok(mut set) = ACTIVE_CHILD_PIDS.lock() {
+        set.insert(pid);
+    }
+}
+
+fn unregister_child_pid(pid: u32) {
+    if let Ok(mut set) = ACTIVE_CHILD_PIDS.lock() {
+        set.remove(&pid);
+    }
+}
+
+fn terminate_pid_immediate(pid: u32) {
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+        let _ = std::process::Command::new("kill")
+            .args(["-KILL", &pid.to_string()])
+            .status();
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/F"])
+            .status();
+    }
+}
+
+fn cleanup_background_processes(app: &AppHandle) {
+    if APP_SHUTTING_DOWN.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    AUTH_LOGIN_CANCELED.store(true, Ordering::SeqCst);
+
+    if let Ok(mut map) = ACTIVE_DOWNLOADS.lock() {
+        for (_, proc_info) in map.drain() {
+            proc_info.canceled.store(true, Ordering::SeqCst);
+            terminate_pid_immediate(proc_info.pid);
+        }
+    }
+    if let Ok(mut pids) = ACTIVE_CHILD_PIDS.lock() {
+        for pid in pids.drain() {
+            terminate_pid_immediate(pid);
+        }
+    }
+    if let Some(aw) = app.get_webview_window("auth-window") {
+        let _ = aw.destroy();
+    }
+}
 
 const EMPTY_1PX_GIF: [u8; 43] = [
     0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x80, 0x00,
@@ -130,7 +191,6 @@ const GUEST_ERROR_CAPTURE_SCRIPT: &str = r#"
     } else {
       reportHref();
     }
-    setInterval(reportHref, 1500);
   } catch (_) {}
 })();
 "#;
@@ -323,9 +383,12 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
     } catch (_) {}
   };
 
+  let spotifyDomCheckedAt = 0;
+  let spotifyBannerTimer = null;
+
   const suppressProtectedContentBanners = () => {
     try {
-      const candidates = document.querySelectorAll('[data-testid="message-bar"], [role="alert"], .main-view-container div, footer + div');
+      const candidates = document.querySelectorAll('[data-testid="message-bar"], [role="alert"], [data-testid="protected-content-banner"]');
       for (const el of candidates) {
         if (!el || el.id === 'brave-spotify-bridge-bar' || el.closest('#brave-spotify-bridge-bar')) continue;
         const txt = (el.textContent || '').toLowerCase();
@@ -347,6 +410,20 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
         }
       }
     } catch (_) {}
+  };
+
+  const scheduleSpotifyMaintenance = () => {
+    if (document.hidden || window.__BRAVE_TAB_SUSPENDED__) return;
+    if (spotifyBannerTimer) return;
+    const elapsed = Date.now() - spotifyDomCheckedAt;
+    const waitMs = elapsed >= 450 ? 60 : (450 - elapsed);
+    spotifyBannerTimer = setTimeout(() => {
+      spotifyBannerTimer = null;
+      if (document.hidden || window.__BRAVE_TAB_SUSPENDED__) return;
+      spotifyDomCheckedAt = Date.now();
+      suppressProtectedContentBanners();
+      if (!document.getElementById('brave-spotify-bridge-bar')) renderBridgeBar();
+    }, waitMs);
   };
 
   const extractTrackFromElement = (target) => {
@@ -463,12 +540,16 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
     suppressProtectedContentBanners();
     renderBridgeBar();
     const obs = new MutationObserver(() => {
-      suppressProtectedContentBanners();
-      if (!document.getElementById('brave-spotify-bridge-bar')) renderBridgeBar();
+      scheduleSpotifyMaintenance();
     });
     if (document.body) {
       obs.observe(document.body, { childList: true, subtree: true });
     }
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && !window.__BRAVE_TAB_SUSPENDED__) {
+        scheduleSpotifyMaintenance();
+      }
+    });
   };
 
   if (document.readyState === 'loading') {
@@ -482,10 +563,14 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
 #[cfg(target_os = "linux")]
 fn apply_webkit_platform_settings(platform_wv: tauri::webview::PlatformWebview, allow_popups: bool) {
     use webkit2gtk::{
-        MediaKeySystemPermissionRequest, PermissionRequestExt, SettingsExt, WebViewExt,
+        CacheModel, HardwareAccelerationPolicy, MediaKeySystemPermissionRequest,
+        PermissionRequestExt, SettingsExt, WebContextExt, WebViewExt,
         WebsiteDataAccessPermissionRequest,
     };
     let inner = platform_wv.inner();
+    if let Some(ctx) = WebViewExt::context(&inner) {
+        ctx.set_cache_model(CacheModel::DocumentViewer);
+    }
     if let Some(settings) = WebViewExt::settings(&inner) {
         settings.set_enable_javascript(true);
         settings.set_enable_webgl(true);
@@ -495,6 +580,9 @@ fn apply_webkit_platform_settings(platform_wv: tauri::webview::PlatformWebview, 
         settings.set_enable_media_capabilities(true);
         settings.set_enable_media_stream(true);
         settings.set_enable_encrypted_media(true);
+        settings.set_enable_page_cache(false);
+        settings.set_enable_dns_prefetching(false);
+        settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::OnDemand);
         settings.set_media_playback_requires_user_gesture(false);
         settings.set_javascript_can_open_windows_automatically(allow_popups);
         settings.set_enable_write_console_messages_to_stdout(false);
@@ -652,14 +740,18 @@ fn set_private_permissions(_path: &std::path::Path, _mode: u32) -> std::io::Resu
 }
 
 #[tauri::command]
-fn get_library(app: AppHandle) -> Result<LibraryDocument, String> {
-    let path = app_library_path(&app)?;
-    if !path.exists() {
-        if let Ok(imported) = import_legacy_library(app.clone()) {
-            return Ok(imported);
+async fn get_library(app: AppHandle) -> Result<LibraryDocument, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = app_library_path(&app)?;
+        if !path.exists() {
+            if let Ok(imported) = import_legacy_library(app.clone()) {
+                return Ok(imported);
+            }
         }
-    }
-    read_library(&app)
+        read_library(&app)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -814,114 +906,142 @@ fn delete_file_from_downloads(app: &AppHandle, filename: &str) {
 }
 
 #[tauri::command]
-fn create_playlist(app: AppHandle, name: String) -> Result<LibraryDocument, String> {
-    let mut document = read_library(&app)?;
-    document
-        .create_playlist(&name, None)
-        .map_err(|error| error.to_string())?;
-    write_library(&app, &document)?;
-    let _ = app.emit("library-updated", serde_json::json!({ "status": "playlist_created", "name": name }));
-    Ok(document)
+async fn create_playlist(app: AppHandle, name: String) -> Result<LibraryDocument, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut document = read_library(&app)?;
+        document
+            .create_playlist(&name, None)
+            .map_err(|error| error.to_string())?;
+        write_library(&app, &document)?;
+        let _ = app.emit("library-updated", serde_json::json!({ "status": "playlist_created", "name": name }));
+        Ok(document)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn delete_playlist(
+async fn delete_playlist(
     app: AppHandle,
     name: String,
     delete_files: Option<bool>,
 ) -> Result<LibraryDocument, String> {
-    let mut document = read_library(&app)?;
-    let should_delete_files = delete_files.unwrap_or(false);
-    let filenames = document
-        .delete_playlist(&name, should_delete_files)
-        .map_err(|error| error.to_string())?;
-    write_library(&app, &document)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut document = read_library(&app)?;
+        let should_delete_files = delete_files.unwrap_or(false);
+        let filenames = document
+            .delete_playlist(&name, should_delete_files)
+            .map_err(|error| error.to_string())?;
+        write_library(&app, &document)?;
 
-    if should_delete_files {
-        for filename in filenames {
-            delete_file_from_downloads(&app, &filename);
+        if should_delete_files {
+            for filename in filenames {
+                delete_file_from_downloads(&app, &filename);
+            }
         }
-    }
 
-    let _ = app.emit("library-updated", serde_json::json!({ "status": "playlist_deleted", "name": name }));
-    Ok(document)
+        let _ = app.emit("library-updated", serde_json::json!({ "status": "playlist_deleted", "name": name }));
+        Ok(document)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn set_playlist_cover(
+async fn set_playlist_cover(
     app: AppHandle,
     name: String,
     cover: Value,
 ) -> Result<LibraryDocument, String> {
-    let mut document = read_library(&app)?;
-    document
-        .set_playlist_cover(&name, cover)
-        .map_err(|error| error.to_string())?;
-    write_library(&app, &document)?;
-    let _ = app.emit("library-updated", serde_json::json!({ "status": "playlist_cover_updated", "name": name }));
-    Ok(document)
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut document = read_library(&app)?;
+        document
+            .set_playlist_cover(&name, cover)
+            .map_err(|error| error.to_string())?;
+        write_library(&app, &document)?;
+        let _ = app.emit("library-updated", serde_json::json!({ "status": "playlist_cover_updated", "name": name }));
+        Ok(document)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn add_track_to_playlist(
+async fn add_track_to_playlist(
     app: AppHandle,
     track_id: Value,
     playlist_name: String,
 ) -> Result<LibraryDocument, String> {
-    let mut document = read_library(&app)?;
-    document
-        .add_track_to_playlist(&track_id, &playlist_name)
-        .map_err(|error| error.to_string())?;
-    write_library(&app, &document)?;
-    let _ = app.emit("library-updated", serde_json::json!({ "status": "playlist_track_added", "playlist": playlist_name }));
-    Ok(document)
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut document = read_library(&app)?;
+        document
+            .add_track_to_playlist(&track_id, &playlist_name)
+            .map_err(|error| error.to_string())?;
+        write_library(&app, &document)?;
+        let _ = app.emit("library-updated", serde_json::json!({ "status": "playlist_track_added", "playlist": playlist_name }));
+        Ok(document)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn remove_track_from_playlist(
+async fn remove_track_from_playlist(
     app: AppHandle,
     track_id: Value,
     playlist_name: String,
 ) -> Result<LibraryDocument, String> {
-    let mut document = read_library(&app)?;
-    document
-        .remove_track_from_playlist(&track_id, &playlist_name)
-        .map_err(|error| error.to_string())?;
-    write_library(&app, &document)?;
-    let _ = app.emit("library-updated", serde_json::json!({ "status": "playlist_track_removed", "playlist": playlist_name }));
-    Ok(document)
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut document = read_library(&app)?;
+        document
+            .remove_track_from_playlist(&track_id, &playlist_name)
+            .map_err(|error| error.to_string())?;
+        write_library(&app, &document)?;
+        let _ = app.emit("library-updated", serde_json::json!({ "status": "playlist_track_removed", "playlist": playlist_name }));
+        Ok(document)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn delete_track(app: AppHandle, track_id: Value) -> Result<LibraryDocument, String> {
-    let mut document = read_library(&app)?;
-    let filename_opt = document
-        .delete_track(&track_id)
-        .map_err(|error| error.to_string())?;
-    write_library(&app, &document)?;
+async fn delete_track(app: AppHandle, track_id: Value) -> Result<LibraryDocument, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut document = read_library(&app)?;
+        let filename_opt = document
+            .delete_track(&track_id)
+            .map_err(|error| error.to_string())?;
+        write_library(&app, &document)?;
 
-    if let Some(filename) = filename_opt {
-        delete_file_from_downloads(&app, &filename);
-    }
+        if let Some(filename) = filename_opt {
+            delete_file_from_downloads(&app, &filename);
+        }
 
-    let _ = app.emit("library-updated", serde_json::json!({ "status": "track_deleted" }));
-    Ok(document)
+        let _ = app.emit("library-updated", serde_json::json!({ "status": "track_deleted" }));
+        Ok(document)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn delete_tracks(app: AppHandle, track_ids: Vec<Value>) -> Result<LibraryDocument, String> {
-    let mut document = read_library(&app)?;
-    let result = document
-        .delete_tracks(&track_ids)
-        .map_err(|error| error.to_string())?;
-    write_library(&app, &document)?;
+async fn delete_tracks(app: AppHandle, track_ids: Vec<Value>) -> Result<LibraryDocument, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut document = read_library(&app)?;
+        let result = document
+            .delete_tracks(&track_ids)
+            .map_err(|error| error.to_string())?;
+        write_library(&app, &document)?;
 
-    for filename in result.filenames {
-        delete_file_from_downloads(&app, &filename);
-    }
+        for filename in result.filenames {
+            delete_file_from_downloads(&app, &filename);
+        }
 
-    let _ = app.emit("library-updated", serde_json::json!({ "status": "tracks_deleted" }));
-    Ok(document)
+        let _ = app.emit("library-updated", serde_json::json!({ "status": "tracks_deleted" }));
+        Ok(document)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg(target_os = "linux")]
@@ -929,30 +1049,153 @@ static CURRENT_LINUX_TAB: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new(
 #[cfg(target_os = "linux")]
 static IS_MODAL_ACTIVE: AtomicBool = AtomicBool::new(false);
 
+fn sync_webview_suspended_flag(app: &AppHandle, tab: &str, modal_open: bool) {
+    let yt_active = !modal_open && (tab == "yt-view" || tab == "yt");
+    let sp_active = !modal_open && (tab == "spotify-view" || tab == "spotify");
+    if let Some(yt) = app.get_webview("yt-webview") {
+        let _ = yt.eval(if yt_active {
+            "window.__BRAVE_TAB_SUSPENDED__ = false;"
+        } else {
+            "window.__BRAVE_TAB_SUSPENDED__ = true;"
+        });
+    }
+    if let Some(sp) = app.get_webview("spotify-webview") {
+        let _ = sp.eval(if sp_active {
+            "window.__BRAVE_TAB_SUSPENDED__ = false;"
+        } else {
+            "window.__BRAVE_TAB_SUSPENDED__ = true;"
+        });
+    }
+}
+
+fn ensure_spotify_webview_on_main_thread(app: &AppHandle) {
+    if app.get_webview("spotify-webview").is_some() {
+        return;
+    }
+    if SPOTIFY_WEBVIEW_CREATING
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return;
+    }
+    let Some(window) = app.get_window("main") else {
+        SPOTIFY_WEBVIEW_CREATING.store(false, Ordering::SeqCst);
+        return;
+    };
+    let Ok(spotify_url) = tauri::Url::parse("https://open.spotify.com/") else {
+        SPOTIFY_WEBVIEW_CREATING.store(false, Ordering::SeqCst);
+        return;
+    };
+    let size = window.inner_size().unwrap_or(tauri::PhysicalSize::new(1360, 840));
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let child_w = size.width as f64 / scale;
+    let child_h = ((size.height as f64 / scale) - 58.0).max(100.0);
+
+    let app_handle_for_spotify = app.clone();
+    let app_handle_for_spotify_nav = app.clone();
+    let app_handle_for_spotify_popup = app.clone();
+    let spotify_builder = tauri::WebviewBuilder::new("spotify-webview", tauri::WebviewUrl::External(spotify_url))
+        .user_agent(CHROME_USER_AGENT)
+        .initialization_script(WINDOW_CHROME_POLYFILL_SCRIPT)
+        .initialization_script(GUEST_ERROR_CAPTURE_SCRIPT)
+        .initialization_script(SHIELDS_SCRIPT)
+        .initialization_script(SPOTIFY_NAVBAR_FIX_SCRIPT)
+        .on_navigation(move |nav_url| {
+            record_webview_url(&app_handle_for_spotify_nav, "spotify-webview", nav_url.as_str());
+            true
+        })
+        .on_new_window(move |url, _features| {
+            if is_auth_url(url.as_str()) {
+                let app_clone = app_handle_for_spotify_popup.clone();
+                let u = url.to_string();
+                std::thread::spawn(move || {
+                    let _ = open_auth_window(&app_clone, "spotify", Some(u));
+                });
+                return tauri::webview::NewWindowResponse::Deny;
+            }
+            tauri::webview::NewWindowResponse::Allow
+        })
+        .on_web_resource_request(move |request, response| {
+            if let Some(ctype) = handle_shield_or_bridge_request(
+                &app_handle_for_spotify,
+                "spotify-webview",
+                request.uri(),
+                &SPOTIFY_BLOCKED_COUNT,
+            ) {
+                apply_shield_ok_response(response, ctype);
+            }
+        });
+
+    let auth_dir = auth_config_dir(app);
+    match window.add_child(
+        spotify_builder,
+        tauri::LogicalPosition::new(0.0, 58.0),
+        tauri::LogicalSize::new(child_w, child_h),
+    ) {
+        Ok(sp_wv) => {
+            eprintln!("[Tauri lazy] spotify-webview added on demand");
+            configure_webkit_webview_settings(&sp_wv, true);
+            if !webview_has_service_auth(&sp_wv, "spotify") {
+                if let Ok(bytes) = fs::read(auth_dir.join("spotify_session.json")) {
+                    if let Ok(records) = serde_json::from_slice::<Vec<Value>>(&bytes) {
+                        if apply_cookie_values_to_webview(&sp_wv, &records) > 0 {
+                            SP_AUTH_COOKIE_HINT.store(true, Ordering::Relaxed);
+                        }
+                    }
+                }
+            } else {
+                SP_AUTH_COOKIE_HINT.store(true, Ordering::Relaxed);
+            }
+            #[cfg(target_os = "linux")]
+            attach_pending_linux_overlay_children(&window);
+        }
+        Err(e) => {
+            eprintln!("[Tauri lazy] Failed to add spotify-webview: {e:?}");
+        }
+    }
+    SPOTIFY_WEBVIEW_CREATING.store(false, Ordering::SeqCst);
+}
+
 #[cfg(target_os = "linux")]
 fn setup_linux_overlay(window: &Window) {
     if let Ok(vbox) = window.default_vbox() {
         let children = vbox.children();
-        if children.len() >= 3 {
+        if children.len() >= 2 {
             let main_ui = children[0].clone();
-            let yt_wv = children[1].clone();
-            let sp_wv = children[2].clone();
+            let rest: Vec<_> = children[1..].to_vec();
 
             vbox.remove(&main_ui);
-            vbox.remove(&yt_wv);
-            vbox.remove(&sp_wv);
+            for w in &rest {
+                vbox.remove(w);
+            }
 
             let overlay = gtk::Overlay::new();
             overlay.add(&main_ui);
 
-            yt_wv.set_margin_top(58);
-            overlay.add_overlay(&yt_wv);
-
-            sp_wv.set_margin_top(58);
-            overlay.add_overlay(&sp_wv);
+            for w in rest {
+                w.set_margin_top(58);
+                overlay.add_overlay(&w);
+            }
 
             vbox.pack_start(&overlay, true, true, 0);
             overlay.show_all();
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn attach_pending_linux_overlay_children(window: &Window) {
+    if let Ok(vbox) = window.default_vbox() {
+        let children = vbox.children();
+        if children.len() >= 2 {
+            if let Ok(overlay) = children[0].clone().downcast::<gtk::Overlay>() {
+                for extra in &children[1..] {
+                    vbox.remove(extra);
+                    extra.set_margin_top(58);
+                    overlay.add_overlay(extra);
+                }
+                overlay.queue_draw();
+            }
         }
     }
 }
@@ -976,21 +1219,27 @@ fn update_linux_layout(window: &Window, tab: &str) {
         if let Some(overlay_widget) = children.first() {
             if let Ok(overlay) = overlay_widget.clone().downcast::<gtk::Overlay>() {
                 let overlay_children = overlay.children();
-                if overlay_children.len() >= 3 {
+                if overlay_children.len() >= 2 {
                     let yt_wv = &overlay_children[1];
-                    let sp_wv = &overlay_children[2];
+                    let sp_wv_opt = overlay_children.get(2);
                     match tab {
                         "yt-view" | "yt" => {
                             yt_wv.show();
-                            sp_wv.hide();
+                            if let Some(sp_wv) = sp_wv_opt {
+                                sp_wv.hide();
+                            }
                         }
                         "spotify-view" | "spotify" => {
                             yt_wv.hide();
-                            sp_wv.show();
+                            if let Some(sp_wv) = sp_wv_opt {
+                                sp_wv.show();
+                            }
                         }
                         "downloads-view" | "downloads" => {
                             yt_wv.hide();
-                            sp_wv.hide();
+                            if let Some(sp_wv) = sp_wv_opt {
+                                sp_wv.hide();
+                            }
                         }
                         _ => {}
                     }
@@ -1055,16 +1304,33 @@ fn switch_tab(app: AppHandle, tab: String) -> Result<(), String> {
     {
         if let Some(window) = app.get_window("main") {
             let win = window.clone();
+            let app_clone = app.clone();
             let tab_clone = tab.clone();
             let _ = app.run_on_main_thread(move || {
+                if tab_clone == "spotify-view" || tab_clone == "spotify" {
+                    ensure_spotify_webview_on_main_thread(&app_clone);
+                }
                 update_linux_layout(&win, &tab_clone);
+                let modal_open = IS_MODAL_ACTIVE.load(Ordering::SeqCst);
+                sync_webview_suspended_flag(&app_clone, &tab_clone, modal_open);
             });
         }
     }
 
     #[cfg(not(target_os = "linux"))]
     {
-        update_cross_platform_layout(&app, &tab);
+        if tab == "spotify-view" || tab == "spotify" {
+            let app_clone = app.clone();
+            let tab_clone = tab.clone();
+            let _ = app.run_on_main_thread(move || {
+                ensure_spotify_webview_on_main_thread(&app_clone);
+                update_cross_platform_layout(&app_clone, &tab_clone);
+                sync_webview_suspended_flag(&app_clone, &tab_clone, false);
+            });
+        } else {
+            update_cross_platform_layout(&app, &tab);
+            sync_webview_suspended_flag(&app, &tab, false);
+        }
     }
 
     Ok(())
@@ -1081,6 +1347,7 @@ fn set_modal_state(app: AppHandle, open: bool, current_tab: Option<String>) -> R
 
         if let Some(window) = app.get_window("main") {
             let win = window.clone();
+            let app_clone = app.clone();
             let tab = current_tab.unwrap_or_else(|| {
                 CURRENT_LINUX_TAB
                     .lock()
@@ -1093,25 +1360,33 @@ fn set_modal_state(app: AppHandle, open: bool, current_tab: Option<String>) -> R
                     if let Some(overlay_widget) = children.first() {
                         if let Ok(overlay) = overlay_widget.clone().downcast::<gtk::Overlay>() {
                             let overlay_children = overlay.children();
-                            if overlay_children.len() >= 3 {
+                            if overlay_children.len() >= 2 {
                                 let yt_wv = &overlay_children[1];
-                                let sp_wv = &overlay_children[2];
+                                let sp_wv_opt = overlay_children.get(2);
                                 if open {
                                     yt_wv.hide();
-                                    sp_wv.hide();
+                                    if let Some(sp_wv) = sp_wv_opt {
+                                        sp_wv.hide();
+                                    }
                                 } else {
                                     match tab.as_str() {
                                         "yt-view" | "yt" => {
                                             yt_wv.show();
-                                            sp_wv.hide();
+                                            if let Some(sp_wv) = sp_wv_opt {
+                                                sp_wv.hide();
+                                            }
                                         }
                                         "spotify-view" | "spotify" => {
                                             yt_wv.hide();
-                                            sp_wv.show();
+                                            if let Some(sp_wv) = sp_wv_opt {
+                                                sp_wv.show();
+                                            }
                                         }
                                         _ => {
                                             yt_wv.hide();
-                                            sp_wv.hide();
+                                            if let Some(sp_wv) = sp_wv_opt {
+                                                sp_wv.hide();
+                                            }
                                         }
                                     }
                                 }
@@ -1120,6 +1395,7 @@ fn set_modal_state(app: AppHandle, open: bool, current_tab: Option<String>) -> R
                         }
                     }
                 }
+                sync_webview_suspended_flag(&app_clone, &tab, open);
             });
         }
     }
@@ -1128,6 +1404,7 @@ fn set_modal_state(app: AppHandle, open: bool, current_tab: Option<String>) -> R
     {
         let yt = app.get_webview("yt-webview");
         let spotify = app.get_webview("spotify-webview");
+        let tab = current_tab.as_deref().unwrap_or("yt-view");
         if open {
             if let Some(w) = yt {
                 let _ = w.hide();
@@ -1136,9 +1413,9 @@ fn set_modal_state(app: AppHandle, open: bool, current_tab: Option<String>) -> R
                 let _ = w.hide();
             }
         } else {
-            let tab = current_tab.as_deref().unwrap_or("yt-view");
             update_cross_platform_layout(&app, tab);
         }
+        sync_webview_suspended_flag(&app, tab, open);
     }
 
     Ok(())
@@ -1922,31 +2199,53 @@ fn score_yt_candidate(cand: &SearchCandidate, target_title: &str, target_artist:
     score
 }
 
-fn resolve_validated_js_runtime() -> Option<String> {
-    if let Some(qb) = resolve_bundled_bin("qjs").filter(|p| {
-        std::process::Command::new(p)
-            .args(["-e", "0"])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
-    }) {
-        return Some(format!("quickjs:{}", qb.to_string_lossy()));
+fn run_command_output_tracked(cmd: &mut std::process::Command) -> std::io::Result<std::process::Output> {
+    if APP_SHUTTING_DOWN.load(Ordering::SeqCst) {
+        return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Application shutting down"));
     }
-    resolve_bundled_bin("node")
-        .filter(|nb| {
-            std::process::Command::new(nb)
-                .arg("--version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let child = cmd.spawn()?;
+    let pid = child.id();
+    register_child_pid(pid);
+    let output = child.wait_with_output();
+    unregister_child_pid(pid);
+    output
+}
+
+fn resolve_validated_js_runtime() -> Option<String> {
+    CACHED_JS_RUNTIME
+        .get_or_init(|| {
+            if let Some(qb) = resolve_bundled_bin("qjs").filter(|p| {
+                std::process::Command::new(p)
+                    .args(["-e", "0"])
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
+            }) {
+                return Some(format!("quickjs:{}", qb.to_string_lossy()));
+            }
+            resolve_bundled_bin("node")
+                .filter(|nb| {
+                    std::process::Command::new(nb)
+                        .arg("--version")
+                        .output()
+                        .map(|o| o.status.success())
+                        .unwrap_or(false)
+                })
+                .map(|nb| format!("node:{}", nb.to_string_lossy()))
         })
-        .map(|nb| format!("node:{}", nb.to_string_lossy()))
+        .clone()
 }
 
 fn resolve_ffmpeg_dir() -> Option<PathBuf> {
-    let ffmpeg_bin = resolve_bundled_bin("ffmpeg")?;
-    let _ffprobe_bin = resolve_bundled_bin("ffprobe")?;
-    ffmpeg_bin.parent().map(|p| p.to_path_buf())
+    CACHED_FFMPEG_DIR
+        .get_or_init(|| {
+            let ffmpeg_bin = resolve_bundled_bin("ffmpeg")?;
+            let _ffprobe_bin = resolve_bundled_bin("ffprobe")?;
+            ffmpeg_bin.parent().map(|p| p.to_path_buf())
+        })
+        .clone()
 }
 
 fn create_ytdlp_base_command(
@@ -1974,13 +2273,13 @@ fn resolve_best_spotify_youtube_url(ytdlp_bin: &PathBuf, title: &str, artist: &s
     let suffix = if is_video { "official music video" } else { "official audio" };
     let search_query = format!("ytsearch5:{} {} {}", title, artist, suffix);
     let js_runtime = resolve_validated_js_runtime();
-    let output = create_ytdlp_base_command(ytdlp_bin, js_runtime.as_deref(), None)
-        .arg("--dump-single-json")
+    let mut cmd = create_ytdlp_base_command(ytdlp_bin, js_runtime.as_deref(), None);
+    cmd.arg("--dump-single-json")
         .arg("--flat-playlist")
         .arg("--socket-timeout")
         .arg("10")
-        .arg(&search_query)
-        .output();
+        .arg(&search_query);
+    let output = run_command_output_tracked(&mut cmd);
 
     if let Ok(out) = output {
         if out.status.success() {
@@ -2013,9 +2312,26 @@ fn resolve_best_spotify_youtube_url(ytdlp_bin: &PathBuf, title: &str, artist: &s
 }
 
 #[tauri::command]
-fn get_recommendations(app_handle: tauri::AppHandle, current_track_id: Option<String>, limit: Option<usize>) -> Result<Value, String> {
+async fn get_recommendations(
+    app_handle: tauri::AppHandle,
+    current_track_id: Option<String>,
+    limit: Option<usize>,
+    force_refresh: Option<bool>,
+) -> Result<Value, String> {
+    let force = force_refresh.unwrap_or(false);
+    tauri::async_runtime::spawn_blocking(move || compute_recommendations(&app_handle, current_track_id, limit, force))
+        .await
+        .map_err(|e| format!("Recommendations task failed: {e}"))?
+}
+
+fn compute_recommendations(
+    app_handle: &tauri::AppHandle,
+    current_track_id: Option<String>,
+    limit: Option<usize>,
+    force_refresh: bool,
+) -> Result<Value, String> {
     let max_items = limit.unwrap_or(6).min(12);
-    let doc = read_library(&app_handle).unwrap_or_default();
+    let doc = read_library(app_handle).unwrap_or_default();
     let cur_id = current_track_id.unwrap_or_default();
 
     let mut owned_titles = std::collections::HashSet::new();
@@ -2043,13 +2359,30 @@ fn get_recommendations(app_handle: tauri::AppHandle, current_track_id: Option<St
     ranked_artists.sort_by(|a, b| b.1.cmp(&a.1));
     let seed_artists: Vec<String> = ranked_artists.into_iter().take(3).map(|(a, _)| a).collect();
 
+    let cache_key = format!(
+        "{}|{}|{}|{}",
+        seed_artists.first().map(String::as_str).unwrap_or(""),
+        cur_id,
+        doc.tracks.len(),
+        max_items
+    );
+    if !force_refresh {
+        if let Ok(guard) = RECOMMENDATIONS_CACHE.lock() {
+            if let Some((cached_key, cached_at, cached_val)) = guard.as_ref() {
+                if cached_key == &cache_key && cached_at.elapsed() < std::time::Duration::from_secs(600) {
+                    return Ok(cached_val.clone());
+                }
+            }
+        }
+    }
+
     let mut items: Vec<Value> = Vec::new();
     if let Some(seed_artist) = seed_artists.first() {
         if let Some(ytdlp_bin) = resolve_bundled_bin("yt-dlp") {
             let js_runtime = resolve_validated_js_runtime();
-            if let Ok(out) = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), None)
-                .args(["--dump-single-json", "--flat-playlist", "--socket-timeout", "8", &format!("ytsearch6:{} official audio mix", seed_artist)])
-                .output()
+            let mut cmd = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), None);
+            cmd.args(["--dump-single-json", "--flat-playlist", "--socket-timeout", "6", &format!("ytsearch6:{} official audio mix", seed_artist)]);
+            if let Ok(out) = run_command_output_tracked(&mut cmd)
             {
                 if out.status.success() {
                     if let Ok(val) = serde_json::from_slice::<Value>(&out.stdout) {
@@ -2107,12 +2440,16 @@ fn get_recommendations(app_handle: tauri::AppHandle, current_track_id: Option<St
         }
     }
 
-    Ok(serde_json::json!({
+    let result = serde_json::json!({
         "success": true,
         "mode": if seed_artists.is_empty() { "starter" } else { "personalized" },
         "seedArtists": seed_artists,
         "items": items
-    }))
+    });
+    if let Ok(mut guard) = RECOMMENDATIONS_CACHE.lock() {
+        *guard = Some((cache_key, std::time::Instant::now(), result.clone()));
+    }
+    Ok(result)
 }
 
 fn fetch_youtube_playlist_queue(ytdlp_bin: &PathBuf, url: &str) -> Option<(String, String, Vec<(String, Option<SpotifyEmbedTrack>)>)> {
@@ -2133,9 +2470,9 @@ fn fetch_youtube_playlist_queue(ytdlp_bin: &PathBuf, url: &str) -> Option<(Strin
     let item_limit = if is_dynamic_mix { "1:35" } else { "1:500" };
 
     let js_runtime = resolve_validated_js_runtime();
-    let out = create_ytdlp_base_command(ytdlp_bin, js_runtime.as_deref(), None)
-        .args(["--flat-playlist", "--playlist-items", item_limit, "--dump-single-json", "--socket-timeout", "15", &target_url])
-        .output()
+    let mut cmd = create_ytdlp_base_command(ytdlp_bin, js_runtime.as_deref(), None);
+    cmd.args(["--flat-playlist", "--playlist-items", item_limit, "--dump-single-json", "--socket-timeout", "15", &target_url]);
+    let out = run_command_output_tracked(&mut cmd)
         .ok()?;
     if !out.status.success() {
         return None;
@@ -2694,49 +3031,64 @@ fn cancel_download(app: AppHandle, download_id: String) -> Result<Value, String>
 }
 
 #[tauri::command]
-fn open_provider(app: AppHandle, provider: String) -> Result<(), String> {
+async fn open_provider(app: AppHandle, provider: String) -> Result<(), String> {
     let address = provider_url(&provider).map_err(str::to_owned)?;
-
-    app.opener()
-        .open_url(address, None::<&str>)
-        .map_err(|error| error.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        app.opener()
+            .open_url(address, None::<&str>)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn open_external(app: AppHandle, url: String) -> Result<(), String> {
-    let trimmed = url.trim();
+async fn open_external(app: AppHandle, url: String) -> Result<(), String> {
+    let trimmed = url.trim().to_string();
     if !trimmed.starts_with("https://") && !trimmed.starts_with("mailto:") {
         return Err("Only secure https:// and mailto: URLs may be opened".to_owned());
     }
-    app.opener()
-        .open_url(trimmed, None::<&str>)
-        .map_err(|error| error.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        app.opener()
+            .open_url(&trimmed, None::<&str>)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn open_folder(app: AppHandle) -> Result<(), String> {
-    let target = get_user_downloads_dir(&app);
-    if !target.exists() {
-        let _ = fs::create_dir_all(&target);
-    }
-    app.opener()
-        .open_path(target.to_string_lossy().as_ref(), None::<&str>)
-        .map_err(|error| error.to_string())
+async fn open_folder(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let target = get_user_downloads_dir(&app);
+        if !target.exists() {
+            let _ = fs::create_dir_all(&target);
+        }
+        app.opener()
+            .open_path(target.to_string_lossy().as_ref(), None::<&str>)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn show_in_folder(app: AppHandle, filename: String) -> Result<(), String> {
+async fn show_in_folder(app: AppHandle, filename: String) -> Result<(), String> {
     if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
         return Err("Invalid filename".to_owned());
     }
-    let target = if let Some(resolved) = resolve_audio_file(&app, &filename) {
-        resolved
-    } else {
-        get_user_downloads_dir(&app).join(&filename)
-    };
-    app.opener()
-        .open_path(target.to_string_lossy().as_ref(), None::<&str>)
-        .map_err(|error| error.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        let target = if let Some(resolved) = resolve_audio_file(&app, &filename) {
+            resolved
+        } else {
+            get_user_downloads_dir(&app).join(&filename)
+        };
+        app.opener()
+            .open_path(target.to_string_lossy().as_ref(), None::<&str>)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -2791,8 +3143,11 @@ fn window_maximize(window: Window) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn window_close(window: Window) -> Result<(), String> {
-    window.close().map_err(|e| e.to_string())
+fn window_close(app: AppHandle, window: Window) -> Result<(), String> {
+    cleanup_background_processes(&app);
+    let _ = window.close();
+    app.exit(0);
+    Ok(())
 }
 
 fn normalize_auth_service(service: &str) -> &'static str {
@@ -3092,14 +3447,8 @@ fn build_auth_status_payload(app: &AppHandle) -> Value {
     let dir = auth_config_dir(app);
     let mut accounts = read_accounts_map(&dir);
 
-    let ytm_wv_auth = app
-        .get_webview("yt-webview")
-        .map(|wv| webview_has_service_auth(&wv, "youtube"))
-        .unwrap_or(false);
-    let sp_wv_auth = app
-        .get_webview("spotify-webview")
-        .map(|wv| webview_has_service_auth(&wv, "spotify"))
-        .unwrap_or(false);
+    let ytm_wv_auth = YT_AUTH_COOKIE_HINT.load(Ordering::Relaxed);
+    let sp_wv_auth = SP_AUTH_COOKIE_HINT.load(Ordering::Relaxed);
 
     let ytm_file_auth = fs::read(dir.join("ytmusic_session.json"))
         .ok()
@@ -3119,6 +3468,13 @@ fn build_auth_status_payload(app: &AppHandle) -> Value {
         .and_then(|b| serde_json::from_slice::<Vec<Value>>(&b).ok())
         .map(|arr| !arr.is_empty())
         .unwrap_or(false);
+
+    if ytm_file_auth {
+        YT_AUTH_COOKIE_HINT.store(true, Ordering::Relaxed);
+    }
+    if sp_file_auth {
+        SP_AUTH_COOKIE_HINT.store(true, Ordering::Relaxed);
+    }
 
     let ytm_saved = accounts
         .get("youtube")
@@ -3204,6 +3560,14 @@ fn finalize_auth_cookies(
     let dir = auth_config_dir(app);
     let session_path = dir.join(service_session_filename(svc));
     write_private_json_atomic(&session_path, &Value::Array(records.to_vec()))?;
+
+    if !records.is_empty() {
+        if svc == "spotify" {
+            SP_AUTH_COOKIE_HINT.store(true, Ordering::Relaxed);
+        } else {
+            YT_AUTH_COOKIE_HINT.store(true, Ordering::Relaxed);
+        }
+    }
 
     let target_label = if svc == "spotify" {
         "spotify-webview"
@@ -3466,84 +3830,108 @@ fn open_auth_window(app: &AppHandle, service: &str, custom_url: Option<String>) 
 }
 
 #[tauri::command]
-fn get_auth_status(app: AppHandle) -> Value {
-    build_auth_status_payload(&app)
+async fn get_auth_status(app: AppHandle) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || build_auth_status_payload(&app))
+        .await
+        .map_err(|e| format!("Failed checking auth status: {e}"))
 }
 
 #[tauri::command]
-fn get_saved_accounts(app: AppHandle) -> Value {
-    let dir = auth_config_dir(&app);
-    Value::Object(read_accounts_map(&dir))
+async fn get_saved_accounts(app: AppHandle) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = auth_config_dir(&app);
+        Value::Object(read_accounts_map(&dir))
+    })
+    .await
+    .map_err(|e| format!("Failed reading saved accounts: {e}"))
 }
 
 #[tauri::command]
-fn save_user_account(app: AppHandle, service: String, profile: Value) -> Result<Value, String> {
-    let dir = auth_config_dir(&app);
-    let svc = normalize_auth_service(&service);
-    let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("");
-    let email = profile.get("email").and_then(|v| v.as_str()).unwrap_or("");
-    let avatar = profile.get("avatar").and_then(|v| v.as_str()).unwrap_or("");
-    let source = profile
-        .get("source")
-        .and_then(|v| v.as_str())
-        .unwrap_or("webview");
-    persist_service_account(&dir, svc, name, email, avatar, source)?;
-    Ok(serde_json::json!({ "success": true, "service": svc }))
+async fn save_user_account(app: AppHandle, service: String, profile: Value) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = auth_config_dir(&app);
+        let svc = normalize_auth_service(&service);
+        let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let email = profile.get("email").and_then(|v| v.as_str()).unwrap_or("");
+        let avatar = profile.get("avatar").and_then(|v| v.as_str()).unwrap_or("");
+        let source = profile
+            .get("source")
+            .and_then(|v| v.as_str())
+            .unwrap_or("webview");
+        persist_service_account(&dir, svc, name, email, avatar, source)?;
+        Ok(serde_json::json!({ "success": true, "service": svc }))
+    })
+    .await
+    .map_err(|e| format!("Failed saving account: {e}"))?
 }
 
 #[tauri::command]
-fn logout_provider(app: AppHandle, service: String) -> Result<Value, String> {
-    let svc = normalize_auth_service(&service);
-    let dir = auth_config_dir(&app);
+async fn logout_provider(app: AppHandle, service: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let svc = normalize_auth_service(&service);
+        let dir = auth_config_dir(&app);
 
-    let mut accounts = read_accounts_map(&dir);
-    accounts.remove(svc);
-    write_private_json_atomic(&dir.join("user_accounts.json"), &Value::Object(accounts))?;
+        if svc == "spotify" {
+            SP_AUTH_COOKIE_HINT.store(false, Ordering::Relaxed);
+        } else {
+            YT_AUTH_COOKIE_HINT.store(false, Ordering::Relaxed);
+        }
 
-    let _ = fs::remove_file(dir.join(service_session_filename(svc)));
-    let _ = fs::remove_file(dir.join(format!("imported_cookies_{svc}.json")));
+        let mut accounts = read_accounts_map(&dir);
+        accounts.remove(svc);
+        write_private_json_atomic(&dir.join("user_accounts.json"), &Value::Object(accounts))?;
 
-    let target_label = if svc == "spotify" {
-        "spotify-webview"
-    } else {
-        "yt-webview"
-    };
-    if let Some(wv) = app.get_webview(target_label) {
-        if let Ok(cookies) = wv.cookies() {
-            for c in cookies {
-                let d = c.domain().unwrap_or("");
-                if cookie_belongs_to_service(svc, d) {
-                    let _ = wv.delete_cookie(c);
+        let _ = fs::remove_file(dir.join(service_session_filename(svc)));
+        let _ = fs::remove_file(dir.join(format!("imported_cookies_{svc}.json")));
+
+        let target_label = if svc == "spotify" {
+            "spotify-webview"
+        } else {
+            "yt-webview"
+        };
+        if let Some(wv) = app.get_webview(target_label) {
+            if let Ok(cookies) = wv.cookies() {
+                for c in cookies {
+                    let d = c.domain().unwrap_or("");
+                    if cookie_belongs_to_service(svc, d) {
+                        let _ = wv.delete_cookie(c);
+                    }
                 }
             }
+            let _ = wv.eval("window.location.reload()");
         }
-        let _ = wv.eval("window.location.reload()");
-    }
-    Ok(serde_json::json!({ "success": true, "service": svc }))
+        Ok(serde_json::json!({ "success": true, "service": svc }))
+    })
+    .await
+    .map_err(|e| format!("Failed logging out: {e}"))?
 }
 
 #[tauri::command]
-fn import_cookies_json(app: AppHandle, service: String, raw_json: String) -> Result<Value, String> {
-    let svc = normalize_auth_service(&service);
-    let records = match parse_cookie_json_payload(&raw_json) {
-        Ok(r) => r,
-        Err(err) => return Ok(serde_json::json!({ "success": false, "error": err })),
-    };
+async fn import_cookies_json(app: AppHandle, service: String, raw_json: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let svc = normalize_auth_service(&service);
+        let records = match parse_cookie_json_payload(&raw_json) {
+            Ok(r) => r,
+            Err(err) => return Ok(serde_json::json!({ "success": false, "error": err })),
+        };
 
-    let dir = auth_config_dir(&app);
-    let _ = write_private_json_atomic(
-        &dir.join(format!("imported_cookies_{svc}.json")),
-        &Value::Array(records.clone()),
-    );
+        let dir = auth_config_dir(&app);
+        let _ = write_private_json_atomic(
+            &dir.join(format!("imported_cookies_{svc}.json")),
+            &Value::Array(records.clone()),
+        );
 
-    match finalize_auth_cookies(&app, svc, &records, "cookies-json", false) {
-        Ok(count) => Ok(serde_json::json!({
-            "success": true,
-            "count": count,
-            "message": format!("Imported {count} session cookies into Brave Music.")
-        })),
-        Err(err) => Ok(serde_json::json!({ "success": false, "error": err })),
-    }
+        match finalize_auth_cookies(&app, svc, &records, "cookies-json", false) {
+            Ok(count) => Ok(serde_json::json!({
+                "success": true,
+                "count": count,
+                "message": format!("Imported {count} session cookies into Brave Music.")
+            })),
+            Err(err) => Ok(serde_json::json!({ "success": false, "error": err })),
+        }
+    })
+    .await
+    .map_err(|e| format!("Failed importing cookies: {e}"))?
 }
 
 #[tauri::command]
@@ -3813,14 +4201,13 @@ fn ensure_snap_playable_audio(app: &AppHandle, source_path: &std::path::Path) ->
         return Some(format!("__bridge/{cached_name}"));
     }
     let ffmpeg_bin = resolve_bundled_bin("ffmpeg")?;
-    let status = std::process::Command::new(ffmpeg_bin)
-        .args(["-y", "-loglevel", "error", "-i"])
+    let mut cmd = std::process::Command::new(ffmpeg_bin);
+    cmd.args(["-y", "-loglevel", "error", "-i"])
         .arg(source_path)
         .args(["-vn", "-c:a", "libmp3lame", "-q:a", "2"])
-        .arg(&cached_path)
-        .status()
-        .ok()?;
-    if status.success() && cached_path.exists() {
+        .arg(&cached_path);
+    let output = run_command_output_tracked(&mut cmd).ok()?;
+    if output.status.success() && cached_path.exists() {
         prune_spotify_bridge_cache(&cache_dir, 20);
         Some(format!("__bridge/{cached_name}"))
     } else {
@@ -3962,18 +4349,18 @@ fn resolve_spotify_playable_stream(
         resolve_best_spotify_youtube_url(&ytdlp_bin, &clean_t, &display_artist, eff_duration, false);
 
     let out_tpl = cache_dir.join(format!("{stem}.%(ext)s"));
-    let out = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), ffmpeg_dir.as_ref())
-        .args([
-            "--no-playlist",
-            "--socket-timeout",
-            "12",
-            "-f",
-            "bestaudio[ext=webm][acodec=opus]/bestaudio[ext=ogg]/bestaudio[ext=mp3]",
-            "-o",
-        ])
-        .arg(out_tpl.to_string_lossy().as_ref())
-        .arg(&matched_yt_url)
-        .output();
+    let mut cmd = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), ffmpeg_dir.as_ref());
+    cmd.args([
+        "--no-playlist",
+        "--socket-timeout",
+        "12",
+        "-f",
+        "bestaudio[ext=webm][acodec=opus]/bestaudio[ext=ogg]/bestaudio[ext=mp3]",
+        "-o",
+    ])
+    .arg(out_tpl.to_string_lossy().as_ref())
+    .arg(&matched_yt_url);
+    let out = run_command_output_tracked(&mut cmd);
 
     let mut chosen_file: Option<String> = None;
     if let Ok(res) = out {
@@ -3990,7 +4377,8 @@ fn resolve_spotify_playable_stream(
     }
 
     if chosen_file.is_none() && ffmpeg_dir.is_some() {
-        let fb = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), ffmpeg_dir.as_ref())
+        let mut fb_cmd = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), ffmpeg_dir.as_ref());
+        fb_cmd
             .args([
                 "--no-playlist",
                 "--socket-timeout",
@@ -4005,8 +4393,8 @@ fn resolve_spotify_playable_stream(
                 "-o",
             ])
             .arg(out_tpl.to_string_lossy().as_ref())
-            .arg(&matched_yt_url)
-            .output();
+            .arg(&matched_yt_url);
+        let fb = run_command_output_tracked(&mut fb_cmd);
         if let Ok(res) = fb {
             let mp3_name = format!("{stem}.mp3");
             if res.status.success() && cache_dir.join(&mp3_name).exists() {
@@ -4103,7 +4491,13 @@ async fn play_spotify_bridge(
 }
 
 #[tauri::command]
-fn open_spotify_widevine_browser(app: AppHandle, url: Option<String>) -> Result<(), String> {
+async fn open_spotify_widevine_browser(app: AppHandle, url: Option<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || open_spotify_widevine_browser_sync(&app, url))
+        .await
+        .map_err(|e| format!("Failed opening external browser: {e}"))?
+}
+
+fn open_spotify_widevine_browser_sync(app: &AppHandle, url: Option<String>) -> Result<(), String> {
     let fallback = get_webview_url("spotify-webview".to_string());
     let target = url
         .map(|u| u.trim().to_string())
@@ -4137,32 +4531,36 @@ fn open_spotify_widevine_browser(app: AppHandle, url: Option<String>) -> Result<
 }
 
 #[tauri::command]
-fn get_stream_url(app: AppHandle, filename: String) -> Result<Value, String> {
-    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
-        return Err("Invalid filename".to_owned());
-    }
+async fn get_stream_url(app: AppHandle, filename: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+            return Err("Invalid filename".to_owned());
+        }
 
-    let file_path = resolve_audio_file(&app, &filename)
-        .ok_or_else(|| format!("Audio file '{filename}' not found on disk in downloads folder"))?;
+        let file_path = resolve_audio_file(&app, &filename)
+            .ok_or_else(|| format!("Audio file '{filename}' not found on disk in downloads folder"))?;
 
-    let port = STREAM_SERVER_PORT.load(Ordering::SeqCst);
-    if port == 0 {
-        return Err("Streaming server not initialized".to_owned());
-    }
+        let port = STREAM_SERVER_PORT.load(Ordering::SeqCst);
+        if port == 0 {
+            return Err("Streaming server not initialized".to_owned());
+        }
 
-    let served_rel = ensure_snap_playable_audio(&app, &file_path).unwrap_or(filename);
-    let encoded = if let Some(sub) = served_rel.strip_prefix("__bridge/") {
-        format!("__bridge/{}", percent_encode(sub))
-    } else {
-        percent_encode(&served_rel)
-    };
-    let url = format!("http://127.0.0.1:{port}/{encoded}");
+        let served_rel = ensure_snap_playable_audio(&app, &file_path).unwrap_or(filename);
+        let encoded = if let Some(sub) = served_rel.strip_prefix("__bridge/") {
+            format!("__bridge/{}", percent_encode(sub))
+        } else {
+            percent_encode(&served_rel)
+        };
+        let url = format!("http://127.0.0.1:{port}/{encoded}");
 
-    Ok(serde_json::json!({
-        "success": true,
-        "url": url,
-        "port": port
-    }))
+        Ok(serde_json::json!({
+            "success": true,
+            "url": url,
+            "port": port
+        }))
+    })
+    .await
+    .map_err(|e| format!("Stream URL task error: {e}"))?
 }
 
 fn provider_url(provider: &str) -> Result<&'static str, &'static str> {
@@ -4173,12 +4571,37 @@ fn provider_url(provider: &str) -> Result<&'static str, &'static str> {
     }
 }
 
+fn apply_shield_ok_response(
+    response: &mut tauri::http::Response<Cow<'static, [u8]>>,
+    content_type: &'static str,
+) {
+    *response.status_mut() = tauri::http::StatusCode::OK;
+    let headers = response.headers_mut();
+    headers.insert(
+        tauri::http::header::CONTENT_TYPE,
+        tauri::http::HeaderValue::from_static(content_type),
+    );
+    headers.insert(
+        tauri::http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        tauri::http::HeaderValue::from_static("*"),
+    );
+    headers.insert(
+        tauri::http::header::CACHE_CONTROL,
+        tauri::http::HeaderValue::from_static("no-store"),
+    );
+    *response.body_mut() = match content_type {
+        "application/json" => Cow::Borrowed(b"{\"ok\":true}"),
+        "image/gif" => Cow::Borrowed(&EMPTY_1PX_GIF[..]),
+        _ => Cow::Borrowed(b"/* blocked */"),
+    };
+}
+
 fn handle_shield_or_bridge_request(
     app: &AppHandle,
     label: &str,
     uri: &tauri::http::Uri,
     provider_counter: &AtomicU64,
-) -> bool {
+) -> Option<&'static str> {
     let path_and_query = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("");
     if uri.host() == Some("brave-shields.local") || path_and_query.starts_with("/__brave_shield_blocked__") {
         if path_and_query.contains("url_sync=1") {
@@ -4213,7 +4636,7 @@ fn handle_shield_or_bridge_request(
             let target = params.get("url").cloned();
             let app_clone = app.clone();
             std::thread::spawn(move || {
-                let _ = open_spotify_widevine_browser(app_clone, target);
+                let _ = open_spotify_widevine_browser_sync(&app_clone, target);
             });
         } else if path_and_query.contains("log_error") {
             eprintln!(
@@ -4225,17 +4648,26 @@ fn handle_shield_or_bridge_request(
             provider_counter.fetch_add(1, Ordering::Relaxed);
             let _ = app.emit("shield-update", serde_json::json!({ "count": total }));
         }
-        return true;
+        return Some("application/json");
     }
 
     if is_ad_or_tracker_request(uri) {
         let total = BLOCKED_ADS_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
         provider_counter.fetch_add(1, Ordering::Relaxed);
         let _ = app.emit("shield-update", serde_json::json!({ "count": total }));
-        return true;
+        let path_lower = uri.path().to_ascii_lowercase();
+        if path_lower.ends_with(".gif")
+            || path_lower.ends_with(".png")
+            || path_lower.ends_with(".jpg")
+            || path_lower.ends_with(".jpeg")
+            || path_lower.ends_with(".webp")
+        {
+            return Some("image/gif");
+        }
+        return Some("application/javascript");
     }
 
-    false
+    None
 }
 
 fn main() {
@@ -4251,12 +4683,6 @@ fn main() {
             if std::env::var_os("GIO_USE_NETWORK_MONITOR").is_none() {
                 std::env::set_var("GIO_USE_NETWORK_MONITOR", "netlink");
             }
-        }
-        if std::env::var("WEBKIT_FORCE_COMPOSITING_MODE").is_err() {
-            std::env::set_var("WEBKIT_FORCE_COMPOSITING_MODE", "1");
-        }
-        if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
-            std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "0");
         }
     }
 
@@ -4285,14 +4711,6 @@ fn main() {
                 Ok(u) => u,
                 Err(e) => {
                     eprintln!("[Tauri] Failed to parse YouTube Music URL: {e}");
-                    return Ok(());
-                }
-            };
-
-            let spotify_url = match tauri::Url::parse("https://open.spotify.com/") {
-                Ok(u) => u,
-                Err(e) => {
-                    eprintln!("[Tauri] Failed to parse Spotify URL: {e}");
                     return Ok(());
                 }
             };
@@ -4327,40 +4745,13 @@ fn main() {
                     tauri::webview::NewWindowResponse::Allow
                 })
                 .on_web_resource_request(move |request, response| {
-                    if handle_shield_or_bridge_request(&app_handle_for_yt, "yt-webview", request.uri(), &YTM_BLOCKED_COUNT) {
-                        *response.status_mut() = tauri::http::StatusCode::NO_CONTENT;
-                        *response.body_mut() = Cow::Borrowed(b"");
-                    }
-                });
-
-            let app_handle_for_spotify = app.handle().clone();
-            let app_handle_for_spotify_nav = app.handle().clone();
-            let app_handle_for_spotify_popup = app.handle().clone();
-            let spotify_builder = tauri::WebviewBuilder::new("spotify-webview", tauri::WebviewUrl::External(spotify_url))
-                .user_agent(CHROME_USER_AGENT)
-                .initialization_script(WINDOW_CHROME_POLYFILL_SCRIPT)
-                .initialization_script(GUEST_ERROR_CAPTURE_SCRIPT)
-                .initialization_script(SHIELDS_SCRIPT)
-                .initialization_script(SPOTIFY_NAVBAR_FIX_SCRIPT)
-                .on_navigation(move |nav_url| {
-                    record_webview_url(&app_handle_for_spotify_nav, "spotify-webview", nav_url.as_str());
-                    true
-                })
-                .on_new_window(move |url, _features| {
-                    if is_auth_url(url.as_str()) {
-                        let app_clone = app_handle_for_spotify_popup.clone();
-                        let u = url.to_string();
-                        std::thread::spawn(move || {
-                            let _ = open_auth_window(&app_clone, "spotify", Some(u));
-                        });
-                        return tauri::webview::NewWindowResponse::Deny;
-                    }
-                    tauri::webview::NewWindowResponse::Allow
-                })
-                .on_web_resource_request(move |request, response| {
-                    if handle_shield_or_bridge_request(&app_handle_for_spotify, "spotify-webview", request.uri(), &SPOTIFY_BLOCKED_COUNT) {
-                        *response.status_mut() = tauri::http::StatusCode::NO_CONTENT;
-                        *response.body_mut() = Cow::Borrowed(b"");
+                    if let Some(ctype) = handle_shield_or_bridge_request(
+                        &app_handle_for_yt,
+                        "yt-webview",
+                        request.uri(),
+                        &YTM_BLOCKED_COUNT,
+                    ) {
+                        apply_shield_ok_response(response, ctype);
                     }
                 });
 
@@ -4371,44 +4762,25 @@ fn main() {
                 tauri::LogicalSize::new(child_w, child_h),
             ) {
                 Ok(yt_wv) => {
-                    eprintln!("[Tauri setup] yt-webview added successfully");
+                    eprintln!("[Tauri setup] yt-webview added successfully (spotify-webview deferred until selected)");
                     configure_webkit_webview_settings(&yt_wv, true);
                     if !webview_has_service_auth(&yt_wv, "youtube") {
                         if let Ok(bytes) = fs::read(auth_dir.join("ytmusic_session.json")) {
                             if let Ok(records) = serde_json::from_slice::<Vec<Value>>(&bytes) {
                                 let applied = apply_cookie_values_to_webview(&yt_wv, &records);
                                 if applied > 0 {
+                                    YT_AUTH_COOKIE_HINT.store(true, Ordering::Relaxed);
                                     let _ = yt_wv.eval("window.location.reload()");
                                 }
                             }
                         }
+                    } else {
+                        YT_AUTH_COOKIE_HINT.store(true, Ordering::Relaxed);
                     }
                     let _ = yt_wv.show();
                 }
                 Err(e) => {
                     eprintln!("[Tauri setup] Failed to add yt-webview: {e:?}");
-                }
-            }
-
-            match window.add_child(
-                spotify_builder,
-                tauri::LogicalPosition::new(0.0, 58.0),
-                tauri::LogicalSize::new(child_w, child_h),
-            ) {
-                Ok(sp_wv) => {
-                    eprintln!("[Tauri setup] spotify-webview added successfully");
-                    configure_webkit_webview_settings(&sp_wv, true);
-                    if !webview_has_service_auth(&sp_wv, "spotify") {
-                        if let Ok(bytes) = fs::read(auth_dir.join("spotify_session.json")) {
-                            if let Ok(records) = serde_json::from_slice::<Vec<Value>>(&bytes) {
-                                let _ = apply_cookie_values_to_webview(&sp_wv, &records);
-                            }
-                        }
-                    }
-                    let _ = sp_wv.hide();
-                }
-                Err(e) => {
-                    eprintln!("[Tauri setup] Failed to add spotify-webview: {e:?}");
                 }
             }
 
@@ -4421,11 +4793,15 @@ fn main() {
                 });
             }
 
-            #[cfg(not(target_os = "linux"))]
             {
                 let app_handle = window.app_handle().clone();
-                window.on_window_event(move |event| {
-                    if let tauri::WindowEvent::Resized(physical_size) = event {
+                window.on_window_event(move |event| match event {
+                    tauri::WindowEvent::CloseRequested { .. } => {
+                        cleanup_background_processes(&app_handle);
+                        app_handle.exit(0);
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    tauri::WindowEvent::Resized(physical_size) => {
                         let scale = app_handle
                             .get_window("main")
                             .and_then(|w| w.scale_factor().ok())
@@ -4441,6 +4817,7 @@ fn main() {
                             let _ = sp.set_size(tauri::LogicalSize::new(child_w, child_h));
                         }
                     }
+                    _ => {}
                 });
             }
 
@@ -4488,17 +4865,24 @@ fn main() {
             start_service_login,
             cancel_service_login
         ])
-        .run(tauri::generate_context!())
-        .expect("failed to run Brave Music Linux preview");
+        .build(tauri::generate_context!())
+        .expect("failed to build Brave Music Linux preview")
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+                cleanup_background_processes(app_handle);
+            }
+            _ => {}
+        });
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        import_library_file, is_auth_url, is_service_auth_cookie, is_service_landing_url,
-        is_webkit_native_audio_ext, parse_cookie_json_payload, parse_query_params,
-        persist_service_account, provider_url, prune_spotify_bridge_cache, read_accounts_map,
-        score_yt_candidate, stable_hash_hex, SearchCandidate,
+        apply_shield_ok_response, import_library_file, is_auth_url, is_service_auth_cookie,
+        is_service_landing_url, is_webkit_native_audio_ext, parse_cookie_json_payload,
+        parse_query_params, persist_service_account, provider_url, prune_spotify_bridge_cache,
+        read_accounts_map, register_child_pid, score_yt_candidate, stable_hash_hex,
+        unregister_child_pid, ACTIVE_CHILD_PIDS, SearchCandidate,
     };
     use brave_music_core::library::LibraryDocument;
     use serde_json::json;
@@ -4658,5 +5042,47 @@ mod tests {
         prune_spotify_bridge_cache(dir.path(), 2);
         let remaining: Vec<_> = fs::read_dir(dir.path()).unwrap().collect();
         assert_eq!(remaining.len(), 2);
+    }
+
+    #[test]
+    fn shield_ok_responses_include_valid_content_type_and_non_empty_body() {
+        for (ctype, expected_prefix) in [
+            ("application/json", b"{\"ok\":true}".as_slice()),
+            ("application/javascript", b"/* blocked */".as_slice()),
+        ] {
+            let mut resp = tauri::http::Response::builder()
+                .body(std::borrow::Cow::Borrowed(b"".as_slice()))
+                .unwrap();
+            apply_shield_ok_response(&mut resp, ctype);
+            assert_eq!(resp.status(), tauri::http::StatusCode::OK);
+            assert_eq!(
+                resp.headers()
+                    .get(tauri::http::header::CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok()),
+                Some(ctype)
+            );
+            assert_eq!(
+                resp.headers()
+                    .get(tauri::http::header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                    .and_then(|v| v.to_str().ok()),
+                Some("*")
+            );
+            assert_eq!(resp.body().as_ref(), expected_prefix);
+        }
+
+        let mut gif_resp = tauri::http::Response::builder()
+            .body(std::borrow::Cow::Borrowed(b"".as_slice()))
+            .unwrap();
+        apply_shield_ok_response(&mut gif_resp, "image/gif");
+        assert_eq!(gif_resp.status(), tauri::http::StatusCode::OK);
+        assert!(gif_resp.body().starts_with(b"GIF89a"));
+    }
+
+    #[test]
+    fn child_pid_registry_tracks_and_unregisters_cleanly() {
+        register_child_pid(999_991);
+        assert!(ACTIVE_CHILD_PIDS.lock().unwrap().contains(&999_991));
+        unregister_child_pid(999_991);
+        assert!(!ACTIVE_CHILD_PIDS.lock().unwrap().contains(&999_991));
     }
 }

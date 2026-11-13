@@ -45,16 +45,24 @@ function runShields() {
 
   window.__BRAVE_SHIELDS_INITIALIZED__ = true;
 
+  let pendingShieldPingTimer = null;
+  let queuedShieldDetail = '';
+
   function notifyBlocked(detail) {
     try {
       window.__BRAVE_SHIELDS_BLOCKED_COUNT__ = (window.__BRAVE_SHIELDS_BLOCKED_COUNT__ || 0) + 1;
-      if (typeof fetch === 'function') {
-        // Same-origin ping avoids DNS/TLS issues and is intercepted instantly by Tauri
-        fetch('/__brave_shield_blocked__?t=' + Date.now() + '&source=' + encodeURIComponent(detail || 'in-page'), {
-          method: 'GET',
-          cache: 'no-store',
-          credentials: 'omit'
-        }).catch(() => {});
+      queuedShieldDetail = detail || queuedShieldDetail || 'in-page';
+      if (!pendingShieldPingTimer && typeof fetch === 'function') {
+        pendingShieldPingTimer = setTimeout(() => {
+          pendingShieldPingTimer = null;
+          const payload = queuedShieldDetail || 'in-page';
+          queuedShieldDetail = '';
+          fetch('/__brave_shield_blocked__?t=' + Date.now() + '&source=' + encodeURIComponent(payload), {
+            method: 'GET',
+            cache: 'no-store',
+            credentials: 'omit'
+          }).catch(() => {});
+        }, 350);
       }
       console.log('[BRAVE_SHIELD_BLOCKED]', detail);
     } catch (e) {}
@@ -169,9 +177,7 @@ function runShields() {
         '#mealbar-promo-renderer',
         'ytmusic-upsell-dialog-renderer',
         'ytd-merch-shelf-renderer',
-        'ytd-ad-slot-renderer',
-        'tp-yt-paper-dialog:has(ytmusic-upsell-dialog-renderer)',
-        'tp-yt-paper-dialog:has(#mealbar-promo-renderer)'
+        'ytd-ad-slot-renderer'
       ].join(',\n') + ' { display: none !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }';
     } else if (isSpotify) {
       cssRules = [
@@ -188,33 +194,30 @@ function runShields() {
         'div[data-testid="top-bar-ad"]',
         'div[data-testid="upgrade-button"]',
         'button[data-testid="upgrade-button"]',
-        '.ReactModalPortal:has([data-testid="upgrade-modal"])',
-        '.ReactModalPortal:has([data-testid="upgrade-button"])',
+        '[data-testid="upgrade-modal"]',
         '[data-testid="protected-content-banner"]',
-        'div[data-testid="banner-container"]:has(a[href*="support.spotify.com"])',
-        'div:has(> a[href*="support.spotify.com"])',
         '[data-testid="get-app-modal"]',
         '[data-testid="download-cta"]'
       ].join(',\n') + ' { display: none !important; visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }';
     }
 
     const smoothScrollRules = `
-* {
+body {
   -webkit-font-smoothing: antialiased !important;
   -moz-osx-font-smoothing: grayscale !important;
 }
-*::-webkit-scrollbar {
+::-webkit-scrollbar {
   width: 7px !important;
   height: 7px !important;
 }
-*::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
   background: transparent !important;
 }
-*::-webkit-scrollbar-thumb {
+::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.14) !important;
   border-radius: 6px !important;
 }
-*::-webkit-scrollbar-thumb:hover {
+::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.28) !important;
 }
 `;
@@ -239,7 +242,6 @@ function runShields() {
     }
   }
   injectCosmetics();
-  notifyBlocked('Cosmetics applied');
 
   // ========================================================================
   // 2. YOUTUBE MUSIC IN-FLIGHT TRAFFIC INTERCEPTION
@@ -569,16 +571,18 @@ function runShields() {
     }
   }
 
-  // Throttled scan scheduler to protect main-thread frame budget during scrolling
+  // Throttled scan scheduler to protect main-thread frame budget during scrolling & hidden tabs
   let scanScheduled = false;
   let lastScanTime = 0;
   function scheduleScan() {
+    if (document.hidden || window.__BRAVE_TAB_SUSPENDED__) return;
     if (scanScheduled) return;
     const now = Date.now();
-    const delay = Math.max(0, 350 - (now - lastScanTime));
+    const delay = Math.max(0, 600 - (now - lastScanTime));
     scanScheduled = true;
     setTimeout(() => {
       scanScheduled = false;
+      if (document.hidden || window.__BRAVE_TAB_SUSPENDED__) return;
       lastScanTime = Date.now();
       runFastScan();
     }, delay);
@@ -594,7 +598,7 @@ function runShields() {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['class', 'src', 'data-testid']
+      attributeFilter: ['class', 'data-testid']
     });
   } else {
     document.addEventListener('DOMContentLoaded', () => {
@@ -603,14 +607,14 @@ function runShields() {
           childList: true,
           subtree: true,
           attributes: true,
-          attributeFilter: ['class', 'src', 'data-testid']
+          attributeFilter: ['class', 'data-testid']
         });
       }
     });
   }
 
-  // Low-overhead periodic monitoring loop
-  setInterval(scheduleScan, 1500);
+  // Low-overhead periodic monitoring loop when visible
+  setInterval(scheduleScan, 4000);
 
   console.log('[Brave Shields] Proactive traffic & glitch prevention engine active on', hostname);
 }

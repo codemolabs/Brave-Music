@@ -225,7 +225,11 @@ window.addEventListener('error', (event) => {
     cancelDownload: (downloadId) => invoke('cancel_download', { downloadId }),
     getRecommendations: async (params = {}) => {
       try {
-        return await invoke('get_recommendations', { currentTrackId: params.currentTrackId || '', limit: params.limit || 6 });
+        return await invoke('get_recommendations', {
+          currentTrackId: params.currentTrackId || '',
+          limit: params.limit || 6,
+          forceRefresh: Boolean(params.forceRefresh)
+        });
       } catch {
         return { success: true, mode: 'starter', seedArtists: [], items: [] };
       }

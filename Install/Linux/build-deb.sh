@@ -53,8 +53,6 @@ cat << 'EOF' > "$BUILD_DIR/opt/brave-music/run.sh"
 #!/bin/bash
 export PATH="/opt/brave-music/backend/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export LD_LIBRARY_PATH="/opt/brave-music/backend/bin:${LD_LIBRARY_PATH:-}"
-export WEBKIT_FORCE_COMPOSITING_MODE=1
-export WEBKIT_DISABLE_COMPOSITING_MODE=0
 export NO_AT_BRIDGE="${NO_AT_BRIDGE:-1}"
 exec /opt/brave-music/brave-music-linux-preview "$@"
 EOF

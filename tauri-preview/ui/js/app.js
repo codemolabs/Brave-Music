@@ -1268,6 +1268,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // TAB NAVIGATION
   // ==========================================================================
 
+  let libraryLoadedOnce = false;
+  let lastAuthRefreshAt = 0;
+
   function switchTab(targetId) {
     state.currentTab = targetId;
 
@@ -1281,29 +1284,13 @@ document.addEventListener('DOMContentLoaded', () => {
       panel.classList.toggle('active', panel.id === `panel-${targetId}`);
     });
 
-    if (targetId === 'spotify-view' && spotifyWebview) {
-      let u = '';
-      try {
-        u = (typeof spotifyWebview.getURL === 'function' ? spotifyWebview.getURL() : '') || spotifyWebview.getAttribute('src');
-      } catch (e) {}
-      if (!u || u === 'about:blank') {
-        spotifyWebview.src = 'https://open.spotify.com';
-      }
-    }
-
-    if (targetId === 'yt-view' && ytWebview) {
-      let u = '';
-      try {
-        u = (typeof ytWebview.getURL === 'function' ? ytWebview.getURL() : '') || ytWebview.getAttribute('src');
-      } catch (e) {}
-      if (!u || u === 'about:blank') {
-        ytWebview.src = 'https://music.youtube.com';
-      }
-    }
-
     if (targetId === 'downloads-view') {
-      loadLibrary();
       document.body.classList.remove('stream-view-active');
+      if (!libraryLoadedOnce) {
+        loadLibrary();
+      } else {
+        loadRecommendations(false);
+      }
     } else {
       document.body.classList.add('stream-view-active');
     }
@@ -1316,7 +1303,11 @@ document.addEventListener('DOMContentLoaded', () => {
       updateNavHistoryState();
     }
 
-    refreshAuthStatusUI();
+    const now = Date.now();
+    if (now - lastAuthRefreshAt > 12000) {
+      lastAuthRefreshAt = now;
+      refreshAuthStatusUI();
+    }
     if (typeof syncPlaybackLoop === 'function') {
       syncPlaybackLoop();
     }
@@ -1344,7 +1335,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   syncShieldStats();
-  setInterval(syncShieldStats, 1500);
 
   if (window.braveApi?.onShieldUpdate) {
     window.braveApi.onShieldUpdate((data) => {
@@ -1364,7 +1354,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Proactive webview shield listener & fallback engine
   function setupWebviewShields(webview, providerName) {
-    if (!webview) return;
+    if (!webview || window.__TAURI__) return;
 
     // Listen for shield event pings from proactive webview-shields preload
     webview.addEventListener('console-message', (e) => {
@@ -3594,8 +3584,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function syncPlaybackLoop() {
     try {
-      const ytInfo = await checkYouTubeState();
-      const spotifyInfo = await checkSpotifyState();
+      const isTauri = !!window.__TAURI__;
+      const ytInfo = isTauri ? null : await checkYouTubeState();
+      const spotifyInfo = isTauri ? null : await checkSpotifyState();
 
       const isYtPlaying = !!(ytInfo && ytInfo.isPlaying);
       const isSpotifyPlaying = !!(spotifyInfo && spotifyInfo.isPlaying);
@@ -3728,7 +3719,15 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {}
   }
 
-  setInterval(syncPlaybackLoop, 1200);
+  if (!window.__TAURI__) {
+    setInterval(syncPlaybackLoop, 1200);
+  } else {
+    setInterval(() => {
+      if (state.player.isPlaying) {
+        syncPlaybackLoop();
+      }
+    }, 1500);
+  }
 
   // ==========================================================================
   // OFFLINE LIBRARY DATA & RENDERING
@@ -3739,6 +3738,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const data = await window.braveApi.getLibrary();
       state.library = data || { tracks: [], playlists: {} };
+      libraryLoadedOnce = true;
 
       const trackCount = (data.tracks || []).length;
       const playlistCount = Object.keys(data.playlists || {}).length;
@@ -3762,7 +3762,9 @@ document.addEventListener('DOMContentLoaded', () => {
       renderTracksTable();
       renderPlaylistsGrid();
       updateSmartMixControls();
-      loadRecommendations(false);
+      if (state.currentTab === 'downloads-view') {
+        loadRecommendations(false);
+      }
 
       // Refresh dedicated playlist detail view if open
       if (playlistDetailModal && playlistDetailModal.style.display !== 'none' && activeDetailPlaylist) {
@@ -3794,6 +3796,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     emptyStateBox.style.display = 'none';
+    const fragment = document.createDocumentFragment();
 
     visibleTracks.forEach((track, idx) => {
       const isCurrentlyPlayingThis = state.player.currentTrack && state.player.currentTrack.id === track.id;
@@ -3992,8 +3995,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       });
 
-      tracksTableBody.appendChild(tr);
+      fragment.appendChild(tr);
     });
+    tracksTableBody.appendChild(fragment);
   }
 
   function renderPlaylistsGrid() {
@@ -4338,7 +4342,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       let data = null;
       if (window.braveApi?.getRecommendations) {
-        data = await window.braveApi.getRecommendations({ currentTrackId: curId, limit: 6 });
+        data = await window.braveApi.getRecommendations({ currentTrackId: curId, limit: 6, forceRefresh });
       }
       if (!data || !Array.isArray(data.items) || data.items.length === 0) {
         const ownedTitles = new Set((state.library?.tracks || []).map((t) => String(t.title || '').toLowerCase().trim()));

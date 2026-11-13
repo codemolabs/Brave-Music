@@ -177,8 +177,6 @@ export GIO_USE_PROXY_RESOLVER="${GIO_USE_PROXY_RESOLVER:-dummy}"
 export GIO_USE_NETWORK_MONITOR="${GIO_USE_NETWORK_MONITOR:-netlink}"
 export NO_AT_BRIDGE="${NO_AT_BRIDGE:-1}"
 export WEBKIT_EXEC_PATH="${SNAP:+$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1}"
-export WEBKIT_FORCE_COMPOSITING_MODE=1
-export WEBKIT_DISABLE_COMPOSITING_MODE=0
 exec "$APP_DIR/brave-music-linux-preview" "$@"
 EOF
 chmod +x "$STAGE_DIR/bin/brave-music-snap"
