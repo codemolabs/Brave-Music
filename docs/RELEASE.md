@@ -2,11 +2,27 @@
 
 This document tracks official version releases, changelogs, binary checksums, and update schedules for Brave Music under Codemo Open Source Labs (Codemo OSL).
 
-### Release v1.0.19-r (Cross-Platform Architecture & Ultra-Smooth Performance Engine)
+### Release v1.0.19-r (Cross-Platform Architecture, Official Branding & Desktop Integration)
 
 - **Release Tag**: `v1.0.19-r`
-- **New Cross-Platform Stack (Rust + Native Webview Core)**: Introduced the new modular, memory-efficient cross-platform stack under `crates/brave-music-core` and `tauri-preview/src-tauri` supporting Linux, Windows, macOS, and mobile Android runtimes with standalone HTTP audio streaming daemon and zero electron runtime dependency.
-- **Preview Runner**: Added `./run.sh --new-stack` (`-n`, `--preview`, `--rust`) to seamlessly launch the ultra-fast native stack alongside the legacy Electron runner.
+- **Official Mascot App Icon**:
+  - Replaced legacy organizational network nodes logo with the authentic official Brave Music brand icon (vibrant orange lion wearing headphones).
+  - Built multi-resolution icons: Windows/Linux `.ico` (`src/assets/app-icon.ico`) with 7 crisp mipmaps (16x16 to 256x256), master 512x512 transparent PNG (`src/assets/app-icon.png`), and clean scalable vector SVG (`src/assets/app-icon.svg`).
+  - Full system desktop integration: installs dedicated hicolor icon sizes (`16x16`, `24x24`, `32x32`, `48x48`, `64x64`, `128x128`, `256x256`, `512x512`) into `/usr/share/icons/hicolor/` and `/usr/share/pixmaps/brave-music.png`.
+- **Desktop Launcher Grouping & Single Instance Lock**:
+  - Configured `StartupWMClass=brave-music`, `StartupNotify=true`, and runtime `--class=brave-music --name=brave-music` flags ensuring running windows group directly under the clicked desktop icon in GNOME Shell and the Ubuntu Dock without spawning duplicate/separate dock icons.
+  - Implemented `app.requestSingleInstanceLock()` to prevent duplicate app instances; clicking the launcher when Brave Music is already running brings the existing window to the front and focuses it.
+- **Webview Black Screen Layout Fix**:
+  - Resolved layout isolation bug where `.stream-view-active` hid `<main class="app-main">`, restoring full visibility and instant hardware-accelerated rendering for both YouTube Music and Spotify webviews.
+  - Upgraded `<webview>` CSS to flex expansion (`display: flex; flex: 1; width: 100%; height: 100%; background: #030303;`).
+- **Streamlined About / Information Modal**:
+  - Upgraded popup footer with three minimal action buttons:
+    - **Email us**: copies and opens `mailto:cosl@codemoteams.org`.
+    - **Update**: launches the official GitHub release page (`https://github.com/codemolabs/Brave-Music/releases`).
+    - **Report Issues**: navigates directly to the project issue tracker (`https://github.com/codemolabs/Brave-Music/issues`).
+- **New Cross-Platform Stack (Rust + Native Webview Core)**:
+  - Introduced the modular, memory-efficient cross-platform stack under `crates/brave-music-core` and `tauri-preview/src-tauri` supporting Linux, Windows, macOS, and mobile Android runtimes with standalone HTTP audio streaming daemon and zero electron runtime dependency.
+  - Seamless preview launcher: `./run.sh --new-stack` (`-n`, `--preview`, `--rust`).
 - **Zero-Jank Ultra-Smooth Scrolling**:
   - Eliminated artificial `scroll-behavior: smooth !important` overrides from YouTube Music and Spotify Web Player, curing all rubber-banding, judder, and kinetic friction conflicts with Spotify's `OverlayScrollbars` JS momentum engine.
   - Removed layout containment (`contain: layout style`) and layer promotion from table rows and offline library containers, allowing the OS GPU compositor to scroll with native 1:1 hardware wheel precision.
@@ -21,7 +37,7 @@ This document tracks official version releases, changelogs, binary checksums, an
 - **High-Fidelity Audio Streaming Engine**:
   - Built-in multi-threaded local HTTP audio server with full support for `Range: bytes=` HTTP partial content (206 Partial Content), `HEAD` probe queries, instant seeking, and CORS support for local MP3/M4A/FLAC playback.
 - **Debian Package (Linux)**: `Install/Linux/brave-music_1.0.19-r_amd64.deb`
-- **Linux SHA-256**: `da1ea81fe8c048780e320a1e538ad0d2d32cef5c4a8cdb0bd589b6d6e5a1ab14`
+- **Linux SHA-256**: `bbb37b784fe0e30e0b5da700b0f1613b03fa89c1386e69f298f7b2583ce0eb6d`
 
 ### Release v1.0.18
 

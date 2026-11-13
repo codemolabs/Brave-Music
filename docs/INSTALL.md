@@ -115,7 +115,9 @@ When installed via package, Brave Music adheres to Linux Filesystem Hierarchy St
 | `/opt/brave-music/run.sh` | Hardened startup script configuring library paths and runtime flags |
 | `/usr/bin/brave-music` | System-wide execution symlink callable from any terminal |
 | `/usr/share/applications/brave-music.desktop` | Desktop entry file registering audio categories and system integration |
-| `/usr/share/icons/hicolor/scalable/apps/brave-music.svg` | Vector application icon |
+| `/usr/share/pixmaps/brave-music.png` | System pixmap application icon |
+| `/usr/share/icons/hicolor/<size>/apps/brave-music.png` | Multi-resolution bitmap icons (16x16 up to 512x512) |
+| `/usr/share/icons/hicolor/scalable/apps/brave-music.svg` | Scalable vector application icon |
 | `~/.config/brave-music/` | User application profile, persistent login cookies, and cache partition |
 | `~/.config/musikcube/` | Embedded C++ audio daemon database and library index files |
 
