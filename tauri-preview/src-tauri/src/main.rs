@@ -200,6 +200,28 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
   if (window.__braveSpotifyBridgeBootstrapped) return;
   window.__braveSpotifyBridgeBootstrapped = true;
 
+  // Detect Widevine unavailability automatically without waiting for UI banners
+  try {
+    if (navigator.requestMediaKeySystemAccess && !navigator.__braveEmeHooked) {
+      navigator.__braveEmeHooked = true;
+      const origEme = navigator.requestMediaKeySystemAccess.bind(navigator);
+      navigator.requestMediaKeySystemAccess = function() {
+        return origEme.apply(navigator, arguments).catch((err) => {
+          window.__braveSpotifyDrmBlocked = true;
+          scheduleSpotifyMaintenance();
+          throw err;
+        });
+      };
+    }
+    if ('serviceWorker' in navigator && typeof navigator.serviceWorker.getRegistrations === 'function') {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        for (const r of regs) {
+          r.unregister().catch(() => {});
+        }
+      }).catch(() => {});
+    }
+  } catch (_) {}
+
   const ensureStyle = () => {
     try {
       if (document.getElementById('brave-music-spotify-fix')) return;
@@ -210,6 +232,13 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
           display: flex !important;
           visibility: visible !important;
         }
+        [data-testid="protected-content-banner"] {
+          display: none !important;
+          visibility: hidden !important;
+          height: 0 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
         #brave-spotify-bridge-bar {
           position: fixed;
           right: 16px;
@@ -217,9 +246,9 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
           z-index: 2147483640;
           display: flex;
           align-items: center;
-          gap: 10px;
-          max-width: min(640px, calc(100vw - 32px));
-          padding: 10px 14px;
+          gap: 8px;
+          max-width: min(560px, calc(100vw - 32px));
+          padding: 9px 13px;
           border-radius: 14px;
           background: rgba(15, 17, 26, 0.94);
           border: 1px solid rgba(255, 85, 0, 0.42);
@@ -236,8 +265,8 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
         #brave-spotify-bridge-bar .bsb-meta {
           display: flex;
           flex-direction: column;
-          min-width: 140px;
-          max-width: 240px;
+          min-width: 120px;
+          max-width: 230px;
           overflow: hidden;
         }
         #brave-spotify-bridge-bar.minimized .bsb-meta,
@@ -269,10 +298,13 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
         #brave-spotify-bridge-bar .bsb-badge.resolving {
           background: #f59e0b;
         }
+        #brave-spotify-bridge-bar .bsb-badge.error {
+          background: #ef4444;
+        }
         #brave-spotify-bridge-bar button {
           border: none;
           border-radius: 8px;
-          padding: 6px 11px;
+          padding: 6px 10px;
           font-size: 12px;
           font-weight: 600;
           cursor: pointer;
@@ -302,8 +334,8 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
 
   window.__braveSpotifyBridgeState = {
     status: 'ready',
-    title: 'Brave Music Audio Bridge',
-    artist: 'Stream any Spotify track in-app',
+    title: 'Spotify Player Ready',
+    artist: 'Click any track or Play button',
     isPlaying: false
   };
 
@@ -318,12 +350,12 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
         bar.innerHTML = `
           <span class="bsb-badge" id="bsb-dot"></span>
           <div class="bsb-meta">
-            <span class="bsb-title" id="bsb-title">Brave Music Audio Bridge</span>
-            <span class="bsb-sub" id="bsb-sub">Stream any Spotify track in-app</span>
+            <span class="bsb-title" id="bsb-title">Spotify Player Ready</span>
+            <span class="bsb-sub" id="bsb-sub">Click any track or Play button</span>
           </div>
-          <button type="button" class="bsb-primary" id="bsb-play-btn">Play in App</button>
+          <button type="button" class="bsb-primary" id="bsb-play-btn">Play</button>
+          <button type="button" class="bsb-secondary" id="bsb-next-btn" title="Next track in queue" style="display:none;">Next</button>
           <button type="button" class="bsb-secondary" id="bsb-dl-btn" title="Download current Spotify track or playlist">Download</button>
-          <button type="button" class="bsb-secondary" id="bsb-browser-btn" title="Open Spotify in a Widevine-enabled browser">Widevine Browser</button>
           <button type="button" class="bsb-icon" id="bsb-min-btn" title="Minimize / Expand">_</button>
         `;
         document.body.appendChild(bar);
@@ -333,23 +365,24 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
           ev.stopPropagation();
           const st = window.__braveSpotifyBridgeState || {};
           if (st.active && (st.status === 'playing' || st.status === 'paused')) {
-            fetch('/__brave_shield_blocked__?spotify_control=toggle').catch(() => {});
+            fetch('/__brave_shield_blocked__?spotify_control=toggle', { cache: 'no-store' }).catch(() => {});
             return;
           }
           const ctx = extractPageContext();
           triggerBridgePlay(ctx);
         });
 
+        document.getElementById('bsb-next-btn')?.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          fetch('/__brave_shield_blocked__?spotify_control=next', { cache: 'no-store' }).catch(() => {});
+        });
+
         document.getElementById('bsb-dl-btn')?.addEventListener('click', (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
-          fetch('/__brave_shield_blocked__?spotify_download=1&url=' + encodeURIComponent(window.location.href)).catch(() => {});
-        });
-
-        document.getElementById('bsb-browser-btn')?.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          fetch('/__brave_shield_blocked__?spotify_open_browser=1&url=' + encodeURIComponent(window.location.href)).catch(() => {});
+          const activeUrl = (window.__braveSpotifyBridgeState?.trackUrl) || window.location.href;
+          fetch('/__brave_shield_blocked__?spotify_download=1&url=' + encodeURIComponent(activeUrl), { cache: 'no-store' }).catch(() => {});
         });
 
         document.getElementById('bsb-min-btn')?.addEventListener('click', (ev) => {
@@ -364,14 +397,21 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
       const titleEl = document.getElementById('bsb-title');
       const subEl = document.getElementById('bsb-sub');
       const playBtn = document.getElementById('bsb-play-btn');
-      if (dot) dot.className = 'bsb-badge' + (st.status === 'resolving' ? ' resolving' : '');
-      if (titleEl) titleEl.textContent = st.title || 'Brave Music Audio Bridge';
-      if (subEl) subEl.textContent = st.artist || 'Stream any Spotify track in-app';
+      const nextBtn = document.getElementById('bsb-next-btn');
+      if (dot) {
+        dot.className = 'bsb-badge'
+          + (st.status === 'resolving' ? ' resolving' : (st.status === 'error' ? ' error' : ''));
+      }
+      if (titleEl) titleEl.textContent = st.title || 'Spotify Player Ready';
+      if (subEl) subEl.textContent = st.artist || 'Click any track or Play button';
       if (playBtn) {
-        if (st.status === 'resolving') playBtn.textContent = 'Resolving...';
+        if (st.status === 'resolving') playBtn.textContent = 'Loading...';
         else if (st.status === 'playing') playBtn.textContent = 'Pause';
         else if (st.status === 'paused') playBtn.textContent = 'Resume';
-        else playBtn.textContent = 'Play in App';
+        else playBtn.textContent = 'Play';
+      }
+      if (nextBtn) {
+        nextBtn.style.display = st.active ? 'inline-block' : 'none';
       }
     } catch (_) {}
   };
@@ -386,27 +426,57 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
   let spotifyDomCheckedAt = 0;
   let spotifyBannerTimer = null;
 
+  const isDrmWarningText = (raw) => {
+    const txt = (raw || '').toLowerCase();
+    if (!txt || txt.length > 480) return false;
+    return (
+      txt.includes('protected content is not enabled') ||
+      txt.includes('playback of protected content') ||
+      txt.includes('enable playback in your browser') ||
+      (txt.includes('spotify support') && txt.includes('playback'))
+    );
+  };
+
+  const hideBannerNode = (node) => {
+    if (!node || node.id === 'brave-spotify-bridge-bar' || node.closest('#brave-spotify-bridge-bar')) return;
+    window.__braveSpotifyDrmBlocked = true;
+    if (node.getAttribute('data-brave-drm-hidden') !== '1') {
+      node.setAttribute('data-brave-drm-hidden', '1');
+      node.style.setProperty('display', 'none', 'important');
+      node.style.setProperty('height', '0', 'important');
+      node.style.setProperty('margin', '0', 'important');
+      node.style.setProperty('padding', '0', 'important');
+    }
+  };
+
   const suppressProtectedContentBanners = () => {
     try {
-      const candidates = document.querySelectorAll('[data-testid="message-bar"], [role="alert"], [data-testid="protected-content-banner"]');
+      const candidates = document.querySelectorAll(
+        '[data-testid="message-bar"], [role="alert"], [role="status"], [data-testid="protected-content-banner"], [data-encore-id="banner"], [role="dialog"]'
+      );
       for (const el of candidates) {
-        if (!el || el.id === 'brave-spotify-bridge-bar' || el.closest('#brave-spotify-bridge-bar')) continue;
-        const txt = (el.textContent || '').toLowerCase();
-        if (
-          txt.length > 0 &&
-          txt.length < 360 &&
-          (
-            txt.includes('protected content is not enabled') ||
-            txt.includes('playback of protected content') ||
-            txt.includes('enable playback in your browser') ||
-            (txt.includes('spotify support') && txt.includes('playback'))
-          )
-        ) {
-          window.__braveSpotifyDrmBlocked = true;
-          if (el.getAttribute('data-brave-drm-hidden') !== '1') {
-            el.setAttribute('data-brave-drm-hidden', '1');
-            el.style.setProperty('display', 'none', 'important');
+        if (isDrmWarningText(el.textContent)) {
+          hideBannerNode(el);
+        }
+      }
+      const supportLinks = document.querySelectorAll('a[href*="support.spotify.com"]');
+      for (const link of supportLinks) {
+        let cur = link;
+        let target = null;
+        for (let depth = 0; depth < 6 && cur && cur.parentElement; depth++) {
+          cur = cur.parentElement;
+          const tag = cur.tagName;
+          if (tag === 'BODY' || tag === 'MAIN' || tag === 'HTML') break;
+          if (cur.id === 'main' || cur.classList?.contains('Root__top-container') || cur.classList?.contains('main-view-container')) break;
+          const rect = cur.getBoundingClientRect();
+          if (rect.height > 0 && rect.height <= 180 && isDrmWarningText(cur.textContent)) {
+            target = cur;
           }
+        }
+        if (target) {
+          hideBannerNode(target);
+        } else if (isDrmWarningText(link.parentElement?.textContent)) {
+          hideBannerNode(link.parentElement);
         }
       }
     } catch (_) {}
@@ -426,35 +496,58 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
     }, waitMs);
   };
 
-  const extractTrackFromElement = (target) => {
-    const row = target?.closest?.('[data-testid="tracklist-row"], [role="row"], [data-testid="track-row"], section, article');
+  const parsePlayAriaLabel = (btn) => {
+    const raw = (btn?.getAttribute?.('aria-label') || '').trim();
+    if (!raw || !/^play\b/i.test(raw)) return { title: '', artist: '' };
+    const rest = raw.replace(/^play\s+/i, '').trim();
+    const byMatch = rest.match(/^(.+?)\s+by\s+(.+)$/i);
+    if (byMatch) {
+      return { title: byMatch[1].trim(), artist: byMatch[2].trim() };
+    }
+    return { title: rest, artist: '' };
+  };
+
+  const extractTrackFromElement = (target, playBtn) => {
+    const container = target?.closest?.(
+      '[data-testid="tracklist-row"], [role="row"], [data-testid="track-row"], [data-testid="card"], [data-encore-id="card"], [data-testid="now-playing-widget"], article'
+    );
     let trackUrl = '';
     let title = '';
     let artist = '';
     let art = '';
 
-    if (row) {
-      const trackLink = row.querySelector('a[href*="/track/"]');
-      if (trackLink) {
-        trackUrl = trackLink.href || '';
-        title = (trackLink.textContent || '').trim();
+    if (container) {
+      const entityLink = container.querySelector('a[href*="/track/"], a[href*="/album/"], a[href*="/playlist/"], a[href*="/episode/"]');
+      if (entityLink) {
+        trackUrl = entityLink.href || '';
+        const text = (entityLink.textContent || '').trim();
+        if (text) title = text;
       }
       if (!title) {
-        const tEl = row.querySelector('[data-testid="internal-track-link"] div, [dir="auto"], a[href*="/album/"]');
+        const tEl = container.querySelector('[data-testid="internal-track-link"] div, [data-testid="card-title"], [dir="auto"]');
         title = (tEl?.textContent || '').trim();
       }
-      const artistLinks = Array.from(row.querySelectorAll('a[href*="/artist/"]'))
+      const artistLinks = Array.from(container.querySelectorAll('a[href*="/artist/"]'))
         .map((a) => (a.textContent || '').trim())
         .filter(Boolean);
       if (artistLinks.length > 0) artist = [...new Set(artistLinks)].join(', ');
-      const img = row.querySelector('img');
+      const img = container.querySelector('img');
       if (img && img.src) art = img.src;
+    }
+
+    if (playBtn) {
+      const parsed = parsePlayAriaLabel(playBtn);
+      if (parsed.title && (!title || title.length < 2)) title = parsed.title;
+      if (parsed.artist && !artist) artist = parsed.artist;
     }
 
     if (!trackUrl) {
       const href = String(window.location.href || '');
       if (/open\.spotify\.com\/(?:intl-[a-z-]+\/)?(track|album|playlist|artist|episode)\//i.test(href)) {
         trackUrl = href;
+      } else {
+        const pageTrack = document.querySelector('main a[href*="/track/"], main a[href*="/playlist/"], main a[href*="/album/"]');
+        if (pageTrack?.href) trackUrl = pageTrack.href;
       }
     }
     if (!title) {
@@ -472,15 +565,19 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
     return { url: trackUrl || window.location.href, title, artist, art };
   };
 
-  const extractPageContext = () => extractTrackFromElement(document.querySelector('main'));
+  const extractPageContext = () => {
+    const activePlay = document.querySelector('[data-testid="action-bar-row"] button[data-testid="play-button"], main button[data-testid="play-button"]');
+    return extractTrackFromElement(activePlay || document.querySelector('main'), activePlay);
+  };
 
   const triggerBridgePlay = (ctx) => {
     try {
       window.__braveSpotifyBridgeSync({
         active: true,
         status: 'resolving',
-        title: ctx.title || 'Resolving Spotify stream...',
-        artist: ctx.artist || 'Matching audio track...'
+        title: ctx.title || 'Loading track...',
+        artist: ctx.artist || 'Matching audio stream...',
+        trackUrl: ctx.url || window.location.href
       });
       const q = new URLSearchParams({
         spotify_play: '1',
@@ -489,7 +586,7 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
         artist: ctx.artist || '',
         art: ctx.art || ''
       });
-      fetch('/__brave_shield_blocked__?' + q.toString()).catch(() => {});
+      fetch('/__brave_shield_blocked__?' + q.toString(), { cache: 'no-store' }).catch(() => {});
     } catch (_) {}
   };
 
@@ -500,16 +597,24 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
         'button[data-testid="play-button"], [data-testid="action-bar-row"] button[data-testid="play-button"], [data-testid="tracklist-row"] button, button[data-testid="control-button-playpause"], button[aria-label^="Play"]'
       );
       if (!btn) return;
-      const ctx = extractTrackFromElement(btn);
-      if (!ctx.url && !ctx.title) return;
       const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+      if (
+        btn.closest('[data-testid="tracklist-row"]') &&
+        aria &&
+        !aria.startsWith('play') &&
+        !aria.startsWith('pause') &&
+        btn.getAttribute('data-testid') !== 'play-button'
+      ) {
+        return;
+      }
       if (btn.getAttribute('data-testid') === 'control-button-playpause' && window.__braveSpotifyBridgeState?.active) {
         ev.preventDefault();
         ev.stopPropagation();
-        fetch('/__brave_shield_blocked__?spotify_control=toggle').catch(() => {});
+        fetch('/__brave_shield_blocked__?spotify_control=toggle', { cache: 'no-store' }).catch(() => {});
         return;
       }
-      // If Spotify DRM banner appeared or native <audio> doesn't play within 450ms, take over seamlessly
+      const ctx = extractTrackFromElement(btn, btn);
+      if (!ctx.url && !ctx.title) return;
       if (window.__braveSpotifyDrmBlocked) {
         triggerBridgePlay(ctx);
       } else {
@@ -519,7 +624,7 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
           if (!nativePlaying) {
             triggerBridgePlay(ctx);
           }
-        }, 450);
+        }, 350);
       }
     } catch (_) {}
   }, true);
@@ -528,11 +633,15 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
     try {
       const row = ev.target?.closest?.('[data-testid="tracklist-row"]');
       if (!row) return;
-      const ctx = extractTrackFromElement(row);
-      setTimeout(() => {
-        const audio = document.querySelector('audio');
-        if (!audio || audio.paused) triggerBridgePlay(ctx);
-      }, 450);
+      const ctx = extractTrackFromElement(row, null);
+      if (window.__braveSpotifyDrmBlocked) {
+        triggerBridgePlay(ctx);
+      } else {
+        setTimeout(() => {
+          const audio = document.querySelector('audio');
+          if (!audio || audio.paused) triggerBridgePlay(ctx);
+        }, 350);
+      }
     } catch (_) {}
   }, true);
 
@@ -1995,7 +2104,10 @@ if not m:
 kind, sid = m.group(1).lower(), m.group(2)
 
 sp_dc = ''
-sess_path = os.path.expanduser('~/.config/brave-music/spotify_session.json')
+xdg_cfg = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+sess_path = os.path.join(xdg_cfg, 'brave-music', 'spotify_session.json')
+if not os.path.exists(sess_path):
+    sess_path = os.path.expanduser('~/.config/brave-music/spotify_session.json')
 if os.path.exists(sess_path):
     try:
         with open(sess_path, 'r', encoding='utf-8') as f:
@@ -2258,7 +2370,7 @@ fn create_ytdlp_base_command(
         .arg("--no-update")
         .arg("--no-warnings")
         .arg("--extractor-args")
-        .arg("youtube:player_client=mweb,web,default");
+        .arg("youtube:player_client=web_embedded,tv_simply,android,web");
     if let Some(rt) = js_runtime {
         cmd.arg("--js-runtimes").arg(rt);
     }
@@ -2648,7 +2760,8 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
                     ffmpeg_dir.as_ref(),
                 );
 
-                cmd.arg("--concurrent-fragments")
+                cmd.arg("--check-formats")
+                   .arg("--concurrent-fragments")
                    .arg("4")
                    .arg("--newline")
                    .arg("--progress")
@@ -4351,11 +4464,14 @@ fn resolve_spotify_playable_stream(
     let out_tpl = cache_dir.join(format!("{stem}.%(ext)s"));
     let mut cmd = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), ffmpeg_dir.as_ref());
     cmd.args([
+        "--check-formats",
+        "--concurrent-fragments",
+        "4",
         "--no-playlist",
         "--socket-timeout",
-        "12",
+        "10",
         "-f",
-        "bestaudio[ext=webm][acodec=opus]/bestaudio[ext=ogg]/bestaudio[ext=mp3]",
+        "bestaudio[ext=webm][acodec=opus]/bestaudio[ext=ogg]/bestaudio[ext=mp3]/18/best[ext=mp4]/bestaudio/best",
         "-o",
     ])
     .arg(out_tpl.to_string_lossy().as_ref())
@@ -4373,6 +4489,30 @@ fn resolve_spotify_playable_stream(
                     break;
                 }
             }
+            if chosen_file.is_none() {
+                if let Some(ffmpeg_bin) = resolve_bundled_bin("ffmpeg") {
+                    for ext in ["mp4", "m4a", "aac", "mkv"] {
+                        let raw_path = cache_dir.join(format!("{stem}.{ext}"));
+                        if raw_path.exists() {
+                            let mp3_name = format!("{stem}.mp3");
+                            let mp3_path = cache_dir.join(&mp3_name);
+                            let mut conv = std::process::Command::new(&ffmpeg_bin);
+                            conv.args(["-y", "-loglevel", "error", "-i"])
+                                .arg(&raw_path)
+                                .args(["-vn", "-c:a", "libmp3lame", "-q:a", "2"])
+                                .arg(&mp3_path);
+                            let conv_ok = run_command_output_tracked(&mut conv)
+                                .map(|o| o.status.success())
+                                .unwrap_or(false);
+                            let _ = fs::remove_file(&raw_path);
+                            if conv_ok && mp3_path.exists() {
+                                chosen_file = Some(mp3_name);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -4380,6 +4520,7 @@ fn resolve_spotify_playable_stream(
         let mut fb_cmd = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), ffmpeg_dir.as_ref());
         fb_cmd
             .args([
+                "--check-formats",
                 "--no-playlist",
                 "--socket-timeout",
                 "12",
@@ -4404,7 +4545,7 @@ fn resolve_spotify_playable_stream(
     }
 
     let final_name = chosen_file.ok_or_else(|| {
-        "Could not resolve a playable audio stream for this Spotify track. Try 'Widevine Browser' to play natively.".to_string()
+        "Could not play this Spotify track yet. Check your connection and try again.".to_string()
     })?;
     prune_spotify_bridge_cache(&cache_dir, 15);
 
@@ -4878,11 +5019,11 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_shield_ok_response, import_library_file, is_auth_url, is_service_auth_cookie,
-        is_service_landing_url, is_webkit_native_audio_ext, parse_cookie_json_payload,
-        parse_query_params, persist_service_account, provider_url, prune_spotify_bridge_cache,
-        read_accounts_map, register_child_pid, score_yt_candidate, stable_hash_hex,
-        unregister_child_pid, ACTIVE_CHILD_PIDS, SearchCandidate,
+        apply_shield_ok_response, create_ytdlp_base_command, import_library_file, is_auth_url,
+        is_service_auth_cookie, is_service_landing_url, is_webkit_native_audio_ext,
+        parse_cookie_json_payload, parse_query_params, persist_service_account, provider_url,
+        prune_spotify_bridge_cache, read_accounts_map, register_child_pid, score_yt_candidate,
+        stable_hash_hex, unregister_child_pid, ACTIVE_CHILD_PIDS, SearchCandidate,
     };
     use brave_music_core::library::LibraryDocument;
     use serde_json::json;
@@ -5084,5 +5225,19 @@ mod tests {
         assert!(ACTIVE_CHILD_PIDS.lock().unwrap().contains(&999_991));
         unregister_child_pid(999_991);
         assert!(!ACTIVE_CHILD_PIDS.lock().unwrap().contains(&999_991));
+    }
+
+    #[test]
+    fn ytdlp_base_command_avoids_mweb_403_clients() {
+        let bin = std::path::PathBuf::from("yt-dlp");
+        let ff = std::path::PathBuf::from("/opt/brave-music/backend/bin");
+        let cmd = create_ytdlp_base_command(&bin, Some("quickjs:/opt/qjs"), Some(&ff));
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(args.contains(&"youtube:player_client=web_embedded,tv_simply,android,web".to_string()));
+        assert!(!args.iter().any(|a| a.contains("mweb")));
+        assert!(args.contains(&"quickjs:/opt/qjs".to_string()));
     }
 }

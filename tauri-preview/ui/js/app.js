@@ -2663,12 +2663,12 @@ document.addEventListener('DOMContentLoaded', () => {
     runtimeAudio.muted = state.player.isMuted;
     runtimeAudio.play().catch((err) => {
       console.warn('[SpotifyBridge] Audio play failed:', err);
-      showToast('Spotify audio stream failed to start; try Widevine Browser.');
+      showToast('Spotify audio stream failed to start; please retry.');
       syncSpotifyBridgeOverlay({
         active: false,
-        status: 'ready',
-        title: 'Brave Music Audio Bridge',
-        artist: 'Stream playback failed'
+        status: 'error',
+        title: 'Spotify Playback Failed',
+        artist: 'Click any track to retry'
       });
     });
 
@@ -2686,7 +2686,7 @@ document.addEventListener('DOMContentLoaded', () => {
       artist: state.player.currentTrack.artist
     });
     syncPlayerToMprisAndMediaSession({ isPlaying: true });
-    showToast(`Playing "${state.player.currentTrack.title}" via Brave Music Engine`);
+    showToast(`Playing "${state.player.currentTrack.title}" in Brave Music`);
   }
 
   async function stepSpotifyBridgeQueue(delta) {
@@ -2722,20 +2722,20 @@ document.addEventListener('DOMContentLoaded', () => {
   window.braveApi?.onSpotifyBridgeStatus?.((st) => {
     if (!st) return;
     if (st.status === 'resolving') {
-      showToast(`Resolving Spotify stream: ${st.title || 'Track'}…`);
+      showToast(`Loading Spotify track: ${st.title || 'Track'}…`);
       syncSpotifyBridgeOverlay({
         active: true,
         status: 'resolving',
-        title: st.title || 'Resolving Spotify stream...',
-        artist: st.artist || 'Brave Music Audio Bridge'
+        title: st.title || 'Loading Spotify track...',
+        artist: st.artist || 'Resolving audio stream...'
       });
     } else if (st.status === 'error') {
-      showToast(st.message || 'Could not resolve Spotify track');
+      showToast(st.message || 'Could not play Spotify track');
       syncSpotifyBridgeOverlay({
         active: false,
-        status: 'ready',
-        title: 'Brave Music Audio Bridge',
-        artist: st.message || 'Try Widevine Browser button'
+        status: 'error',
+        title: 'Spotify Playback',
+        artist: st.message || 'Select a track to play'
       });
     }
   });
@@ -2752,6 +2752,10 @@ document.addEventListener('DOMContentLoaded', () => {
       togglePlayPause();
     } else if (ctrl.action === 'play' && !state.player.isPlaying) {
       togglePlayPause();
+    } else if (ctrl.action === 'next') {
+      stepSpotifyBridgeQueue(1);
+    } else if (ctrl.action === 'prev') {
+      stepSpotifyBridgeQueue(-1);
     }
   });
 
@@ -2818,6 +2822,14 @@ document.addEventListener('DOMContentLoaded', () => {
     playerPlayIcon.style.display = 'block';
     playerPauseIcon.style.display = 'none';
     if (playerWaves) playerWaves.style.display = 'none';
+    if (state.player.currentTrack?.isSpotifyBridge) {
+      syncSpotifyBridgeOverlay({
+        active: false,
+        status: 'error',
+        title: 'Playback Error',
+        artist: 'Click a track to retry'
+      });
+    }
     renderTracksTable();
     showToast('Playback error: unable to decode or read audio stream');
     syncPlayerToMprisAndMediaSession({ isPlaying: false, isStopped: true });

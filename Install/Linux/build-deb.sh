@@ -28,8 +28,8 @@ Section: sound
 Priority: optional
 Architecture: amd64
 Maintainer: Brave Music Team <support@bravemusic.org>
-Depends: libwebkit2gtk-4.1-0, libgtk-3-0, libsoup-3.0-0
-Recommends: yt-dlp, ffmpeg, python3
+Depends: libwebkit2gtk-4.1-0, libgtk-3-0, libsoup-3.0-0, python3
+Recommends: yt-dlp, ffmpeg
 Description: Brave Music OTT Platform
  Native Rust + WebKitGTK desktop platform for ad-free YouTube Music, Spotify
  playlist resolution, high-bitrate offline audio downloading, and local playback.
