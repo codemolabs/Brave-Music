@@ -80,6 +80,12 @@ class AuthSyncService {
           const cookieFile = fs.existsSync(c1) ? c1 : (fs.existsSync(c2) ? c2 : null);
           if (!cookieFile) continue;
 
+          try {
+            fs.accessSync(cookieFile, fs.constants.R_OK);
+          } catch (e) {
+            continue;
+          }
+
           let mtimeMs = 0;
           try {
             mtimeMs = fs.statSync(cookieFile).mtimeMs || 0;
@@ -104,18 +110,53 @@ class AuthSyncService {
       return b.mtimeMs - a.mtimeMs;
     });
 
-    // Also append firefox fallback if installed
-    if (fs.existsSync(path.join(home, '.mozilla/firefox')) || fs.existsSync(path.join(home, 'snap/firefox'))) {
-      profiles.push({
-        browser: 'firefox',
-        profilePath: null,
-        targetArg: 'firefox',
-        isDefaultFamily: defaultFamily === 'firefox',
-        mtimeMs: 0
-      });
+    // Also append firefox fallback only if its profile folder is actually readable
+    for (const ffDir of [path.join(home, '.mozilla/firefox'), path.join(home, 'snap/firefox/common/.mozilla/firefox')]) {
+      try {
+        if (fs.existsSync(ffDir)) {
+          fs.accessSync(ffDir, fs.constants.R_OK | fs.constants.X_OK);
+          const ffEntries = fs.readdirSync(ffDir);
+          if (ffEntries.length > 0) {
+            profiles.push({
+              browser: 'firefox',
+              profilePath: null,
+              targetArg: 'firefox',
+              isDefaultFamily: defaultFamily === 'firefox',
+              mtimeMs: 0
+            });
+            break;
+          }
+        }
+      } catch (e) {}
     }
 
     return profiles;
+  }
+
+  isSnapConfined() {
+    return Boolean(process.env.SNAP);
+  }
+
+  hasAccessibleHostBrowsers() {
+    if (process.platform === 'win32' || process.platform === 'darwin') {
+      return { accessible: true, isSnap: false, profiles: this.discoverBrowserProfiles() };
+    }
+    const profiles = this.discoverBrowserProfiles();
+    return {
+      accessible: profiles.length > 0,
+      isSnap: this.isSnapConfined(),
+      profiles
+    };
+  }
+
+  getAuthCapabilities() {
+    const hostInfo = this.hasAccessibleHostBrowsers();
+    return {
+      isSnap: hostInfo.isSnap,
+      hostSyncAvailable: hostInfo.accessible,
+      accessibleProfileCount: hostInfo.profiles.length,
+      defaultBrowserFamily: this.getDefaultDesktopBrowserFamily() || ''
+    };
   }
 
   getDefaultBrowserTarget() {

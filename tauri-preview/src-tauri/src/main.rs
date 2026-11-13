@@ -1373,6 +1373,234 @@ else:
     serde_json::from_slice::<SpotifyEmbedMetadata>(&output.stdout).ok()
 }
 
+#[derive(Debug, Clone)]
+struct SearchCandidate<'a> {
+    id: &'a str,
+    title: &'a str,
+    uploader: &'a str,
+    duration: i64,
+    url: &'a str,
+    is_live: bool,
+}
+
+fn score_yt_candidate(cand: &SearchCandidate, target_title: &str, target_artist: &str, target_duration: i64, is_video: bool) -> i32 {
+    if cand.id.is_empty() || cand.is_live || cand.duration > 900 {
+        return -500;
+    }
+    let cand_title = cand.title.to_lowercase();
+    let cand_uploader = cand.uploader.to_lowercase();
+    let t_title = target_title.to_lowercase();
+    let primary_artist = target_artist
+        .split(|c| c == ',' || c == ';' || c == '&')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_lowercase();
+
+    if cand.url.contains("/shorts/") || cand_title.contains("#shorts") {
+        return -250;
+    }
+
+    let mut score: i32 = 0;
+    if cand_uploader.ends_with("- topic") || cand_title.contains("provided to youtube") {
+        score += if is_video { 15 } else { 42 };
+    } else if cand_uploader.contains("vevo") {
+        score += if is_video { 36 } else { 22 };
+    }
+
+    if !primary_artist.is_empty() && primary_artist != "unknown artist" && (cand_uploader.contains(&primary_artist) || cand_title.contains(&primary_artist)) {
+        score += 24;
+    }
+
+    let tokens: Vec<String> = t_title
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() >= 2)
+        .map(|w| w.to_string())
+        .collect();
+    if !tokens.is_empty() {
+        let matched = tokens.iter().filter(|w| cand_title.contains(w.as_str())).count();
+        score += ((matched as f32 / tokens.len() as f32) * 32.0).round() as i32;
+    }
+
+    if target_duration > 15 && cand.duration > 0 {
+        let diff = (cand.duration - target_duration).abs();
+        if diff <= 4 {
+            score += 26;
+        } else if diff <= 12 {
+            score += 14;
+        } else if diff <= 25 {
+            score += 4;
+        } else if diff > 60 {
+            score -= 36;
+        }
+    }
+
+    if is_video {
+        if cand_title.contains("official music video") || cand_title.contains("official video") {
+            score += 16;
+        }
+    } else if cand_title.contains("official audio") || cand_title.contains("audio") {
+        score += 14;
+    }
+
+    for tag in [
+        "slowed", "reverb", "nightcore", "8d ", "sped up", "karaoke",
+        "instrumental", "cover", "reaction", "parody", "live at", "concert", "teaser", "trailer", "remix",
+    ] {
+        if cand_title.contains(tag) && !t_title.contains(tag.trim()) {
+            score -= 45;
+        }
+    }
+
+    score
+}
+
+fn resolve_best_spotify_youtube_url(ytdlp_bin: &PathBuf, title: &str, artist: &str, target_duration: i64, is_video: bool) -> String {
+    let suffix = if is_video { "official music video" } else { "official audio" };
+    let search_query = format!("ytsearch5:{} {} {}", title, artist, suffix);
+    let output = std::process::Command::new(ytdlp_bin)
+        .arg("--ignore-config")
+        .arg("--no-update")
+        .arg("--no-warnings")
+        .arg("--dump-single-json")
+        .arg("--flat-playlist")
+        .arg("--socket-timeout")
+        .arg("10")
+        .arg(&search_query)
+        .output();
+
+    if let Ok(out) = output {
+        if out.status.success() {
+            if let Ok(val) = serde_json::from_slice::<Value>(&out.stdout) {
+                if let Some(entries) = val.get("entries").and_then(|e| e.as_array()) {
+                    let mut best_id = String::new();
+                    let mut best_score = i32::MIN;
+                    for entry in entries {
+                        let id = entry.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                        let e_title = entry.get("title").and_then(|v| v.as_str()).unwrap_or("");
+                        let uploader = entry.get("uploader").or_else(|| entry.get("channel")).and_then(|v| v.as_str()).unwrap_or("");
+                        let dur = entry.get("duration").and_then(|v| v.as_f64()).map(|d| d.round() as i64).unwrap_or(0);
+                        let e_url = entry.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                        let is_live = entry.get("live_status").and_then(|v| v.as_str()) == Some("is_live");
+                        let s = score_yt_candidate(&SearchCandidate { id, title: e_title, uploader, duration: dur, url: e_url, is_live }, title, artist, target_duration, is_video);
+                        if !id.is_empty() && s > best_score {
+                            best_score = s;
+                            best_id = id.to_string();
+                        }
+                    }
+                    if !best_id.is_empty() && best_score > -100 {
+                        return format!("https://www.youtube.com/watch?v={}", best_id);
+                    }
+                }
+            }
+        }
+    }
+
+    format!("ytsearch1:{} {} {}", title, artist, suffix)
+}
+
+#[tauri::command]
+fn get_recommendations(app_handle: tauri::AppHandle, current_track_id: Option<String>, limit: Option<usize>) -> Result<Value, String> {
+    let max_items = limit.unwrap_or(6).min(12);
+    let doc = read_library(&app_handle).unwrap_or_default();
+    let cur_id = current_track_id.unwrap_or_default();
+
+    let mut owned_titles = std::collections::HashSet::new();
+    let mut owned_ids = std::collections::HashSet::new();
+    let mut artist_counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+
+    for t in &doc.tracks {
+        let title = t.get("title").and_then(|v| v.as_str()).unwrap_or("");
+        let lower_title = title.to_lowercase();
+        if lower_title.contains("never gonna give you up") {
+            continue;
+        }
+        owned_titles.insert(lower_title);
+        if let Some(oid) = t.get("originalId").and_then(|v| v.as_str()) {
+            owned_ids.insert(oid.to_string());
+        }
+        let artist = t.get("artist").and_then(|v| v.as_str()).unwrap_or("").split(|c| c == ',' || c == ';' || c == '&').next().unwrap_or("").trim();
+        if !artist.is_empty() && !artist.eq_ignore_ascii_case("unknown artist") && !artist.eq_ignore_ascii_case("brave music") {
+            let bonus = if t.get("id").and_then(|v| v.as_str()) == Some(cur_id.as_str()) { 5 } else { 1 };
+            *artist_counts.entry(artist.to_string()).or_insert(0) += bonus;
+        }
+    }
+
+    let mut ranked_artists: Vec<(String, i32)> = artist_counts.into_iter().collect();
+    ranked_artists.sort_by(|a, b| b.1.cmp(&a.1));
+    let seed_artists: Vec<String> = ranked_artists.into_iter().take(3).map(|(a, _)| a).collect();
+
+    let mut items: Vec<Value> = Vec::new();
+    if let Some(seed_artist) = seed_artists.first() {
+        if let Some(ytdlp_bin) = resolve_bundled_bin("yt-dlp") {
+            if let Ok(out) = std::process::Command::new(&ytdlp_bin)
+                .args(["--ignore-config", "--no-update", "--no-warnings", "--dump-single-json", "--flat-playlist", "--socket-timeout", "8", &format!("ytsearch6:{} official audio mix", seed_artist)])
+                .output()
+            {
+                if out.status.success() {
+                    if let Ok(val) = serde_json::from_slice::<Value>(&out.stdout) {
+                        if let Some(entries) = val.get("entries").and_then(|e| e.as_array()) {
+                            for entry in entries {
+                                let id = entry.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                let title = entry.get("title").and_then(|v| v.as_str()).unwrap_or("");
+                                let dur = entry.get("duration").and_then(|v| v.as_f64()).map(|d| d.round() as i64).unwrap_or(0);
+                                if id.is_empty() || title.is_empty() || owned_ids.contains(id) || owned_titles.contains(&title.to_lowercase()) || dur > 600 || (dur > 0 && dur < 70) {
+                                    continue;
+                                }
+                                let uploader = entry.get("uploader").and_then(|v| v.as_str()).unwrap_or(seed_artist);
+                                owned_ids.insert(id.to_string());
+                                owned_titles.insert(title.to_lowercase());
+                                items.push(serde_json::json!({
+                                    "id": id,
+                                    "title": title,
+                                    "artist": uploader.replace(" - Topic", ""),
+                                    "duration": dur,
+                                    "thumbnail": format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id),
+                                    "url": format!("https://www.youtube.com/watch?v={}", id),
+                                    "reason": format!("Inspired by {}", seed_artist),
+                                    "source": "youtube"
+                                }));
+                                if items.len() >= max_items {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if items.is_empty() {
+        let starters = [
+            ("4NRXx6U8ABQ", "Blinding Lights", "The Weeknd", "Synth-Pop Classic"),
+            ("dX3k_QDnzHE", "Midnight City", "M83", "Electronic Anthem"),
+            ("TUVcZfQe-Kw", "Levitating", "Dua Lipa", "Upbeat Pop"),
+            ("34Na4j8AVgA", "Starboy", "The Weeknd ft. Daft Punk", "Essential Mix"),
+        ];
+        for (id, title, artist, reason) in starters {
+            if !owned_titles.contains(&title.to_lowercase()) {
+                items.push(serde_json::json!({
+                    "id": id,
+                    "title": title,
+                    "artist": artist,
+                    "thumbnail": format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id),
+                    "url": format!("https://www.youtube.com/watch?v={}", id),
+                    "reason": reason,
+                    "source": "youtube"
+                }));
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "success": true,
+        "mode": if seed_artists.is_empty() { "starter" } else { "personalized" },
+        "seedArtists": seed_artists,
+        "items": items
+    }))
+}
+
 fn fetch_youtube_playlist_queue(ytdlp_bin: &PathBuf, url: &str) -> Option<(String, String, Vec<(String, Option<SpotifyEmbedTrack>)>)> {
     let trimmed = url.trim();
     let list_pos = trimmed.to_lowercase().find("list=")?;
@@ -1493,12 +1721,12 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
                     let _ = write_library(&app_handle, &doc);
                     let _ = app_handle.emit("library-updated", serde_json::json!({ "status": "playlist_created", "name": target_playlist }));
                 }
-                let suffix = if requested_format.contains("video") { "official music video" } else { "official audio" };
+                let is_vid = requested_format.contains("video");
                 meta.tracks
                     .iter()
                     .map(|t| {
                         (
-                            format!("ytsearch1:{} {} {}", t.title, t.artist, suffix),
+                            resolve_best_spotify_youtube_url(&ytdlp_bin, &t.title, &t.artist, t.duration as i64, is_vid),
                             Some(SpotifyEmbedTrack {
                                 title: t.title.clone(),
                                 artist: t.artist.clone(),
@@ -1511,9 +1739,9 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
             } else if is_spotify_collection {
                 return Err("Could not extract tracks from this Spotify playlist or mix. For personalized mixes (Daily Mix, Blend, Daylist), sign in to Spotify in Brave Music first.".to_string());
             } else if let Some(first) = meta.tracks.first() {
-                let suffix = if requested_format.contains("video") { "official music video" } else { "official audio" };
+                let is_vid = requested_format.contains("video");
                 vec![(
-                    format!("ytsearch1:{} {} {}", first.title, first.artist, suffix),
+                    resolve_best_spotify_youtube_url(&ytdlp_bin, &first.title, &first.artist, first.duration as i64, is_vid),
                     Some(SpotifyEmbedTrack {
                         title: first.title.clone(),
                         artist: first.artist.clone(),
@@ -2287,6 +2515,7 @@ fn main() {
             eval_script,
             start_download,
             cancel_download,
+            get_recommendations,
             open_provider,
             open_external,
             open_folder,
@@ -2304,7 +2533,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{import_library_file, provider_url};
+    use super::{import_library_file, provider_url, score_yt_candidate, SearchCandidate};
     use brave_music_core::library::LibraryDocument;
     use serde_json::json;
     use std::fs;
@@ -2367,5 +2596,28 @@ mod tests {
             fs::read_to_string(&source).unwrap(),
             fs::read_to_string(&backup).unwrap()
         );
+    }
+
+    #[test]
+    fn scores_official_audio_higher_than_slowed_or_cover_variants() {
+        let official = SearchCandidate {
+            id: "abc123",
+            title: "Blinding Lights",
+            uploader: "The Weeknd - Topic",
+            duration: 200,
+            url: "https://www.youtube.com/watch?v=abc123",
+            is_live: false,
+        };
+        let slowed_cover = SearchCandidate {
+            id: "xyz999",
+            title: "Blinding Lights (Slowed + Reverb Cover)",
+            uploader: "Random Edits",
+            duration: 245,
+            url: "https://www.youtube.com/watch?v=xyz999",
+            is_live: false,
+        };
+        let s_official = score_yt_candidate(&official, "Blinding Lights", "The Weeknd", 200, false);
+        let s_bad = score_yt_candidate(&slowed_cover, "Blinding Lights", "The Weeknd", 200, false);
+        assert!(s_official > s_bad + 50, "expected official ({}) >> variant ({})", s_official, s_bad);
     }
 }

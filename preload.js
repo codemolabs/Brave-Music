@@ -37,9 +37,10 @@ contextBridge.exposeInMainWorld('braveApi', {
   showInFolder: (filename) => ipcRenderer.invoke('show-in-folder', filename),
   openDownloadsFolder: () => ipcRenderer.invoke('open-folder'),
 
-  // Offline Audio Download Engine
+  // Offline Audio Download Engine & Recommendations
   startDownload: (params) => ipcRenderer.invoke('start-download', params),
   cancelDownload: (downloadId) => ipcRenderer.invoke('cancel-download', downloadId),
+  getRecommendations: (params = {}) => ipcRenderer.invoke('get-recommendations', params),
   onDownloadProgress: (callback) => {
     const handler = (event, data) => callback(data);
     ipcRenderer.on('download-progress', handler);

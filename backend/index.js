@@ -77,9 +77,13 @@ class Backend {
     // App Version & Meta
     ipcMain.handle('get-app-version', () => require('../package.json').version || '1.0.1');
 
-    // Downloads
+    // Downloads & Recommendations
     ipcMain.handle('start-download', (event, payload) => downloadController.startDownload(event, payload));
     ipcMain.handle('cancel-download', (event, downloadId) => downloadController.cancelDownload(event, downloadId));
+    ipcMain.handle('get-recommendations', (event, payload) => {
+      const downloadService = require('./services/DownloadService');
+      return downloadService.getSmartRecommendations(payload || {});
+    });
 
     // Library & Storage
     ipcMain.handle('get-library', () => libraryController.getLibrary());

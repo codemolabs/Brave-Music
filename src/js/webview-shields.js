@@ -353,8 +353,8 @@ function runShields() {
         return rawFetch.apply(this, args);
       }
 
-      // A. YouTube: intercept /youtubei/v1/player and /youtubei/v1/next responses
-      if (isYouTube && (url.includes('/youtubei/v1/player') || url.includes('/youtubei/v1/next'))) {
+      // A. YouTube: inspect /youtubei/v1/player responses ONLY (never alter /v1/next Up Next / Mix recommendations)
+      if (isYouTube && url.includes('/youtubei/v1/player')) {
         try {
           const res = await rawFetch.apply(this, args);
           const clone = res.clone();
@@ -420,10 +420,7 @@ function runShields() {
   };
 
   XMLHttpRequest.prototype.send = function(body) {
-    if (isYouTube && this._requestUrl && (
-      this._requestUrl.includes('/youtubei/v1/player') ||
-      this._requestUrl.includes('/youtubei/v1/next')
-    )) {
+    if (isYouTube && this._requestUrl && this._requestUrl.includes('/youtubei/v1/player')) {
       this.addEventListener('readystatechange', () => {
         if (this.readyState === 4 && this.status === 200) {
           try {

@@ -86,7 +86,7 @@ class DownloadService {
             if (attempt < retries) continue;
           }
         }
-      } catch {}
+      } catch { }
 
       try {
         const result = await new Promise((resolve, reject) => {
@@ -151,7 +151,7 @@ class DownloadService {
         const canon = resp.body.match(/https:\/\/open\.spotify\.com\/(?:intl-[a-z-]+\/)?(playlist|album|track|artist|episode)\/[a-zA-Z0-9]+/i);
         if (canon) return canon[0];
       }
-    } catch {}
+    } catch { }
     return trimmed;
   }
 
@@ -168,7 +168,7 @@ class DownloadService {
           }
         }
       }
-    } catch {}
+    } catch { }
 
     try {
       const sessionFile = path.join(config.paths.configDir, 'spotify_session.json');
@@ -181,7 +181,7 @@ class DownloadService {
           return parsed.sp_dc;
         }
       }
-    } catch {}
+    } catch { }
 
     return '';
   }
@@ -492,7 +492,7 @@ class DownloadService {
     if (entity && Array.isArray(entity.trackList) && entity.trackList.length > 0) {
       const name = (entity.name || entity.title || `Spotify ${type}`).trim();
       const coverUrl = entity.coverArt?.sources?.[0]?.url ||
-                       entity.visualIdentity?.image?.[0]?.url || '';
+        entity.visualIdentity?.image?.[0]?.url || '';
       const tracks = entity.trackList
         .map((t, index) => ({
           title: t.title || t.name,
@@ -552,10 +552,15 @@ class DownloadService {
         const thumb = embedEntity.coverArt?.sources?.[0]?.url ||
           embedEntity.visualIdentity?.image?.[0]?.url || '';
 
+        const rawDur = embedEntity.duration || 0;
+        const durationSec = rawDur > 10000 ? Math.round(rawDur / 1000) : Math.round(rawDur);
+
         if (title) {
+          const trackSeed = { title, artist, duration: durationSec };
+          const bestUrl = await this.resolveBestYouTubeMatch(trackSeed, isVideo);
           const query = artist ? `${title} ${artist} ${suffix}` : `${title} ${suffix}`;
           return {
-            url: `ytsearch1:${query}`,
+            url: bestUrl || `ytsearch1:${query}`,
             isSpotify: true,
             spotifyTitle: title,
             spotifyArtist: artist,
@@ -865,7 +870,7 @@ class DownloadService {
     await new Promise((resolve) => {
       const child = spawn(ffmpegBin, args, this.getYtDlpSpawnOptions());
       const timer = setTimeout(() => {
-        try { child.kill('SIGKILL'); } catch {}
+        try { child.kill('SIGKILL'); } catch { }
         resolve();
       }, 15000);
       child.on('close', (code) => {
@@ -874,16 +879,16 @@ class DownloadService {
           try {
             fs.renameSync(tmpOut, filepath);
           } catch {
-            try { fs.unlinkSync(tmpOut); } catch {}
+            try { fs.unlinkSync(tmpOut); } catch { }
           }
         } else {
-          try { if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut); } catch {}
+          try { if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut); } catch { }
         }
         resolve();
       });
       child.on('error', () => {
         clearTimeout(timer);
-        try { if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut); } catch {}
+        try { if (fs.existsSync(tmpOut)) fs.unlinkSync(tmpOut); } catch { }
         resolve();
       });
     });
@@ -903,6 +908,264 @@ class DownloadService {
       `ytsearch1:${cleanTitle} ${primaryArtist}`.trim()
     ];
     return [...new Set(queries.filter(q => q.length > 'ytsearch1:'.length))];
+  }
+
+  // Score a yt-dlp flat search entry against desired Spotify/recommended metadata
+  scoreSearchCandidate(entry, target = {}, isVideo = false) {
+    if (!entry || !entry.id) return -999;
+    const candTitle = String(entry.title || '').toLowerCase();
+    const candUploader = String(entry.uploader || entry.channel || '').toLowerCase();
+    const candDuration = Number(entry.duration) || 0;
+    const targetTitle = String(target.title || '').toLowerCase();
+    const targetArtist = String(target.artist || '').replace(/^unknown artist$/i, '').toLowerCase();
+    const primaryArtist = targetArtist.split(/[,;&]/)[0]?.trim() || targetArtist;
+    const targetDuration = Number(target.duration) || 0;
+
+    // Exclude live streams and ridiculously long compilations (> 15 min) for single tracks
+    if (entry.live_status === 'is_live' || candDuration > 900) return -500;
+    if (String(entry.url || '').includes('/shorts/') || candTitle.includes('#shorts')) return -250;
+
+    let score = 0;
+
+    // 1. Official distributor / artist channel signals
+    if (candUploader.endsWith('- topic') || candTitle.includes('provided to youtube')) {
+      score += isVideo ? 15 : 42;
+    } else if (candUploader.includes('vevo')) {
+      score += isVideo ? 36 : 22;
+    }
+    if (primaryArtist && (candUploader.includes(primaryArtist) || candTitle.includes(primaryArtist))) {
+      score += 24;
+    }
+
+    // 2. Title token overlap
+    const titleTokens = targetTitle
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length >= 2);
+    if (titleTokens.length > 0) {
+      const matched = titleTokens.filter((w) => candTitle.includes(w)).length;
+      score += Math.round((matched / titleTokens.length) * 32);
+    }
+
+    // 3. Duration match (crucial to avoid snippets, sped-up edits, or full albums)
+    if (targetDuration > 15 && candDuration > 0) {
+      const diff = Math.abs(candDuration - targetDuration);
+      if (diff <= 4) score += 26;
+      else if (diff <= 12) score += 14;
+      else if (diff <= 25) score += 4;
+      else if (diff > 60) score -= 36;
+    }
+
+    // 4. Format intent match
+    if (isVideo) {
+      if (candTitle.includes('official music video') || candTitle.includes('official video')) score += 16;
+    } else {
+      if (candTitle.includes('official audio') || candTitle.includes('audio')) score += 14;
+    }
+
+    // 5. Penalize unwanted derivative edits unless explicitly part of source track title
+    const unwantedTags = [
+      'slowed', 'reverb', 'nightcore', '8d ', 'sped up', 'karaoke',
+      'instrumental', 'cover', 'reaction', 'parody', 'live at', 'concert', 'teaser', 'trailer', 'remix'
+    ];
+    for (const tag of unwantedTags) {
+      if (candTitle.includes(tag) && !targetTitle.includes(tag.trim())) {
+        score -= 45;
+      }
+    }
+
+    return score;
+  }
+
+  // Fast metadata-only flat search using yt-dlp (returns normalized entry list)
+  searchYtCandidates(searchQuery, timeoutMs = 12000) {
+    return new Promise((resolve) => {
+      if (!config.paths.hasYtDlp || !searchQuery) return resolve([]);
+      let out = '';
+      let settled = false;
+      const args = [
+        '--ignore-config',
+        '--no-update',
+        '--no-warnings',
+        '--dump-single-json',
+        '--flat-playlist',
+        '--socket-timeout', '10',
+        searchQuery
+      ];
+      const child = spawn(config.paths.ytdlpBin, args, this.getYtDlpSpawnOptions());
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try { child.kill('SIGKILL'); } catch {}
+          resolve([]);
+        }
+      }, timeoutMs);
+
+      child.stdout.on('data', (c) => { out += c.toString(); });
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (settled) return;
+        settled = true;
+        if (code !== 0 || !out.trim()) return resolve([]);
+        try {
+          const data = JSON.parse(out);
+          const entries = Array.isArray(data.entries) ? data.entries : [data];
+          resolve(entries.filter((e) => e && e.id));
+        } catch {
+          resolve([]);
+        }
+      });
+      child.on('error', () => {
+        clearTimeout(timer);
+        if (!settled) {
+          settled = true;
+          resolve([]);
+        }
+      });
+    });
+  }
+
+  // Pick the highest-scoring official YouTube stream for a Spotify track
+  async resolveBestYouTubeMatch(track, isVideo = false) {
+    try {
+      const rawTitle = String(track?.title || '').trim();
+      const rawArtist = String(track?.artist || '').replace(/^Unknown Artist$/i, '').trim();
+      if (!rawTitle) return null;
+      const cleanTitle = rawTitle.replace(/\s*[\(\[](?:feat\.?|ft\.?|with|remaster(?:ed)?|explicit)[^\)\]]*[\)\]]/gi, '').trim() || rawTitle;
+      const primaryArtist = rawArtist.split(/[,;&]/)[0]?.trim() || rawArtist;
+      const suffix = isVideo ? 'official music video' : 'official audio';
+      const query = `ytsearch5:${cleanTitle} ${primaryArtist} ${suffix}`.trim();
+
+      const entries = await this.searchYtCandidates(query, 10000);
+      if (!entries || entries.length === 0) return null;
+
+      let bestEntry = null;
+      let bestScore = -Infinity;
+      for (const entry of entries) {
+        const s = this.scoreSearchCandidate(entry, { title: rawTitle, artist: rawArtist, duration: track?.duration || 0 }, isVideo);
+        if (s > bestScore) {
+          bestScore = s;
+          bestEntry = entry;
+        }
+      }
+
+      if (bestEntry && bestEntry.id && bestScore > -100) {
+        return `https://www.youtube.com/watch?v=${bestEntry.id}`;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  // Personalized Recommendation Engine seeded from user's downloaded library + artists
+  async getSmartRecommendations({ currentTrackId = '', limit = 8 } = {}) {
+    const lib = libraryService.getLibrary();
+    const tracks = Array.isArray(lib?.tracks) ? lib.tracks : [];
+    const userTracks = tracks.filter((t) => {
+      if (!t || t.isBuiltIn) return false;
+      const ttl = String(t.title || '').toLowerCase();
+      return !ttl.includes('never gonna give you up');
+    });
+
+    const ownedTitles = new Set(userTracks.map((t) => String(t.title || '').toLowerCase().trim()));
+    const ownedIds = new Set(userTracks.map((t) => String(t.originalId || '')).filter(Boolean));
+
+    // Rank seed artists by track count & recency
+    const artistWeights = new Map();
+    const currentTrack = currentTrackId ? userTracks.find((t) => t.id === currentTrackId) : null;
+    if (currentTrack?.artist) {
+      const primary = currentTrack.artist.split(/[,;&]/)[0]?.trim();
+      if (primary && !/unknown|brave music/i.test(primary)) {
+        artistWeights.set(primary, 10);
+      }
+    }
+    for (const t of userTracks.slice(0, 30)) {
+      const raw = String(t.artist || '').split(/[,;&]/)[0]?.trim();
+      if (!raw || /unknown artist|brave music/i.test(raw)) continue;
+      artistWeights.set(raw, (artistWeights.get(raw) || 0) + 1);
+    }
+
+    const topArtists = [...artistWeights.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([artist]) => artist);
+
+    const results = [];
+    const seenIds = new Set(ownedIds);
+
+    if (topArtists.length > 0 && config.paths.hasYtDlp) {
+      const searches = topArtists.slice(0, 2).map(async (artist) => {
+        const entries = await this.searchYtCandidates(`ytsearch6:${artist} official audio mix`, 9000);
+        return entries.map((e) => ({ entry: e, seedArtist: artist }));
+      });
+
+      const batches = await Promise.all(searches);
+      const candidates = [];
+      for (const batch of batches) {
+        for (const { entry, seedArtist } of batch) {
+          if (!entry?.id || seenIds.has(entry.id)) continue;
+          const dur = Number(entry.duration) || 0;
+          if (dur > 0 && (dur < 70 || dur > 600)) continue;
+          if (String(entry.url || '').includes('/shorts/')) continue;
+
+          const cleaned = this.cleanTrackMetadata({
+            title: entry.title,
+            artist: entry.artist || entry.channel || entry.uploader || seedArtist,
+            uploader: entry.uploader || entry.channel || ''
+          });
+          const normTitle = cleaned.title.toLowerCase().trim();
+          if (!normTitle || ownedTitles.has(normTitle)) continue;
+
+          const lowerRaw = String(entry.title || '').toLowerCase();
+          if (/karaoke|8d |slowed|reverb|reaction|parody|teaser|trailer/i.test(lowerRaw)) continue;
+
+          const s = this.scoreSearchCandidate(entry, { title: cleaned.title, artist: seedArtist, duration: 210 }, false);
+          seenIds.add(entry.id);
+          ownedTitles.add(normTitle);
+          candidates.push({
+            id: entry.id,
+            title: cleaned.title,
+            artist: cleaned.artist || seedArtist,
+            duration: dur,
+            thumbnail: (Array.isArray(entry.thumbnails) && entry.thumbnails.length > 0)
+              ? entry.thumbnails[entry.thumbnails.length - 1].url
+              : `https://i.ytimg.com/vi/${entry.id}/hqdefault.jpg`,
+            url: `https://www.youtube.com/watch?v=${entry.id}`,
+            reason: `Inspired by ${seedArtist}`,
+            score: s,
+            source: 'youtube'
+          });
+        }
+      }
+
+      candidates.sort((a, b) => b.score - a.score);
+      results.push(...candidates.slice(0, limit));
+    }
+
+    // Curated high-signal fallback when user has no downloaded tracks yet or is offline
+    const curatedStarterPicks = [
+      { id: '4NRXx6U8ABQ', title: 'Blinding Lights', artist: 'The Weeknd', duration: 202, thumbnail: 'https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg', url: 'https://www.youtube.com/watch?v=4NRXx6U8ABQ', reason: 'Synth-Pop Classic', source: 'youtube' },
+      { id: 'dX3k_QDnzHE', title: 'Midnight City', artist: 'M83', duration: 244, thumbnail: 'https://i.ytimg.com/vi/dX3k_QDnzHE/hqdefault.jpg', url: 'https://www.youtube.com/watch?v=dX3k_QDnzHE', reason: 'Electronic Anthem', source: 'youtube' },
+      { id: 'TUVcZfQe-Kw', title: 'Levitating', artist: 'Dua Lipa', duration: 203, thumbnail: 'https://i.ytimg.com/vi/TUVcZfQe-Kw/hqdefault.jpg', url: 'https://www.youtube.com/watch?v=TUVcZfQe-Kw', reason: 'Upbeat Pop', source: 'youtube' },
+      { id: 'HCjNJDNzw8Y', title: 'Havana', artist: 'Camila Cabello', duration: 218, thumbnail: 'https://i.ytimg.com/vi/HCjNJDNzw8Y/hqdefault.jpg', url: 'https://www.youtube.com/watch?v=HCjNJDNzw8Y', reason: 'Latin Pop', source: 'youtube' },
+      { id: 'nfWlot6h_JM', title: 'Shake It Off', artist: 'Taylor Swift', duration: 219, thumbnail: 'https://i.ytimg.com/vi/nfWlot6h_JM/hqdefault.jpg', url: 'https://www.youtube.com/watch?v=nfWlot6h_JM', reason: 'High Energy Pop', source: 'youtube' },
+      { id: '34Na4j8AVgA', title: 'Starboy', artist: 'The Weeknd ft. Daft Punk', duration: 230, thumbnail: 'https://i.ytimg.com/vi/34Na4j8AVgA/hqdefault.jpg', url: 'https://www.youtube.com/watch?v=34Na4j8AVgA', reason: 'Essential Mix', source: 'youtube' }
+    ];
+
+    if (results.length === 0) {
+      for (const pick of curatedStarterPicks) {
+        if (!ownedTitles.has(pick.title.toLowerCase()) && !seenIds.has(pick.id)) {
+          results.push(pick);
+        }
+        if (results.length >= limit) break;
+      }
+    }
+
+    return {
+      success: true,
+      mode: topArtists.length > 0 ? 'personalized' : 'starter',
+      seedArtists: topArtists,
+      items: results.slice(0, limit)
+    };
   }
 
   // Shared per-track yt-dlp runner returning parsed RECORD fields on success or null
@@ -1034,7 +1297,10 @@ class DownloadService {
       }
 
       try {
-        const queries = this.buildSpotifyQueries(track, formatOpts.isVideo);
+        const bestMatchUrl = await this.resolveBestYouTubeMatch(track, formatOpts.isVideo);
+        const queries = bestMatchUrl
+          ? [bestMatchUrl, ...this.buildSpotifyQueries(track, formatOpts.isVideo)]
+          : this.buildSpotifyQueries(track, formatOpts.isVideo);
         let dlResult = null;
         for (const query of queries) {
           if (this.canceledDownloads.has(downloadId)) break;

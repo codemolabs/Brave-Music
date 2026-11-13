@@ -144,6 +144,13 @@ const config = {
     get ytdlpBin() {
       return resolveYtDlpBinary();
     },
+    get hasYtDlp() {
+      const bin = resolveYtDlpBinary();
+      if (!bin) return false;
+      if (path.isAbsolute(bin)) return fs.existsSync(bin);
+      const pathDirs = String(process.env.PATH || '').split(path.delimiter).filter(Boolean);
+      return pathDirs.some((d) => fs.existsSync(path.join(d, bin)));
+    },
     get nodeBin() {
       return resolveNodeBinary();
     },

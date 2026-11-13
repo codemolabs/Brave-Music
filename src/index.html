@@ -116,8 +116,7 @@
         id="yt-webview" 
         src="https://music.youtube.com" 
         partition="persist:bravemusic"
-        preload="./js/webview-shields.js"
-        useragent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.280 Safari/537.36">
+        preload="./js/webview-shields.js">
       </webview>
     </section>
 
@@ -127,8 +126,7 @@
         id="spotify-webview" 
         src="https://open.spotify.com" 
         partition="persist:bravemusic"
-        preload="./js/webview-shields.js"
-        useragent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.7778.280 Safari/537.36">
+        preload="./js/webview-shields.js">
       </webview>
     </section>
 
@@ -402,13 +400,32 @@
               </svg>
             </div>
             <h3 class="empty-heading">No Downloaded Music Yet</h3>
-            <p class="empty-desc">Paste any YouTube Music or Spotify song or playlist link above to save high-fidelity offline audio.</p>
-            <div class="quick-samples">
-              <span class="samples-label">Quick test links:</span>
-              <button class="sample-tag" data-url="https://www.youtube.com/watch?v=dQw4w9WgXcQ">Rick Astley - Never Gonna Give You Up</button>
-              <button class="sample-tag" data-url="https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b">The Weeknd - Blinding Lights (Spotify)</button>
-            </div>
+            <p class="empty-desc">Paste any YouTube Music or Spotify song or playlist link above, or pick a recommended track below to start building your offline library.</p>
           </div>
+
+          <!-- Smart Music Recommendations Shelf -->
+          <section class="recommendations-shelf" id="recommendations-shelf" aria-label="Recommended Music">
+            <div class="rec-shelf-header">
+              <div class="rec-shelf-titles">
+                <h2 class="rec-shelf-heading" id="rec-shelf-heading">Recommended For You</h2>
+                <span class="rec-shelf-subtitle" id="rec-shelf-subtitle">Personalized recommendations from your library</span>
+              </div>
+              <div class="rec-shelf-actions">
+                <button class="ghost-btn rec-action-btn" id="btn-play-smart-mix" title="Play a cohesive smart mix from your offline tracks" style="display: none;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                  <span>Play Smart Mix</span>
+                </button>
+                <button class="ghost-btn rec-action-btn" id="btn-refresh-recommendations" title="Refresh recommendations">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                  </svg>
+                  <span>Refresh</span>
+                </button>
+              </div>
+            </div>
+            <div class="rec-cards-grid" id="recommendations-grid"></div>
+          </section>
         </div>
 
         <!-- Library Content: Playlists Bento Grid View -->
@@ -949,14 +966,18 @@
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
               </span>
               <div>
-                <p class="login-step-title">Default Browser Sign-In &amp; Auto-Sync</p>
-                <p class="login-step-desc">Opens your default browser to sign in safely (bypasses Google embedded browser blocks) and automatically syncs your session into Brave Music's browser memory.</p>
+                <p class="login-step-title" id="ytm-login-step-title">Secure Brave Music Sign-In</p>
+                <p class="login-step-desc" id="ytm-login-step-desc">Opens Brave Music's hardened sign-in window (bypasses Google embedded browser blocks and works natively in Snap &amp; desktop installs) and refreshes your music player automatically.</p>
               </div>
             </div>
 
             <button class="btn-primary-login btn-ytm-brand" id="btn-start-ytm-cdp">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
               <span id="btn-ytm-cdp-label">Sign in to YouTube Music</span>
+            </button>
+
+            <button class="btn-secondary-login" id="btn-ytm-inapp-signin" type="button">
+              <span>Use Built-In Secure Sign-In Window Directly</span>
             </button>
 
             <!-- Active feedback & cancel -->
@@ -1031,14 +1052,18 @@
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
               </span>
               <div>
-                <p class="login-step-title">Default Browser Sign-In &amp; Auto-Sync</p>
-                <p class="login-step-desc">Opens your default browser to sign in and automatically syncs your Spotify playlists, favorites, and session into Brave Music's browser memory.</p>
+                <p class="login-step-title" id="spotify-login-step-title">Secure Brave Music Sign-In</p>
+                <p class="login-step-desc" id="spotify-login-step-desc">Opens Brave Music's hardened sign-in window (works natively in Snap &amp; desktop installs) and syncs your Spotify session and playlists automatically.</p>
               </div>
             </div>
 
             <button class="btn-primary-login btn-spotify-brand" id="btn-start-spotify-login">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
               <span id="btn-spotify-login-label">Sign in to Spotify</span>
+            </button>
+
+            <button class="btn-secondary-login" id="btn-spotify-inapp-signin" type="button">
+              <span>Use Built-In Secure Sign-In Window Directly</span>
             </button>
 
             <!-- Active feedback & cancel -->

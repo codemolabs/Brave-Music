@@ -44,11 +44,14 @@ class AuthController {
     }
   }
 
-  // Status check for all services
+  // Status check for all services + environment capabilities (e.g. Snap confinement)
   async getAuthStatus() {
     const serviceStatus = await ytmDevtoolsAuthService.getServiceAuthStatus();
     const oauthStatus = oauthPKCEService.getAuthStatus();
     const savedAccounts = ytmDevtoolsAuthService.getSavedAccounts();
+    const capabilities = typeof authSyncService.getAuthCapabilities === 'function'
+      ? authSyncService.getAuthCapabilities()
+      : { isSnap: Boolean(process.env.SNAP), hostSyncAvailable: false, accessibleProfileCount: 0 };
     return {
       youtube: {
         ...serviceStatus.youtube,
@@ -64,7 +67,8 @@ class AuthController {
         user: oauthStatus.spotify.user || (serviceStatus.spotify.authenticated ? { display_name: savedAccounts.spotify?.name || 'Spotify User' } : null)
       },
       google: oauthStatus.google,
-      accounts: savedAccounts
+      accounts: savedAccounts,
+      capabilities
     };
   }
 

@@ -240,12 +240,19 @@ window.addEventListener('error', (event) => {
     logoutProvider: async () => {},
     importCookiesJson: async () => ({ success: true, message: 'Cookies imported' }),
 
-    // Offline Audio Download Engine
+    // Offline Audio Download Engine & Recommendations
     startDownload: async (params) => {
       window.trackEvent(window.ANALYTICS_EVENTS.DOWNLOAD_CLICKED, { url: params?.url });
       return invoke('start_download', { params });
     },
     cancelDownload: (downloadId) => invoke('cancel_download', { downloadId }),
+    getRecommendations: async (params = {}) => {
+      try {
+        return await invoke('get_recommendations', { currentTrackId: params.currentTrackId || '', limit: params.limit || 6 });
+      } catch {
+        return { success: true, mode: 'starter', seedArtists: [], items: [] };
+      }
+    },
     onDownloadProgress: (callback) => {
       const tauriEvent = window.__TAURI__?.event;
       if (tauriEvent && typeof tauriEvent.listen === 'function') {

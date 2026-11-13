@@ -105,6 +105,13 @@ class MprisService {
 
       this.player.on('raise', () => this.raiseWindow());
       this.player.on('quit', () => this.quitApp());
+      this.player.on('error', (err) => {
+        // Suppress non-fatal DBus confinement warnings (e.g. strict Ubuntu Snap AppArmor)
+        if (this.player && !this._loggedDbusError) {
+          this._loggedDbusError = true;
+          console.warn('[MprisService] DBus notice:', err && err.message ? err.message : String(err));
+        }
+      });
 
       // Set initial state
       this.player.playbackStatus = 'Stopped';

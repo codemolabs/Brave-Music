@@ -39,19 +39,22 @@ This document tracks official version releases, changelogs, binary checksums, an
 - **Self-Contained Media Download & Spotify/YouTube Engine (`backend/bin/`)**:
   - Bundled standalone `yt-dlp` (with embedded `yt_dlp_ejs` JS challenge solver, `mutagen`, `certifi`, `urllib3`, `requests`, and `websockets`), `node` JS runtime shim (`ELECTRON_RUN_AS_NODE=1`), and `glibc 2.31`-compatible `ffmpeg` + `ffprobe` + `libav*.so`/`libsw*.so` directly inside `backend/bin/`.
   - Guarantees zero-dependency, out-of-the-box YouTube Music & Spotify track/playlist downloading and 320kbps MP3/M4A/FLAC conversion inside the strict Ubuntu Snap (`core22`) sandbox as well as Debian `.deb` and Cross-Platform Preview runtimes.
-- **Smart Dual-Mode Authentication & Persistent Browser Memory (`persist:bravemusic`)**:
-  - **Brave Music Sign-In Modal (Top Header Profile Button)**: Opens the system Default Browser to sign in safely (bypassing Google `"This browser or app may not be secure"` blocks) and automatically extracts/syncs authenticated sessions (`__Host-*`, `LOGIN_INFO`, `__Secure-3PAPISID`, `sp_dc`) into Brave Music's persistent browser memory (`persist:bravemusic` + `session.cookies.flushStore()`), with **Emergency Fallback: Import Cookies (`.json`)** included.
-  - **Inside App Web (`#yt-webview` & `#spotify-webview`)**: Navigating or signing in directly inside the embedded player tabs stays in-app without forcing an external browser and automatically persists sessions in browser memory (`syncFromBrowserMemory`), with automatic recovery to the Brave Music Sign-In modal if Google rejects embedded sign-in.
+- **Smart Dual-Mode Authentication & Built-In Secure Sign-In Window (`persist:bravemusic`)**:
+  - **Built-In Hardened Sign-In Window (`src/js/auth-preload.js` + `main.js`)**: Automatically activates inside strict Ubuntu Snap confinement (where host browser cookie databases are isolated) or via the **Use Built-In Secure Sign-In Window Directly** button and embedded OAuth intercepts. Uses consistent Firefox identity + stripped `sec-ch-ua*` Client Hints on `accounts.google.*` to prevent Google `"This browser or app may not be secure"` blocks while keeping modern Chrome headers on music player hosts, waits specifically for YouTube (`LOGIN_INFO` / `__Secure-3PAPISID`) or Spotify (`sp_dc`) session cookies instead of stalling on `"Waiting for Default Browser..."`, and broadcasts `auth-sync-completed` to cleanly reload both music tabs.
+  - **Unconfined Default Browser Auto-Sync + Emergency JSON Fallback**: Unconfined `.deb`/dev installs continue to support host browser sync alongside Emergency `.json` cookie import and MPRIS AppArmor error safety inside Snap (`MprisService.js`).
+- **Recommendation Engine, Smart Shuffle & Candidate-Scored Matching (`DownloadService.js`)**:
+  - **Scored Spotify-to-YouTube Matching (`scoreSearchCandidate` / `resolveBestYouTubeMatch`)**: Evaluates `ytsearch5:` candidates preferring `- Topic` & official audio channels with matching track duration while penalizing slowed/reverb/cover/live/Shorts variants (`-45`).
+  - **Personalized "Recommended For You" Shelf & Smart Shuffle (`get-recommendations`)**: Seeds fresh YouTube recommendations from the user's downloaded library & playing track (with curated starter picks offline), leaves `/youtubei/v1/next` unblocked in `webview-shields.js` for native YouTube Music Up Next mixes, and replaces pure random shuffle with artist/genre affinity + recency weighting (`pickSmartNextTrackIndex`).
 - **Sequential Spotify Mixes / Playlists & YouTube Queue Engine**:
   - Added full support for localized Spotify URLs (`/intl-xx/`), `spotify.link` short links, albums, artists, and personalized Spotify Mixes/Radios via paginated Spotify Pathfinder GraphQL (`fetchPlaylist`, up to 10,000 tracks at 100/page) authenticated with `sp_dc` session cookies when needed, blocking broken 1-track oEmbed fallbacks.
   - Preserved seed video parameters for YouTube / YouTube Music Radio Mixes (`?v=...&list=RD...`) and enforced sequential `1..N` ordering across backend metadata, `LibraryService.syncPlaylistSequence`, `Play All` playback, and Rust preview (`brave-music-linux-preview`).
   - Upgraded MP3 downloads to target 320kbps CBR/V0 with clean ID3v2.3 metadata tagging (`title`, `artist`, `album`, `track=N/Total`) written directly via bundled `ffmpeg`, relaxed YouTube Music search fallbacks, and updated `web_embedded,web,default` extraction flags.
   - Upgraded the Offline Library & Collections UI with Bento collection cards (2x2 album art collages, Spotify/YouTube source pills, duration & format summaries), crisp format pills (`MP3`, `FLAC`, `M4A`, `VIDEO`), clickable collection links, and auto-switching to Full Playlist mode on pasted collection URLs.
-- **Official Linux Packages & Checksums (SHA-256)**:
+- **Official Linux Packages & Checksums (SHA-256)** (`v1.0.19-r10`):
   - **Ubuntu Snap Package (`.snap` — Official Recommended)**: `Install/Linux/brave-music_1.0.19-r_amd64.snap`
-    - SHA-256: `453b4c6b171c3be63a67c2bc2624891816a99a6e47a2f37d3d894bb3a211ad9c`
+    - SHA-256: `984ac7d1fb9967e578fca25f88d83b79a94df4066d6d89f390aeb3909f133340`
   - **Debian Package (`.deb`)**: `Install/Linux/brave-music_1.0.19-r_amd64.deb`
-    - SHA-256: `62cbbccf217051533ed229243b1969aa2836061a5a30df51137871d78fa31bbc`
+    - SHA-256: `4477a055f1977e9f90ea9a8dbfdaae4dc14fce68b37088c408be604b4fee2ed6`
 
 ### Release v1.0.18
 

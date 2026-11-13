@@ -8,7 +8,24 @@ const backend = require('./backend');
 const CHROME_FULL_VERSION = (process.versions && process.versions.chrome) ? process.versions.chrome : '148.0.7778.280';
 const CHROME_MAJOR_VERSION = CHROME_FULL_VERSION.split('.')[0] || '148';
 const CHROME_USER_AGENT = `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_FULL_VERSION} Safari/537.36`;
+const FIREFOX_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64; rv:136.0) Gecko/20100101 Firefox/136.0';
 const SHARED_PARTITION = 'persist:bravemusic';
+
+function isGoogleAuthRequestUrl(targetUrl) {
+  if (!targetUrl || typeof targetUrl !== 'string') return false;
+  try {
+    const host = new URL(targetUrl).hostname.toLowerCase();
+    return (
+      host === 'accounts.google.com' ||
+      host.startsWith('accounts.google.') ||
+      host === 'accounts.youtube.com' ||
+      host.startsWith('myaccount.google.') ||
+      host === 'consent.google.com'
+    );
+  } catch (e) {
+    return false;
+  }
+}
 
 // Enforce single instance lock: prevent opening duplicate separate app instances
 if (app) {
@@ -71,7 +88,126 @@ function isAuthUrl(targetUrl) {
          (lower.includes('spotify.com') && (lower.includes('/login') || lower.includes('/signup') || lower.includes('/authorize')));
 }
 
-// Capability-Based System Browser Authentication Trigger
+// Capability-Based & Hardened In-App Sign-In Window Manager
+let interactiveAuthWindow = null;
+
+function closeInteractiveAuthWindow() {
+  if (interactiveAuthWindow && !interactiveAuthWindow.isDestroyed()) {
+    try { interactiveAuthWindow.close(); } catch (e) {}
+  }
+  interactiveAuthWindow = null;
+}
+
+function openInteractiveAuthWindow({ service = 'youtube', url = '', onClosed = null } = {}) {
+  const normalizedService = (service || '').toLowerCase() === 'spotify' ? 'spotify' : 'youtube';
+  const startUrl = url || (
+    normalizedService === 'spotify'
+      ? 'https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F'
+      : 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F'
+  );
+
+  if (interactiveAuthWindow && !interactiveAuthWindow.isDestroyed()) {
+    try {
+      interactiveAuthWindow.show();
+      interactiveAuthWindow.focus();
+      interactiveAuthWindow.loadURL(startUrl);
+    } catch (e) {}
+    return interactiveAuthWindow;
+  }
+
+  const authWin = new BrowserWindow({
+    title: `Brave Music — ${normalizedService === 'spotify' ? 'Spotify' : 'YouTube Music'} Sign In`,
+    width: 540,
+    height: 700,
+    minWidth: 420,
+    minHeight: 540,
+    parent: (mainWindow && !mainWindow.isDestroyed()) ? mainWindow : undefined,
+    autoHideMenuBar: true,
+    backgroundColor: '#0b0d13',
+    webPreferences: {
+      partition: SHARED_PARTITION,
+      preload: path.join(__dirname, 'src', 'js', 'auth-preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false
+    },
+    icon: fs.existsSync(path.join(__dirname, 'src', 'assets', 'app-icon.png'))
+      ? path.join(__dirname, 'src', 'assets', 'app-icon.png')
+      : path.join(__dirname, 'src', 'assets', 'app-icon.svg')
+  });
+
+  interactiveAuthWindow = authWin;
+
+  // Apply Firefox identity proactively for Google auth hosts and Chrome for streaming hosts
+  const applyPerUrlUa = (targetUrl) => {
+    try {
+      if (isGoogleAuthRequestUrl(targetUrl)) {
+        authWin.webContents.setUserAgent(FIREFOX_USER_AGENT);
+      } else {
+        authWin.webContents.setUserAgent(CHROME_USER_AGENT);
+      }
+    } catch (e) {}
+  };
+
+  authWin.webContents.on('did-start-navigation', (e, navUrl) => {
+    applyPerUrlUa(navUrl);
+  });
+
+  authWin.webContents.on('did-finish-load', async () => {
+    try {
+      const current = authWin.webContents.getURL() || '';
+      const ytmDevtoolsAuthService = require('./backend/services/YTMDevtoolsAuthService');
+      const mem = await ytmDevtoolsAuthService.syncFromBrowserMemory(normalizedService);
+      const isDone = normalizedService === 'spotify' ? mem.spotify : mem.ytm;
+      const landedHome = normalizedService === 'spotify'
+        ? current.startsWith('https://open.spotify.com')
+        : (current.startsWith('https://music.youtube.com') || current.startsWith('https://www.youtube.com'));
+
+      if (isDone && landedHome) {
+        ytmDevtoolsAuthService.saveUserAccount(normalizedService, {
+          name: normalizedService === 'spotify' ? 'Spotify Account' : 'YouTube Music Account',
+          email: normalizedService === 'spotify' ? 'Active Spotify Session' : 'Active Google Session',
+          authenticated: true,
+          source: 'secure-window'
+        });
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('auth-sync-completed', { service: normalizedService, count: normalizedService === 'spotify' ? mem.spotifyCount : mem.ytmCount });
+        }
+        setTimeout(() => {
+          if (interactiveAuthWindow === authWin) closeInteractiveAuthWindow();
+        }, 350);
+      }
+    } catch (e) {}
+  });
+
+  authWin.webContents.setWindowOpenHandler(({ url: popupUrl }) => {
+    if (!popupUrl) return { action: 'deny' };
+    if (isAuthUrl(popupUrl) || popupUrl.includes('youtube.com') || popupUrl.includes('spotify.com') || popupUrl.includes('google.')) {
+      applyPerUrlUa(popupUrl);
+      authWin.loadURL(popupUrl);
+      return { action: 'deny' };
+    }
+    shell.openExternal(popupUrl);
+    return { action: 'deny' };
+  });
+
+  authWin.on('closed', () => {
+    if (interactiveAuthWindow === authWin) {
+      interactiveAuthWindow = null;
+    }
+    if (typeof onClosed === 'function') {
+      try { onClosed(); } catch (e) {}
+    }
+  });
+
+  applyPerUrlUa(startUrl);
+  authWin.loadURL(startUrl).catch((err) => {
+    console.warn('[Main] Auth window load warning:', err.message);
+  });
+
+  return authWin;
+}
+
 function openLoginModal(authUrl, callerContents) {
   const service = (authUrl && authUrl.includes('spotify')) ? 'spotify' : 'youtube';
 
@@ -240,11 +376,11 @@ app.on('web-contents-created', (event, contents) => {
       console.log(`[Webview Finished Load] ${currentUrl}`);
       const lowerUrl = currentUrl.toLowerCase();
       if (lowerUrl.includes('accounts.google.') && (lowerUrl.includes('/signin/rejected') || lowerUrl.includes('/v3/signin/rejected'))) {
-        console.log('[Main] Google rejected embedded webview sign-in. Recovering webview and opening Brave Music Sign-In modal.');
+        console.log('[Main] Google rejected embedded webview sign-in. Recovering webview and opening hardened Sign-In window.');
         try {
           contents.loadURL('https://music.youtube.com');
         } catch (e) {}
-        openLoginModal(currentUrl, contents);
+        openInteractiveAuthWindow({ service: 'youtube' });
         return;
       }
       try {
@@ -274,24 +410,13 @@ app.on('web-contents-created', (event, contents) => {
           return { action: 'deny' };
         }
 
-        // 2. Allow in-browser OAuth / authentication popups inside the shared persistent partition
+        // 2. Intercept OAuth / authentication popups into our hardened top-level Sign-In window
         if (isAuthUrl(url)) {
-          return {
-            action: 'allow',
-            overrideBrowserWindowOptions: {
-              width: 520,
-              height: 680,
-              autoHideMenuBar: true,
-              title: 'Brave Music — Sign In',
-              backgroundColor: '#0b0d13',
-              webPreferences: {
-                partition: SHARED_PARTITION,
-                nodeIntegration: false,
-                contextIsolation: true,
-                sandbox: false
-              }
-            }
-          };
+          openInteractiveAuthWindow({
+            service: lower.includes('spotify') ? 'spotify' : 'youtube',
+            url
+          });
+          return { action: 'deny' };
         }
 
         const parsed = new URL(url);
@@ -316,7 +441,7 @@ app.on('web-contents-created', (event, contents) => {
       return { action: 'deny' };
     });
 
-    // Intercept in-place navigations inside webviews (allow in-browser sign-in natively)
+    // Intercept in-place navigations inside webviews so Google/Spotify logins open cleanly in a top-level hardened window
     contents.on('will-navigate', (e, reqUrl) => {
       if (!reqUrl || typeof reqUrl !== 'string') return;
       const lower = reqUrl.toLowerCase();
@@ -331,6 +456,18 @@ app.on('web-contents-created', (event, contents) => {
         e.preventDefault();
         console.log('[Main] Blocked webview navigation to:', reqUrl);
         return;
+      }
+
+      // Route Google / Spotify account login navigations out of <webview> (prevents embedded browser rejection)
+      if (
+        !lower.includes('/logout') &&
+        (isGoogleAuthRequestUrl(reqUrl) ||
+          (lower.includes('accounts.spotify.com') && (lower.includes('/login') || lower.includes('/authorize'))))
+      ) {
+        e.preventDefault();
+        const svc = lower.includes('spotify') ? 'spotify' : 'youtube';
+        console.log(`[Main] Routing webview login navigation (${svc}) into hardened Sign-In window.`);
+        openInteractiveAuthWindow({ service: svc, url: reqUrl });
       }
     });
   }
@@ -396,39 +533,52 @@ app.whenReady().then(async () => {
     const s = session.fromPartition(SHARED_PARTITION);
     s.setUserAgent(CHROME_USER_AGENT);
 
-    // Register Brave Shields proactive adblocker & glitch prevention preload
+    // Register identity hardening + Brave Shields preloads across all frames in shared partition
+    const authPreloadPath = path.join(__dirname, 'src', 'js', 'auth-preload.js');
     const shieldsPreloadPath = path.join(__dirname, 'src', 'js', 'webview-shields.js');
     if (typeof s.registerPreloadScript === 'function') {
       try {
-        s.registerPreloadScript({ type: 'frame', filePath: shieldsPreloadPath });
-        console.log('[Main] Registered Brave Shields session preload script:', shieldsPreloadPath);
+        s.registerPreloadScript({ id: 'brave-identity-hardening', type: 'frame', filePath: authPreloadPath });
+        s.registerPreloadScript({ id: 'brave-shields-preload', type: 'frame', filePath: shieldsPreloadPath });
+        console.log('[Main] Registered identity hardening + Brave Shields session preloads');
       } catch (err) {
         console.warn('[Main] Fallback to setPreloads:', err.message);
         if (typeof s.setPreloads === 'function') {
-          s.setPreloads([shieldsPreloadPath]);
+          s.setPreloads([authPreloadPath, shieldsPreloadPath]);
         }
       }
     } else if (typeof s.setPreloads === 'function') {
-      s.setPreloads([shieldsPreloadPath]);
+      s.setPreloads([authPreloadPath, shieldsPreloadPath]);
     }
 
-    // Sanitize headers to look 100% like genuine Google Chrome on host OS (Linux)
+    // Sanitize headers consistently: Firefox desktop on Google Auth hosts, authentic Chrome on player hosts
     s.webRequest.onBeforeSendHeaders((details, callback) => {
       const headers = details.requestHeaders;
-      headers['User-Agent'] = CHROME_USER_AGENT;
 
-      // Remove Electron identifier headers
+      // Always strip Electron markers
       delete headers['X-Electron'];
       delete headers['x-electron'];
 
-      // Google checks Client Hints (sec-ch-ua). Provide authentic Chrome client hints matching runtime
-      headers['sec-ch-ua'] = `"Google Chrome";v="${CHROME_MAJOR_VERSION}", "Chromium";v="${CHROME_MAJOR_VERSION}", "Not?A_Brand";v="24"`;
-      headers['sec-ch-ua-mobile'] = '?0';
-      headers['sec-ch-ua-platform'] = '"Linux"';
-      headers['sec-ch-ua-platform-version'] = '"6.8.0"';
-      headers['sec-ch-ua-arch'] = '"x86"';
-      headers['sec-ch-ua-bitness'] = '"64"';
-      headers['sec-ch-ua-full-version-list'] = `"Google Chrome";v="${CHROME_FULL_VERSION}", "Chromium";v="${CHROME_FULL_VERSION}", "Not?A_Brand";v="24.0.0.0"`;
+      if (isGoogleAuthRequestUrl(details.url)) {
+        headers['User-Agent'] = FIREFOX_USER_AGENT;
+        delete headers['sec-ch-ua'];
+        delete headers['sec-ch-ua-mobile'];
+        delete headers['sec-ch-ua-platform'];
+        delete headers['sec-ch-ua-platform-version'];
+        delete headers['sec-ch-ua-arch'];
+        delete headers['sec-ch-ua-bitness'];
+        delete headers['sec-ch-ua-full-version-list'];
+        delete headers['sec-ch-ua-model'];
+      } else {
+        headers['User-Agent'] = CHROME_USER_AGENT;
+        headers['sec-ch-ua'] = `"Google Chrome";v="${CHROME_MAJOR_VERSION}", "Chromium";v="${CHROME_MAJOR_VERSION}", "Not?A_Brand";v="24"`;
+        headers['sec-ch-ua-mobile'] = '?0';
+        headers['sec-ch-ua-platform'] = '"Linux"';
+        headers['sec-ch-ua-platform-version'] = '"6.8.0"';
+        headers['sec-ch-ua-arch'] = '"x86"';
+        headers['sec-ch-ua-bitness'] = '"64"';
+        headers['sec-ch-ua-full-version-list'] = `"Google Chrome";v="${CHROME_FULL_VERSION}", "Chromium";v="${CHROME_FULL_VERSION}", "Not?A_Brand";v="24.0.0.0"`;
+      }
 
       callback({ requestHeaders: headers });
     });
@@ -442,9 +592,13 @@ app.whenReady().then(async () => {
     console.warn('[Main] Session config warning for', SHARED_PARTITION, e.message);
   }
 
-  // Restore persisted authentic YouTube Music session into persist:bravemusic
+  // Restore persisted authentic YouTube Music session and bind hardened Sign-In window launcher
   try {
     const ytmDevtoolsAuthService = require('./backend/services/YTMDevtoolsAuthService');
+    ytmDevtoolsAuthService.registerInteractiveAuthLauncher({
+      open: openInteractiveAuthWindow,
+      close: closeInteractiveAuthWindow
+    });
     const restored = await ytmDevtoolsAuthService.loadPersistedSession();
     if (restored) {
       console.log('[Main] Restored active YouTube Music session into persist:bravemusic partition.');

@@ -49,7 +49,7 @@ Brave Music enforces strict security boundaries:
 
 ### Authentication & Persistent Browser Memory (`persist:bravemusic`)
 - Brave Music stores web player sessions locally in the isolated `persist:bravemusic` session partition (`~/.config/brave-music/`).
-- The Default Browser Sign-In Auto-Sync flow extracts strictly session cookies over loopback CDP / saved browser memory without storing plaintext account passwords, and supports an optional Emergency Fallback `.json` cookie import.
+- Under unconfined desktop installs, Default Browser Sign-In Auto-Sync reads strictly session cookies without storing plaintext account passwords; inside Ubuntu Snap strict confinement (where host browser profiles are unreadable) or when selected directly, Brave Music uses its isolated **Built-In Secure Sign-In Window** on `persist:bravemusic` (`src/js/auth-preload.js`) and supports Emergency Fallback `.json` cookie import.
 - All bundled download binaries (`backend/bin/yt-dlp`, `node`, `ffmpeg`, `ffprobe`) execute purely locally inside the app / Snap `core22` sandbox with zero third-party telemetry.
 
 ### Dependency Auditing

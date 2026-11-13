@@ -37,6 +37,13 @@ class YTMDevtoolsAuthService {
     this.activePollInterval = null;
     this.loginAttemptId = 0;
     this.statusListeners = new Set();
+    this.interactiveAuthLauncher = null;
+    this.interactiveAuthCloser = null;
+  }
+
+  registerInteractiveAuthLauncher({ open, close } = {}) {
+    if (typeof open === 'function') this.interactiveAuthLauncher = open;
+    if (typeof close === 'function') this.interactiveAuthCloser = close;
   }
 
   onStatus(callback) {
@@ -190,9 +197,10 @@ class YTMDevtoolsAuthService {
       );
     });
 
+    const ytOnlyCookies = ytmCookies.filter((c) => (c.domain || '').toLowerCase().includes('youtube.com'));
     const hasYtmLogin =
-      ytmCookies.some((c) => c.name === 'LOGIN_INFO' || c.name === '__Secure-3PAPISID') ||
-      (ytmCookies.some((c) => c.name === 'SAPISID') && ytmCookies.some((c) => c.name === 'SID'));
+      ytOnlyCookies.some((c) => c.name === 'LOGIN_INFO' || c.name === '__Secure-3PAPISID') ||
+      (ytOnlyCookies.some((c) => c.name === 'SAPISID') && ytOnlyCookies.some((c) => c.name === 'SID'));
 
     const hasSpotifyLogin =
       spotifyCookies.some((c) => c.name === 'sp_dc') ||
@@ -250,20 +258,48 @@ class YTMDevtoolsAuthService {
   }
 
   async startCdpLogin(service = 'youtube', preferredBrowser = 'auto') {
-    this.cancelCdpLogin();
+    this.cancelCdpLogin(undefined, true);
     const attemptId = this.loginAttemptId;
     const normalizedService = (service || 'youtube').toLowerCase() === 'spotify' ? 'spotify' : 'youtube';
     this.activeLoginService = normalizedService;
     const isSpotify = normalizedService === 'spotify';
-    const useInAppOnly = preferredBrowser === 'in-app';
 
     const authSyncService = require('./AuthSyncService');
+    const hostAccess = authSyncService.hasAccessibleHostBrowsers();
+    const wantsInAppWindow =
+      preferredBrowser === 'in-app' ||
+      (preferredBrowser !== 'external' && !hostAccess.accessible && typeof this.interactiveAuthLauncher === 'function');
+
     const targetUrl = isSpotify
       ? 'https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F'
       : 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F';
 
-    let browserLabel = 'default browser';
-    if (!useInAppOnly) {
+    let authWindowHandle = null;
+    let authWindowClosed = false;
+
+    if (wantsInAppWindow && typeof this.interactiveAuthLauncher === 'function') {
+      try {
+        authWindowHandle = this.interactiveAuthLauncher({
+          service: normalizedService,
+          url: targetUrl,
+          onClosed: () => { authWindowClosed = true; }
+        });
+      } catch (e) {
+        console.warn('[Auth] interactiveAuthLauncher error:', e.message);
+      }
+
+      this._notify('status', {
+        service: normalizedService,
+        state: 'waiting_login',
+        mode: 'in-app',
+        message: `Secure ${isSpotify ? 'Spotify' : 'YouTube Music'} Sign-In window opened. Complete login there to auto-refresh Brave Music.`
+      });
+    } else if (preferredBrowser !== 'in-app') {
+      if (!hostAccess.accessible && hostAccess.isSnap) {
+        throw new Error('Default browser profile access is restricted by Ubuntu Snap confinement. Use Brave Music Secure Sign-In window or Emergency Cookies (.json) import.');
+      }
+
+      let browserLabel = 'default browser';
       try {
         const rawTarget = authSyncService.getDefaultBrowserTarget() || 'browser';
         browserLabel = rawTarget.split(':')[0] || 'default browser';
@@ -277,25 +313,64 @@ class YTMDevtoolsAuthService {
       this._notify('status', {
         service: normalizedService,
         state: 'waiting_login',
-        message: `Opened your ${browserLabel} browser for sign-in. Brave Music will automatically sync your session into browser memory.`
+        mode: 'external',
+        message: `Opened your ${browserLabel} browser for sign-in. Brave Music will sync your session into browser memory once complete.`
       });
     } else {
       this._notify('status', {
         service: normalizedService,
         state: 'waiting_login',
+        mode: 'in-app',
         message: `Sign in directly inside Brave Music (${isSpotify ? 'Spotify' : 'YouTube Music'} tab). Session will be saved in browser memory.`
       });
     }
 
-    const deadline = Date.now() + 300000;
+    const deadline = Date.now() + (wantsInAppWindow ? 300000 : 120000);
     let lastError = '';
+    let consecutiveAccessErrors = 0;
 
     while (Date.now() < deadline && attemptId === this.loginAttemptId) {
-      // 1. When triggered from Brave Music Sign-In modal, extract from Default Browser & sync into browser memory
-      if (!useInAppOnly) {
+      // 1. Check in-app browser session memory (captures interactive Sign-In window, webviews, or cookie imports immediately)
+      const memState = await this.syncFromBrowserMemory(normalizedService);
+      const isLoggedIn = isSpotify ? memState.spotify : memState.ytm;
+      const cookieCount = isSpotify ? memState.spotifyCount : memState.ytmCount;
+
+      if (isLoggedIn && attemptId === this.loginAttemptId) {
+        if (typeof this.interactiveAuthCloser === 'function') {
+          try { this.interactiveAuthCloser(normalizedService); } catch (e) {}
+        }
+        const account = this.saveUserAccount(normalizedService, {
+          name: isSpotify ? 'Spotify Account' : 'YouTube Music Account',
+          email: isSpotify ? 'Active Spotify Session' : 'Active Google Session',
+          authenticated: true,
+          source: wantsInAppWindow ? 'secure-window' : 'browser-memory'
+        });
+        this._notify('status', {
+          service: normalizedService,
+          state: 'complete',
+          count: cookieCount,
+          message: 'Sign-in complete! Session saved in Brave Music browser memory.'
+        });
+        return {
+          success: true,
+          service: normalizedService,
+          count: cookieCount,
+          hasLogin: true,
+          account: account.account
+        };
+      }
+
+      // If user closed the interactive Sign-In window before login cookies appeared, stop waiting cleanly
+      if (wantsInAppWindow && authWindowClosed) {
+        break;
+      }
+
+      // 2. When using host browser sync (deb/unpacked with readable profile DB), extract & apply cookies
+      if (!wantsInAppWindow && preferredBrowser !== 'in-app' && hostAccess.accessible) {
         try {
           const result = await authSyncService.extractDefaultBrowserCookies(normalizedService);
           if (result && result.success && Array.isArray(result.cookies) && result.cookies.length > 0) {
+            consecutiveAccessErrors = 0;
             const cookies = result.cookies;
             const hasServiceLogin = isSpotify
               ? cookies.some((c) => c.name === 'sp_dc') ||
@@ -323,55 +398,38 @@ class YTMDevtoolsAuthService {
             }
           } else if (result && result.error) {
             lastError = result.error;
+            if (/permission denied|eacces|operation not permitted/i.test(lastError)) {
+              consecutiveAccessErrors++;
+              if (consecutiveAccessErrors >= 2) {
+                throw new Error(`Browser profile access blocked (${lastError}). Use Secure In-App Sign-In instead.`);
+              }
+            }
           }
         } catch (err) {
           lastError = err.message || String(err);
+          if (/blocked|eacces|permission/i.test(lastError) && consecutiveAccessErrors >= 2) {
+            throw err;
+          }
         }
       }
 
-      // 2. Also check in-app browser session memory (if user signed in inside webview or imported cookies)
-      const memState = await this.syncFromBrowserMemory(normalizedService);
-      const isLoggedIn = isSpotify ? memState.spotify : memState.ytm;
-      const cookieCount = isSpotify ? memState.spotifyCount : memState.ytmCount;
-
-      if (isLoggedIn && attemptId === this.loginAttemptId) {
-        const account = this.saveUserAccount(normalizedService, {
-          name: isSpotify ? 'Spotify Account' : 'YouTube Music Account',
-          email: isSpotify ? 'Active Spotify Session' : 'Active Google Session',
-          authenticated: true,
-          source: 'browser-memory'
-        });
-        this._notify('status', {
-          service: normalizedService,
-          state: 'complete',
-          count: cookieCount,
-          message: 'Sign-in complete! Session saved in Brave Music browser memory.'
-        });
-        return {
-          success: true,
-          service: normalizedService,
-          count: cookieCount,
-          hasLogin: true,
-          account: account.account
-        };
-      }
-
       if (attemptId !== this.loginAttemptId) break;
-      if (!useInAppOnly) {
-        this._notify('status', {
-          service: normalizedService,
-          state: 'waiting_login',
-          message: 'Waiting for sign-in in your default browser…'
-        });
-      }
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, wantsInAppWindow ? 700 : 1800));
     }
 
     if (attemptId !== this.loginAttemptId) throw new Error('Sign-in cancelled.');
+    if (wantsInAppWindow && authWindowClosed) {
+      this._notify('status', {
+        service: normalizedService,
+        state: 'error',
+        message: 'Sign-in window closed before completing login. Click "Sign in" to try again.'
+      });
+      throw new Error('Sign-in window closed before completing login.');
+    }
     throw new Error(
       lastError
-        ? `Sign-in timed out. Could not read default browser session (${lastError}). You can also use Emergency Cookies (.json) import.`
-        : 'Sign-in timed out. Sign in via your default browser and try again, or import cookies.json.'
+        ? `Sign-in timed out (${lastError}). Try Secure In-App Sign-In or Emergency Cookies (.json) import.`
+        : 'Sign-in timed out. Please complete login inside the Sign-In window or use Emergency Cookies (.json) import.'
     );
   }
 
@@ -505,7 +563,7 @@ class YTMDevtoolsAuthService {
     });
   }
 
-  cancelCdpLogin(service) {
+  cancelCdpLogin(service, silent = false) {
     this.loginAttemptId++;
     const targetService = service || this.activeLoginService || 'youtube';
     if (this.activePollInterval) {
@@ -520,7 +578,12 @@ class YTMDevtoolsAuthService {
       try { this.activeProcess.kill('SIGKILL'); } catch (e) {}
       this.activeProcess = null;
     }
-    this._notify('status', { service: targetService, state: 'cancelled', message: 'Sign-in cancelled.' });
+    if (typeof this.interactiveAuthCloser === 'function') {
+      try { this.interactiveAuthCloser(); } catch (e) {}
+    }
+    if (!silent) {
+      this._notify('status', { service: targetService, state: 'cancelled', message: 'Sign-in cancelled.' });
+    }
     this.activeLoginService = null;
   }
 
@@ -627,29 +690,31 @@ class YTMDevtoolsAuthService {
         cookieObj.expirationDate = Math.min(Math.floor(c.expirationDate), 2147483647);
       }
 
+      let setOk = false;
       for (const s of partitions) {
         try {
           if (isDomain) {
             await s.cookies.remove(cookieUrl, c.name).catch(() => {});
           }
           await s.cookies.set(cookieObj);
+          setOk = true;
         } catch (setErr) {
-          if (isDomain) {
-            throw new Error(`Could not apply domain cookie ${c.name}: ${setErr.message}`);
-          }
           try {
             const fallback = {
               url: cookieUrl,
               name: c.name,
               value: c.value,
-              path: c.path || '/',
+              path: isHostPrefix ? '/' : (c.path || '/'),
               secure: isSecure
             };
             await s.cookies.set(fallback);
-          } catch (e2) {}
+            setOk = true;
+          } catch (e2) {
+            console.warn(`[CDP-Auth] Skipping cookie ${c.name} (${cleanDomain}): ${setErr.message}`);
+          }
         }
       }
-      injectedCount++;
+      if (setOk) injectedCount++;
     }
 
     for (const s of partitions) {
