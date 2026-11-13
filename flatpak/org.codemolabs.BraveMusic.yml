@@ -1,0 +1,39 @@
+app-id: org.codemolabs.BraveMusic
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '25.08'
+command: brave-music
+separate-locales: false
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --share=network
+  - --device=dri
+  - --filesystem=xdg-music:rw
+  - --filesystem=xdg-download:rw
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --own-name=org.mpris.MediaPlayer2.bravemusic
+  - --own-name=org.mpris.MediaPlayer2.brave_music
+  - --env=ELECTRON_DISABLE_SECURITY_WARNINGS=true
+  - --env=TMPDIR=/var/tmp
+
+modules:
+  - name: brave-music
+    buildsystem: simple
+    build-commands:
+      - install -dm755 /app/opt/brave-music
+      - cp -a package.json main.js preload.js backend src node_modules /app/opt/brave-music/
+      - install -Dm755 flatpak/brave-music-wrapper.sh /app/bin/brave-music
+      - install -Dm644 flatpak/org.codemolabs.BraveMusic.desktop /app/share/applications/org.codemolabs.BraveMusic.desktop
+      - install -Dm644 flatpak/org.codemolabs.BraveMusic.metainfo.xml /app/share/metainfo/org.codemolabs.BraveMusic.metainfo.xml
+      - install -Dm644 src/assets/app-icon.svg /app/share/icons/hicolor/scalable/apps/org.codemolabs.BraveMusic.svg
+      - install -Dm644 src/assets/app-icon.png /app/share/icons/hicolor/512x512/apps/org.codemolabs.BraveMusic.png
+    sources:
+      - type: dir
+        path: ..

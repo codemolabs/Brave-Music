@@ -3,6 +3,7 @@
 <img src="src/assets/app-icon.svg" alt="Brave Music Icon" width="100" height="100" />
 
 # Brave Music
+
 **Your Music. Your Privacy. Your Control.**
 An open-source desktop music streaming and offline audio engine combining YouTube Music, Spotify Web, and local playback into a unified, privacy-focused experience.
 
@@ -75,12 +76,28 @@ npx @codemolabs/brave-music
 # or: npm install -g @codemolabs/brave-music
 ```
 
-### Linux (Debian Package)
+### Linux (Debian / Ubuntu `.deb`)
 
 ```bash
-wget https://github.com/codemolabs/Brave-Music/releases/download/v1.0.19-r/brave-music_1.0.19-r_amd64.deb
+wget https://github.com/codemolabs/Brave-Music/releases/latest/download/brave-music_1.0.19-r_amd64.deb
 sudo apt install ./brave-music_1.0.19-r_amd64.deb
 brave-music
+```
+
+### Linux (Ubuntu Snap `.snap`)
+
+```bash
+wget https://github.com/codemolabs/Brave-Music/releases/latest/download/brave-music_1.0.19-r_amd64.snap
+sudo snap install --dangerous ./brave-music_1.0.19-r_amd64.snap
+brave-music
+```
+
+### Linux (Flatpak / Flathub `.flatpak`)
+
+```bash
+wget https://github.com/codemolabs/Brave-Music/releases/latest/download/brave-music_1.0.19-r_amd64.flatpak
+flatpak install --user ./brave-music_1.0.19-r_amd64.flatpak
+flatpak run org.codemolabs.BraveMusic
 ```
 
 ### Modern Cross-Platform Stack (Rust + Native Webview)

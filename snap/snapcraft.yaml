@@ -1,0 +1,121 @@
+name: brave-music
+base: core22
+version: '1.0.19-r'
+summary: Ad-free YouTube Music, Spotify & Offline Music OTT Platform
+description: |
+  Brave Music is a high-performance, open-source Linux desktop Music OTT platform
+  developed by Codemo Open Source Labs (COSL). It brings together ad-free YouTube
+  Music, Spotify Web with Widevine DRM playback, a local high-bitrate audio
+  downloader, and an integrated offline music library with native Linux MPRIS2
+  media controls.
+
+  Key Features:
+  - Unified Navigation: Switch seamlessly between Home, YouTube Music, Spotify,
+    Downloads, and Offline Library.
+  - Brave Shields Integration: Built-in network-level ad-blocking and cosmetic
+    scriptlet filtering for uninterrupted streaming.
+  - Hardware-Accelerated 60fps UI: Smooth GPU-composited scrolling and native
+    desktop window management.
+  - 100% Local & Privacy-First: Zero telemetry, zero analytics, and no cloud
+    tracking.
+license: GPL-3.0+
+icon: src/assets/app-icon.png
+website: https://github.com/codemolabs/Brave-Music
+source-code: https://github.com/codemolabs/Brave-Music
+issues: https://github.com/codemolabs/Brave-Music/issues
+contact: mailto:cosl@codemoteams.org
+grade: stable
+confinement: strict
+compression: lzo
+
+architectures:
+  - build-on: amd64
+
+slots:
+  mpris:
+    interface: mpris
+    name: brave-music
+
+plugs:
+  browser-sandbox:
+    interface: browser-support
+    allow-sandbox: false
+
+apps:
+  brave-music:
+    command: bin/brave-music-snap
+    extensions: [gnome]
+    desktop: usr/share/applications/brave-music.desktop
+    common-id: org.codemolabs.BraveMusic
+    slots:
+      - mpris
+    plugs:
+      - desktop
+      - desktop-legacy
+      - wayland
+      - x11
+      - opengl
+      - audio-playback
+      - pulseaudio
+      - network
+      - network-bind
+      - home
+      - removable-media
+      - browser-sandbox
+      - screen-inhibit-control
+
+parts:
+  brave-music:
+    plugin: dump
+    source: .
+    override-build: |
+      mkdir -p $CRAFT_PART_INSTALL/opt/brave-music
+      mkdir -p $CRAFT_PART_INSTALL/bin
+      mkdir -p $CRAFT_PART_INSTALL/usr/share/applications
+      mkdir -p $CRAFT_PART_INSTALL/usr/share/icons/hicolor/512x512/apps
+
+      cp -r package.json main.js preload.js backend src node_modules $CRAFT_PART_INSTALL/opt/brave-music/
+      cp src/assets/app-icon.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/512x512/apps/brave-music.png
+
+      cat << 'EOF' > $CRAFT_PART_INSTALL/bin/brave-music-snap
+      #!/bin/bash
+      unset ELECTRON_RUN_AS_NODE
+      export ELECTRON_DISABLE_SECURITY_WARNINGS=true
+      APP_DIR="${SNAP}/opt/brave-music"
+      cd "$APP_DIR"
+      FLAGS="--no-sandbox --no-zygote --disable-gpu-sandbox --class=brave-music --name=brave-music"
+      exec "$APP_DIR/node_modules/electron/dist/electron" "$APP_DIR" $FLAGS "$@"
+      EOF
+      chmod +x $CRAFT_PART_INSTALL/bin/brave-music-snap
+
+      cat << 'EOF' > $CRAFT_PART_INSTALL/usr/share/applications/brave-music.desktop
+      [Desktop Entry]
+      Name=Brave Music
+      Comment=Ad-free Music OTT Platform with YouTube, Spotify & Offline Player
+      Exec=brave-music %U
+      Icon=${SNAP}/meta/gui/icon.png
+      Terminal=false
+      Type=Application
+      Categories=AudioVideo;Audio;Player;
+      StartupWMClass=brave-music
+      StartupNotify=true
+      Keywords=Music;YouTube;Spotify;Download;Audio;Player;
+      EOF
+    stage-packages:
+      - libnss3
+      - libnspr4
+      - libasound2
+      - libatk1.0-0
+      - libatk-bridge2.0-0
+      - libcups2
+      - libdrm2
+      - libgbm1
+      - libgtk-3-0
+      - libxcomposite1
+      - libxdamage1
+      - libxfixes3
+      - libxkbcommon0
+      - libxrandr2
+      - python3
+      - curl
+      - ca-certificates

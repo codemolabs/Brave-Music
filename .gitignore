@@ -11,6 +11,8 @@ bin/*
 tools/
 Install/Linux/dist/
 *.deb
+*.snap
+*.flatpak
 *.rpm
 *.AppImage
 *.tar.gz

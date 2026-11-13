@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.codemolabs.BraveMusic</id>
+  <name>Brave Music</name>
+  <summary>Ad-free YouTube Music, Spotify, and Offline Music OTT Platform</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="org.codemolabs">
+    <name>Codemo Open Source Labs</name>
+  </developer>
+  <launchable type="desktop-id">org.codemolabs.BraveMusic.desktop</launchable>
+  <description>
+    <p>
+      Brave Music is an open-source, privacy-first Linux desktop Music OTT platform developed by Codemo Open Source Labs (COSL). It combines ad-free YouTube Music, Spotify Web with Widevine DRM playback, a high-bitrate audio downloader, and an offline local music library into a single native desktop window.
+    </p>
+    <p>Key features include:</p>
+    <ul>
+      <li>Unified tabbed navigation across Home, YouTube Music, Spotify, Downloads, and Offline Library</li>
+      <li>Built-in Brave Shields network and cosmetic ad-blocking for uninterrupted streaming</li>
+      <li>Hardware-accelerated 60fps UI with native Linux MPRIS2 media key and system tray integration</li>
+      <li>100% local execution with zero telemetry, zero analytics, and no cloud tracking</li>
+    </ul>
+  </description>
+  <url type="homepage">https://github.com/codemolabs/Brave-Music</url>
+  <url type="bugtracker">https://github.com/codemolabs/Brave-Music/issues</url>
+  <url type="vcs-browser">https://github.com/codemolabs/Brave-Music</url>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Player</category>
+  </categories>
+  <keywords>
+    <keyword>music</keyword>
+    <keyword>youtube</keyword>
+    <keyword>spotify</keyword>
+    <keyword>audio</keyword>
+    <keyword>player</keyword>
+    <keyword>offline</keyword>
+  </keywords>
+  <provides>
+    <binary>brave-music</binary>
+  </provides>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="1.0.19-r" date="2026-04-12">
+      <description>
+        <p>Official multi-format Linux desktop release (.deb, .snap, and .flatpak) featuring hardware-accelerated 60fps scrolling, single-instance desktop lock, updated official mascot icon, and streamlined About dialog.</p>
+      </description>
+    </release>
+  </releases>
+</component>

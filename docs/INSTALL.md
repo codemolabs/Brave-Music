@@ -10,12 +10,12 @@ Brave Music is tested and officially supported on 64-bit (`x86_64` / `amd64`) Li
 
 | Platform | Minimum Version | Installation Package | Status |
 | :--- | :--- | :--- | :--- |
-| **Ubuntu** | 20.04 LTS, 22.04 LTS, 24.04 LTS | Debian (`.deb`) / npm (`@codemolabs/brave-music`) | Fully Supported |
-| **Debian** | 11 (Bullseye), 12 (Bookworm) | Debian (`.deb`) / npm (`@codemolabs/brave-music`) | Fully Supported |
-| **Linux Mint** | 20, 21, 22 | Debian (`.deb`) / npm (`@codemolabs/brave-music`) | Fully Supported |
-| **Pop!_OS** | 22.04 LTS+ | Debian (`.deb`) / npm (`@codemolabs/brave-music`) | Fully Supported |
-| **Fedora** | 38, 39, 40 | npm (`@codemolabs/brave-music`) / Source Build | Fully Supported |
-| **Arch Linux / Manjaro** | Rolling | npm (`@codemolabs/brave-music`) / Source Build | Fully Supported |
+| **Ubuntu** | 20.04 LTS, 22.04 LTS, 24.04 LTS | Debian (`.deb`) / Snap (`.snap`) / Flatpak (`.flatpak`) / npm | Fully Supported |
+| **Debian** | 11 (Bullseye), 12 (Bookworm) | Debian (`.deb`) / Flatpak (`.flatpak`) / Snap (`.snap`) / npm | Fully Supported |
+| **Linux Mint** | 20, 21, 22 | Debian (`.deb`) / Flatpak (`.flatpak`) / npm | Fully Supported |
+| **Pop!_OS** | 22.04 LTS+ | Debian (`.deb`) / Flatpak (`.flatpak`) / npm | Fully Supported |
+| **Fedora** | 38, 39, 40+ | Flatpak (`.flatpak`) / Snap (`.snap`) / npm | Fully Supported |
+| **Arch Linux / Manjaro** | Rolling | Flatpak (`.flatpak`) / Snap (`.snap`) / npm | Fully Supported |
 
 ---
 
@@ -102,6 +102,88 @@ sudo apt install ./brave-music_1.0.19-r_amd64.deb
   ```bash
   brave-music
   ```
+
+---
+
+## 2B. Installing on Linux via Ubuntu Snap (`.snap`)
+
+Brave Music provides an official Snapcraft configuration (`snap/snapcraft.yaml`) and standalone `.snap` package for Ubuntu and all `snapd`-enabled Linux distributions.
+
+### Step 1: Download or Build the Snap Package
+Download the latest `.snap` package from GitHub Releases:
+```bash
+wget https://github.com/codemolabs/Brave-Music/releases/latest/download/brave-music_1.0.19-r_amd64.snap
+```
+Or build it locally from source:
+```bash
+npm run build:snap
+```
+
+### Step 2: Install the Snap Package
+Install the standalone `.snap` archive:
+```bash
+sudo snap install --dangerous ./brave-music_1.0.19-r_amd64.snap
+```
+Once published on the Ubuntu Snap Store, install directly via:
+```bash
+sudo snap install brave-music
+```
+
+### Step 3: Launch Brave Music (Snap)
+```bash
+snap run brave-music
+# or simply:
+brave-music
+```
+
+### Publishing to Ubuntu Snap Store (Maintainers)
+Following the [Official Snapcraft Publishing Guide](https://ubuntu.com/docs/snapcraft/latest/how-to/publishing/authenticate-and-upload-a-snap/):
+```bash
+# 1. Authenticate with your Ubuntu One developer account
+snapcraft login
+
+# 2. Register the snap name (one-time)
+snapcraft register brave-music
+
+# 3. Upload and release to the stable channel
+snapcraft upload --release=stable Install/Linux/brave-music_1.0.19-r_amd64.snap
+```
+
+---
+
+## 2C. Installing on Linux via Flatpak / Flathub (`.flatpak`)
+
+Brave Music provides an official Flatpak manifest (`flatpak/org.codemolabs.BraveMusic.yml`), AppStream metadata (`flatpak/org.codemolabs.BraveMusic.metainfo.xml`), and single-file `.flatpak` bundle (`org.codemolabs.BraveMusic`).
+
+### Step 1: Ensure Flathub Runtime Repository is Added
+Brave Music uses the standard `org.freedesktop.Platform//25.08` runtime:
+```bash
+flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+```
+
+### Step 2: Download or Build the Flatpak Bundle
+Download the latest `.flatpak` bundle from GitHub Releases:
+```bash
+wget https://github.com/codemolabs/Brave-Music/releases/latest/download/brave-music_1.0.19-r_amd64.flatpak
+```
+Or build it locally from source:
+```bash
+npm run build:flatpak
+```
+
+### Step 3: Install & Run the Flatpak Bundle
+```bash
+flatpak install --user ./brave-music_1.0.19-r_amd64.flatpak
+flatpak run org.codemolabs.BraveMusic
+```
+
+### Publishing to Flathub (Maintainers)
+Following the [Official Flatpak Publishing Guide](https://docs.flatpak.org/en/latest/publishing.html):
+1. Validate AppStream metadata and manifest:
+   ```bash
+   appstreamcli validate flatpak/org.codemolabs.BraveMusic.metainfo.xml
+   ```
+2. Fork `https://github.com/flathub/flathub` and submit a pull request against the `new-pr` branch containing `flatpak/org.codemolabs.BraveMusic.yml`, `flatpak/org.codemolabs.BraveMusic.metainfo.xml`, `flatpak/org.codemolabs.BraveMusic.desktop`, and `flatpak/brave-music-wrapper.sh`.
 
 ---
 
