@@ -9,10 +9,9 @@
   },
   "scripts": {
     "start": "electron . --no-sandbox",
-    "build:deb": "bash Install/Linux/build-deb.sh",
     "build:snap": "bash Install/Linux/build-snap.sh",
-    "build:flatpak": "bash Install/Linux/build-flatpak.sh",
-    "build:all": "bash Install/Linux/build-deb.sh && bash Install/Linux/build-snap.sh && bash Install/Linux/build-flatpak.sh"
+    "build:deb": "bash Install/Linux/build-deb.sh",
+    "build:all": "bash Install/Linux/build-snap.sh && bash Install/Linux/build-deb.sh"
   },
   "repository": {
     "type": "git",

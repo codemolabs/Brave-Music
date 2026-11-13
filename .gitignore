@@ -12,7 +12,7 @@ tools/
 Install/Linux/dist/
 *.deb
 *.snap
-*.flatpak
+*.snap.*
 *.rpm
 *.AppImage
 *.tar.gz

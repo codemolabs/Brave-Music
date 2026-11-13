@@ -217,7 +217,17 @@ node test-castlabs-eme.js
 
 ## 5. Building Distribution Packages (Linux)
 
-Brave Music supports automated build scripts for Linux Debian packaging:
+Brave Music supports automated build scripts for official Ubuntu Snap and Linux Debian packaging:
+
+### Building Official Ubuntu Snap Package (`.snap`)
+```bash
+npm run build:snap
+```
+Or run the script directly:
+```bash
+bash Install/Linux/build-snap.sh
+```
+The script validates the Snapcraft skeleton (`snap/snapcraft.yaml`) and builds the package at `Install/Linux/brave-music_1.0.19-r_amd64.snap`.
 
 ### Building Linux Debian Package (`.deb`)
 ```bash

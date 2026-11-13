@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.19-r] - 2026-11-13
 
 ### Added
-- **Official Ubuntu Snap & Flatpak Packaging**: Added official Snap Store manifest (`snap/snapcraft.yaml`), Flatpak/Flathub manifest (`flatpak/org.codemolabs.BraveMusic.yml`), validated AppStream Metainfo (`flatpak/org.codemolabs.BraveMusic.metainfo.xml`), and automated builders (`Install/Linux/build-snap.sh`, `Install/Linux/build-flatpak.sh`) generating `brave-music_1.0.19-r_amd64.snap` and `brave-music_1.0.19-r_amd64.flatpak`.
+- **Official Ubuntu Snap Packaging**: Added official Snap Store manifest (`snap/snapcraft.yaml`) and automated builder (`Install/Linux/build-snap.sh`) generating `brave-music_1.0.19-r_amd64.snap` alongside `brave-music_1.0.19-r_amd64.deb`.
 - **Official Brand Mascot Icon**: Replaced legacy organizational network nodes logo with the authentic official Brave Music brand icon (vibrant orange lion wearing headphones) across multi-resolution `.ico` (`16x16` up to `256x256`), master 512x512 transparent PNG, and clean SVG.
 - **Full Linux Desktop Icon Suite**: Debian package automatically installs standard hicolor icons (`16x16`, `24x24`, `32x32`, `48x48`, `64x64`, `128x128`, `256x256`, `512x512`) into `/usr/share/icons/hicolor/` and `/usr/share/pixmaps/brave-music.png`.
 - **Single-Instance Application Lock**: Implemented `app.requestSingleInstanceLock()` to prevent multiple overlapping app instances; re-launching from desktop or terminal automatically restores and focuses the existing window.

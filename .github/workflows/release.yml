@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   release:
-    name: Build & Publish Linux Packages (.deb, .snap, .flatpak)
+    name: Build & Publish Linux Packages (Ubuntu Snap & Debian)
     runs-on: ubuntu-latest
 
     steps:
@@ -24,29 +24,22 @@ jobs:
       - name: Install System Packaging Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y dpkg-dev snapd flatpak appstream yt-dlp python3-pip python3-pil
+          sudo apt-get install -y dpkg-dev snapd yt-dlp python3-pip python3-pil
 
       - name: Install Node Dependencies
         run: npm install
 
-      - name: Validate Flatpak AppStream Metadata
-        run: appstreamcli validate --no-net flatpak/org.codemolabs.BraveMusic.metainfo.xml
+      - name: Build Ubuntu Snap (.snap) Package
+        run: bash Install/Linux/build-snap.sh
 
       - name: Build Linux Debian (.deb) Package
         run: bash Install/Linux/build-deb.sh
 
-      - name: Build Ubuntu Snap (.snap) Package
-        run: bash Install/Linux/build-snap.sh
-
-      - name: Build Linux Flatpak (.flatpak) Bundle
-        run: bash Install/Linux/build-flatpak.sh
-
       - name: Generate SHA-256 Checksums
         run: |
           sha256sum \
-            Install/Linux/brave-music_*_amd64.deb \
             Install/Linux/brave-music_*_amd64.snap \
-            Install/Linux/brave-music_*_amd64.flatpak > SHA256SUMS.txt
+            Install/Linux/brave-music_*_amd64.deb > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Publish to Ubuntu Snap Store (if credentials configured)
@@ -61,12 +54,11 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: Brave Music ${{ github.ref_name }} (Linux .deb / .snap / .flatpak)
+          name: Brave Music ${{ github.ref_name }} (Official Linux Snap & Debian)
           tag_name: ${{ github.ref_name }}
           files: |
-            Install/Linux/brave-music_*_amd64.deb
             Install/Linux/brave-music_*_amd64.snap
-            Install/Linux/brave-music_*_amd64.flatpak
+            Install/Linux/brave-music_*_amd64.deb
             SHA256SUMS.txt
           draft: false
           prerelease: false
@@ -76,13 +68,12 @@ jobs:
             Provider: **Codemo Open Source Labs (COSL)** — [https://github.com/codemolabs](https://github.com/codemolabs)
             Official Repository: [https://github.com/codemolabs/Brave-Music](https://github.com/codemolabs/Brave-Music)
 
-            ### 📦 Official Linux Distribution Formats
+            ### 📦 Official Linux Installation
+            - **Ubuntu Snap Store (Official)**: `sudo snap install brave-music` (or `sudo snap install --dangerous ./brave-music_*_amd64.snap`)
             - **Debian / Ubuntu (`.deb`)**: `sudo apt install ./brave-music_*_amd64.deb`
-            - **Ubuntu Snap (`.snap`)**: `sudo snap install --dangerous ./brave-music_*_amd64.snap`
-            - **Flatpak / Flathub Bundle (`.flatpak`)**: `flatpak install --user ./brave-music_*_amd64.flatpak`
 
             ### ✨ Highlights & What's New
-            - **Multi-Format Official Packaging**: Native Debian (`.deb`), Ubuntu Snap (`snap/snapcraft.yaml`), and Flatpak (`flatpak/org.codemolabs.BraveMusic.yml`) distributions.
+            - **Official Ubuntu Snap Distribution**: Native Snapcraft package (`snap/snapcraft.yaml`) and Debian (`.deb`) package.
             - **Ultra-Smooth 60fps Scrolling**: Hardware-accelerated GPU compositing across Home, Library, Downloads, YouTube Music, and Spotify views.
             - **Single-Instance Desktop Integration**: Enforces single-instance window focus and `StartupWMClass=brave-music` icon grouping.
             - **Zero Telemetry**: 100% local execution with no analytics or tracking.

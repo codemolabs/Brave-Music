@@ -37,12 +37,10 @@ This document tracks official version releases, changelogs, binary checksums, an
 - **High-Fidelity Audio Streaming Engine**:
   - Built-in multi-threaded local HTTP audio server with full support for `Range: bytes=` HTTP partial content (206 Partial Content), `HEAD` probe queries, instant seeking, and CORS support for local MP3/M4A/FLAC playback.
 - **Official Linux Packages & Checksums (SHA-256)**:
+  - **Ubuntu Snap Package (`.snap` — Official Recommended)**: `Install/Linux/brave-music_1.0.19-r_amd64.snap`
+    - SHA-256: `b2237045a104a6d2753a3bd408cd51754c29287a90bc5a69df3ba234f4160b05`
   - **Debian Package (`.deb`)**: `Install/Linux/brave-music_1.0.19-r_amd64.deb`
     - SHA-256: `da1ea81fe8c048780e320a1e538ad0d2d32cef5c4a8cdb0bd589b6d6e5a1ab14`
-  - **Ubuntu Snap Package (`.snap`)**: `Install/Linux/brave-music_1.0.19-r_amd64.snap`
-    - SHA-256: `b2237045a104a6d2753a3bd408cd51754c29287a90bc5a69df3ba234f4160b05`
-  - **Flatpak Bundle (`.flatpak`)**: `Install/Linux/brave-music_1.0.19-r_amd64.flatpak`
-    - SHA-256: `17785dcbdcb6885c29adc3c2696419913b20979c11375450105587ddb82339b5`
 
 ### Release v1.0.18
 

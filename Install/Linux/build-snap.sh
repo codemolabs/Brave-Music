@@ -34,11 +34,6 @@ architectures:
 slots:
   mpris:
     interface: mpris
-    name: brave-music
-plugs:
-  browser-sandbox:
-    interface: browser-support
-    allow-sandbox: false
 apps:
   brave-music:
     command: bin/brave-music-snap
@@ -57,7 +52,6 @@ apps:
       - network-bind
       - home
       - removable-media
-      - browser-sandbox
       - screen-inhibit-control
 EOF
 

@@ -76,28 +76,24 @@ npx @codemolabs/brave-music
 # or: npm install -g @codemolabs/brave-music
 ```
 
+### Linux (Ubuntu Snap — Official Recommended)
+
+```bash
+# Install directly from the Ubuntu Snap Store
+sudo snap install brave-music
+
+# Or install the standalone Snap package from GitHub Releases
+wget https://github.com/codemolabs/Brave-Music/releases/latest/download/brave-music_1.0.19-r_amd64.snap
+sudo snap install --dangerous ./brave-music_1.0.19-r_amd64.snap
+brave-music
+```
+
 ### Linux (Debian / Ubuntu `.deb`)
 
 ```bash
 wget https://github.com/codemolabs/Brave-Music/releases/latest/download/brave-music_1.0.19-r_amd64.deb
 sudo apt install ./brave-music_1.0.19-r_amd64.deb
 brave-music
-```
-
-### Linux (Ubuntu Snap `.snap`)
-
-```bash
-wget https://github.com/codemolabs/Brave-Music/releases/latest/download/brave-music_1.0.19-r_amd64.snap
-sudo snap install --dangerous ./brave-music_1.0.19-r_amd64.snap
-brave-music
-```
-
-### Linux (Flatpak / Flathub `.flatpak`)
-
-```bash
-wget https://github.com/codemolabs/Brave-Music/releases/latest/download/brave-music_1.0.19-r_amd64.flatpak
-flatpak install --user ./brave-music_1.0.19-r_amd64.flatpak
-flatpak run org.codemolabs.BraveMusic
 ```
 
 ### Modern Cross-Platform Stack (Rust + Native Webview)

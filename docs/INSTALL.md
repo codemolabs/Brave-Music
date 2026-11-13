@@ -8,14 +8,14 @@ This guide provides official instructions for installing, configuring, verifying
 
 Brave Music is tested and officially supported on 64-bit (`x86_64` / `amd64`) Linux distributions:
 
-| Platform | Minimum Version | Installation Package | Status |
+| Platform | Minimum Version | Official Installation Package | Status |
 | :--- | :--- | :--- | :--- |
-| **Ubuntu** | 20.04 LTS, 22.04 LTS, 24.04 LTS | Debian (`.deb`) / Snap (`.snap`) / Flatpak (`.flatpak`) / npm | Fully Supported |
-| **Debian** | 11 (Bullseye), 12 (Bookworm) | Debian (`.deb`) / Flatpak (`.flatpak`) / Snap (`.snap`) / npm | Fully Supported |
-| **Linux Mint** | 20, 21, 22 | Debian (`.deb`) / Flatpak (`.flatpak`) / npm | Fully Supported |
-| **Pop!_OS** | 22.04 LTS+ | Debian (`.deb`) / Flatpak (`.flatpak`) / npm | Fully Supported |
-| **Fedora** | 38, 39, 40+ | Flatpak (`.flatpak`) / Snap (`.snap`) / npm | Fully Supported |
-| **Arch Linux / Manjaro** | Rolling | Flatpak (`.flatpak`) / Snap (`.snap`) / npm | Fully Supported |
+| **Ubuntu** | 20.04 LTS, 22.04 LTS, 24.04 LTS | **Ubuntu Snap (`snap`)** / Debian (`.deb`) / npm | Fully Supported |
+| **Debian** | 11 (Bullseye), 12 (Bookworm) | **Ubuntu Snap (`snap`)** / Debian (`.deb`) / npm | Fully Supported |
+| **Linux Mint** | 20, 21, 22 | **Ubuntu Snap (`snap`)** / Debian (`.deb`) / npm | Fully Supported |
+| **Pop!_OS** | 22.04 LTS+ | **Ubuntu Snap (`snap`)** / Debian (`.deb`) / npm | Fully Supported |
+| **Fedora** | 38, 39, 40+ | **Ubuntu Snap (`snap`)** / npm | Fully Supported |
+| **Arch Linux / Manjaro** | Rolling | **Ubuntu Snap (`snap`)** / npm | Fully Supported |
 
 ---
 
@@ -145,45 +145,9 @@ snapcraft login
 # 2. Register the snap name (one-time)
 snapcraft register brave-music
 
-# 3. Upload and release to the stable channel
+# 3.Upload and release to the stable channel
 snapcraft upload --release=stable Install/Linux/brave-music_1.0.19-r_amd64.snap
 ```
-
----
-
-## 2C. Installing on Linux via Flatpak / Flathub (`.flatpak`)
-
-Brave Music provides an official Flatpak manifest (`flatpak/org.codemolabs.BraveMusic.yml`), AppStream metadata (`flatpak/org.codemolabs.BraveMusic.metainfo.xml`), and single-file `.flatpak` bundle (`org.codemolabs.BraveMusic`).
-
-### Step 1: Ensure Flathub Runtime Repository is Added
-Brave Music uses the standard `org.freedesktop.Platform//25.08` runtime:
-```bash
-flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-```
-
-### Step 2: Download or Build the Flatpak Bundle
-Download the latest `.flatpak` bundle from GitHub Releases:
-```bash
-wget https://github.com/codemolabs/Brave-Music/releases/latest/download/brave-music_1.0.19-r_amd64.flatpak
-```
-Or build it locally from source:
-```bash
-npm run build:flatpak
-```
-
-### Step 3: Install & Run the Flatpak Bundle
-```bash
-flatpak install --user ./brave-music_1.0.19-r_amd64.flatpak
-flatpak run org.codemolabs.BraveMusic
-```
-
-### Publishing to Flathub (Maintainers)
-Following the [Official Flatpak Publishing Guide](https://docs.flatpak.org/en/latest/publishing.html):
-1. Validate AppStream metadata and manifest:
-   ```bash
-   appstreamcli validate flatpak/org.codemolabs.BraveMusic.metainfo.xml
-   ```
-2. Fork `https://github.com/flathub/flathub` and submit a pull request against the `new-pr` branch containing `flatpak/org.codemolabs.BraveMusic.yml`, `flatpak/org.codemolabs.BraveMusic.metainfo.xml`, `flatpak/org.codemolabs.BraveMusic.desktop`, and `flatpak/brave-music-wrapper.sh`.
 
 ---
 
@@ -252,7 +216,12 @@ The `brave-music` launcher accepts Chromium and Electron runtime flags:
 
 ## 6. Updating Brave Music
 
-To update to a new release when a new package is published:
+If installed via the official Ubuntu Snap Store:
+```bash
+sudo snap refresh brave-music
+```
+
+If installed via Debian package (`.deb`):
 ```bash
 sudo apt update
 sudo apt install --only-upgrade ./brave-music_<new_version>_amd64.deb
@@ -267,7 +236,11 @@ npm update -g @codemolabs/brave-music
 ## 7. Uninstallation and System Cleanup
 
 ### Standard Removal
-To remove the application while retaining your local offline music downloads and playlists:
+To remove the application via Snap:
+```bash
+sudo snap remove brave-music
+```
+To remove via APT while retaining your local offline music downloads and playlists:
 ```bash
 sudo apt remove brave-music
 ```
