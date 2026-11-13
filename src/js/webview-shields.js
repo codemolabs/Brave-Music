@@ -620,15 +620,28 @@ function runShields() {
 
 // Bootstrap execution via webFrame to ensure execution in main world (worldId 0)
 try {
-  let webFrameModule = null;
-  try {
-    webFrameModule = require('electron').webFrame;
-  } catch (e) {}
+  const _host = (window.location && window.location.hostname || '').toLowerCase();
+  const _href = (window.location && window.location.href || '').toLowerCase();
+  const _isAuthPage =
+    _host.includes('accounts.google.') ||
+    _host.includes('accounts.youtube.') ||
+    _host.includes('accounts.spotify.') ||
+    _host.includes('myaccount.google.') ||
+    _href.includes('/signin') ||
+    _href.includes('/servicelogin') ||
+    _href.includes('/v3/signin');
 
-  if (webFrameModule && typeof webFrameModule.executeJavaScript === 'function') {
-    webFrameModule.executeJavaScript('(' + runShields.toString() + ')()');
-  } else {
-    runShields();
+  if (!_isAuthPage) {
+    let webFrameModule = null;
+    try {
+      webFrameModule = require('electron').webFrame;
+    } catch (e) {}
+
+    if (webFrameModule && typeof webFrameModule.executeJavaScript === 'function') {
+      webFrameModule.executeJavaScript('(' + runShields.toString() + ')()');
+    } else {
+      runShields();
+    }
   }
 } catch (err) {
   try {

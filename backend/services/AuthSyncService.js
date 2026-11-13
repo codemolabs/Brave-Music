@@ -12,11 +12,24 @@ class AuthSyncService {
     this.tempCookieFile = path.join(os.tmpdir(), `brave_music_sync_${process.pid}.txt`);
   }
 
-  getSnapBravePath() {
-    return path.join(process.env.HOME || os.homedir(), 'snap/brave/current/.config/BraveSoftware/Brave-Browser');
+  getRealHomeDir() {
+    if (process.env.SNAP_REAL_HOME && fs.existsSync(process.env.SNAP_REAL_HOME)) {
+      return process.env.SNAP_REAL_HOME;
+    }
+    try {
+      const infoHome = os.userInfo().homedir;
+      if (infoHome && !infoHome.includes('/snap/brave-music/') && fs.existsSync(infoHome)) {
+        return infoHome;
+      }
+    } catch (e) {}
+    return process.env.HOME || os.homedir();
   }
 
-  getDefaultBrowserTarget() {
+  getSnapBravePath() {
+    return path.join(this.getRealHomeDir(), 'snap/brave/current/.config/BraveSoftware/Brave-Browser');
+  }
+
+  getDefaultDesktopBrowserFamily() {
     let desktopId = '';
     for (const [command, args] of [
       ['xdg-settings', ['get', 'default-web-browser']],
@@ -27,21 +40,91 @@ class AuthSyncService {
         if (desktopId) break;
       } catch (error) {}
     }
-
     const id = desktopId.toLowerCase();
-    const home = process.env.HOME || os.homedir();
-    if (id.includes('brave')) {
-      const snapProfile = this.getSnapBravePath();
-      const standardProfile = path.join(home, '.config/BraveSoftware/Brave-Browser');
-      if (fs.existsSync(snapProfile)) return `brave:${snapProfile}`;
-      if (fs.existsSync(standardProfile)) return `brave:${standardProfile}`;
-      return 'brave';
-    }
-    if (id.includes('chrome') || id.includes('google-chrome')) return 'chrome:Default';
+    if (id.includes('brave')) return 'brave';
+    if (id.includes('chrome') || id.includes('google-chrome')) return 'chrome';
     if (id.includes('chromium')) return 'chromium';
     if (id.includes('firefox')) return 'firefox';
     if (id.includes('microsoft-edge') || id.includes('edge')) return 'edge';
-    throw new Error(`Could not identify the default browser (${desktopId || 'no desktop handler configured'}).`);
+    return '';
+  }
+
+  discoverBrowserProfiles() {
+    const home = this.getRealHomeDir();
+    const defaultFamily = this.getDefaultDesktopBrowserFamily();
+    const roots = [
+      { browser: 'brave', dir: path.join(home, 'snap/brave/current/.config/BraveSoftware/Brave-Browser') },
+      { browser: 'brave', dir: path.join(home, '.config/BraveSoftware/Brave-Browser') },
+      { browser: 'chrome', dir: path.join(home, '.config/google-chrome') },
+      { browser: 'chromium', dir: path.join(home, '.config/chromium') },
+      { browser: 'chromium', dir: path.join(home, 'snap/chromium/current/.config/chromium') },
+      { browser: 'edge', dir: path.join(home, '.config/microsoft-edge') }
+    ];
+
+    const profiles = [];
+
+    for (const root of roots) {
+      if (!fs.existsSync(root.dir)) continue;
+      let entries = [];
+      try {
+        entries = fs.readdirSync(root.dir);
+      } catch (e) {
+        continue;
+      }
+
+      for (const entry of entries) {
+        if (entry === 'Default' || entry.startsWith('Profile ')) {
+          const profDir = path.join(root.dir, entry);
+          const c1 = path.join(profDir, 'Network', 'Cookies');
+          const c2 = path.join(profDir, 'Cookies');
+          const cookieFile = fs.existsSync(c1) ? c1 : (fs.existsSync(c2) ? c2 : null);
+          if (!cookieFile) continue;
+
+          let mtimeMs = 0;
+          try {
+            mtimeMs = fs.statSync(cookieFile).mtimeMs || 0;
+          } catch (e) {}
+
+          profiles.push({
+            browser: root.browser,
+            profilePath: profDir,
+            targetArg: `${root.browser}:${profDir}`,
+            isDefaultFamily: root.browser === defaultFamily,
+            mtimeMs
+          });
+        }
+      }
+    }
+
+    // Sort: Default browser family's most recently modified profile first, then all others by mtimeMs
+    profiles.sort((a, b) => {
+      if (a.isDefaultFamily !== b.isDefaultFamily) {
+        return a.isDefaultFamily ? -1 : 1;
+      }
+      return b.mtimeMs - a.mtimeMs;
+    });
+
+    // Also append firefox fallback if installed
+    if (fs.existsSync(path.join(home, '.mozilla/firefox')) || fs.existsSync(path.join(home, 'snap/firefox'))) {
+      profiles.push({
+        browser: 'firefox',
+        profilePath: null,
+        targetArg: 'firefox',
+        isDefaultFamily: defaultFamily === 'firefox',
+        mtimeMs: 0
+      });
+    }
+
+    return profiles;
+  }
+
+  getDefaultBrowserTarget() {
+    const profiles = this.discoverBrowserProfiles();
+    if (profiles.length > 0) {
+      return profiles[0].targetArg;
+    }
+    const family = this.getDefaultDesktopBrowserFamily();
+    return family || 'brave';
   }
 
   getAvailableBrowsers() {
@@ -194,7 +277,84 @@ class AuthSyncService {
     return 'chrome';
   }
 
+  async extractCookiesDirect(browserName, profilePath) {
+    const pyScript = `
+import sys, json
+sys.path.insert(0, sys.argv[1])
+from yt_dlp.cookies import extract_cookies_from_browser
+browser = sys.argv[2]
+profile = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None
+jar = extract_cookies_from_browser(browser, profile)
+out = []
+for c in jar:
+    dom = (c.domain or "").strip()
+    if not dom:
+        continue
+    is_domain = bool(c.domain_specified or dom.startswith("."))
+    clean_dom = dom.lstrip(".")
+    is_host = c.name.startswith("__Host-")
+    is_sec = bool(c.secure or is_host or c.name.startswith("__Secure-"))
+    proto = "https://" if is_sec else "http://"
+    c_path = "/" if is_host else (c.path or "/")
+    url = f"{proto}{clean_dom}{c_path}"
+    rest_keys = {str(k).lower() for k in getattr(c, "_rest", {}).keys()}
+    http_only = "httponly" in rest_keys
+    item = {
+        "url": url,
+        "name": c.name,
+        "value": c.value,
+        "path": c_path,
+        "secure": is_sec,
+        "httpOnly": http_only
+    }
+    if not is_host and is_domain:
+        item["domain"] = "." + clean_dom
+    if c.expires and c.expires > 0:
+        item["expirationDate"] = min(int(c.expires), 2147483647)
+    out.append(item)
+print(json.dumps(out))
+`;
+    return new Promise((resolve) => {
+      execFile('python3', [
+        '-c',
+        pyScript,
+        config.paths.ytdlpBin,
+        browserName,
+        profilePath || ''
+      ], {
+        timeout: 12000,
+        maxBuffer: 10 * 1024 * 1024,
+        env: {
+          ...process.env,
+          HOME: this.getRealHomeDir(),
+          PATH: `${config.paths.bundledBinDir}:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ''}`
+        }
+      }, (error, stdout, stderr) => {
+        if (!error && stdout) {
+          try {
+            const cookies = JSON.parse(stdout.trim());
+            if (Array.isArray(cookies)) {
+              return resolve({ success: cookies.length > 0, cookies, error: '' });
+            }
+          } catch (e) {}
+        }
+        resolve({ success: false, cookies: [], error: error ? error.message : (stderr || 'Failed to extract cookies') });
+      });
+    });
+  }
+
   async runYtDlpExtraction(targetArg, targetUrl) {
+    const colonIdx = targetArg.indexOf(':');
+    const browserName = colonIdx > 0 ? targetArg.slice(0, colonIdx) : targetArg;
+    const profilePath = colonIdx > 0 ? targetArg.slice(colonIdx + 1) : '';
+
+    // 1. Try direct zero-network Python extraction first (~1.2s, no temporary file)
+    const directRes = await this.extractCookiesDirect(browserName, profilePath);
+    if (directRes.success && directRes.cookies.length > 0) {
+      return directRes;
+    }
+
+    // 2. Fallback to CLI extraction
     const tempFile = path.join(os.tmpdir(), `ytdlp_sync_${Date.now()}_${Math.random().toString(36).substring(7)}.txt`);
     try {
       fs.writeFileSync(tempFile, '# Netscape HTTP Cookie File\n', { flag: 'wx', mode: 0o600 });
@@ -214,6 +374,7 @@ class AuthSyncService {
         timeout: 20000,
         env: {
           ...process.env,
+          HOME: this.getRealHomeDir(),
           PATH: `${config.paths.bundledBinDir}:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ''}`
         }
       }, (error, stdout, stderr) => {
@@ -230,18 +391,53 @@ class AuthSyncService {
   }
 
   async extractDefaultBrowserCookies(serviceTarget = 'youtube') {
-    const browserTarget = this.getDefaultBrowserTarget();
-    const result = await this.runYtDlpExtraction(browserTarget, 'https://www.youtube.com');
-    if (!result.success) return { ...result, browserTarget };
-
-    const allowedDomains = serviceTarget === 'spotify'
+    const isSpotify = (serviceTarget || '').toLowerCase() === 'spotify';
+    const allowedDomains = isSpotify
       ? ['spotify.com', 'spotifycdn.com', 'scdn.co']
       : ['youtube.com', 'google.com', 'googleusercontent.com', 'gstatic.com'];
-    const cookies = result.cookies.filter((cookie) => {
-      const domain = (cookie.domain || '').toLowerCase().replace(/^\./, '');
-      return allowedDomains.some((allowed) => domain === allowed || domain.endsWith(`.${allowed}`));
-    });
-    return { success: true, browserTarget, cookies };
+
+    const profiles = this.discoverBrowserProfiles();
+    const candidates = profiles.length > 0
+      ? profiles.map(p => p.targetArg)
+      : [this.getDefaultBrowserTarget()];
+
+    let fallbackCookies = [];
+    let primaryTarget = candidates[0] || 'brave';
+    let lastError = '';
+
+    for (const targetArg of candidates) {
+      const result = await this.runYtDlpExtraction(targetArg, 'https://www.youtube.com');
+      if (!result.success) {
+        lastError = result.error || lastError;
+        continue;
+      }
+
+      const cookies = (result.cookies || []).filter((cookie) => {
+        const domain = (cookie.domain || (cookie.url ? new URL(cookie.url).hostname : '')).toLowerCase().replace(/^\./, '');
+        return allowedDomains.some((allowed) => domain === allowed || domain.endsWith(`.${allowed}`));
+      });
+
+      const hasServiceLogin = isSpotify
+        ? cookies.some((c) => c.name === 'sp_dc') ||
+          (cookies.some((c) => c.name === 'sp_key') && cookies.some((c) => c.name === 'sp_t'))
+        : cookies.some((c) => c.name === 'LOGIN_INFO' || c.name === '__Secure-3PAPISID') ||
+          (cookies.some((c) => c.name === 'SAPISID') && cookies.some((c) => c.name === 'SID'));
+
+      if (hasServiceLogin) {
+        return { success: true, browserTarget: targetArg, cookies };
+      }
+
+      if (cookies.length > fallbackCookies.length) {
+        fallbackCookies = cookies;
+        primaryTarget = targetArg;
+      }
+    }
+
+    if (fallbackCookies.length > 0) {
+      return { success: true, browserTarget: primaryTarget, cookies: fallbackCookies };
+    }
+
+    return { success: false, browserTarget: primaryTarget, cookies: [], error: lastError };
   }
 
   async extractAndImportCookies(browserId = 'auto', serviceTarget = 'youtube') {

@@ -196,21 +196,20 @@ window.addEventListener('error', (event) => {
     // Auth & Accounts
     startServiceLogin: async (service) => {
       if (service === 'youtube') {
-        await invoke('switch_tab', { tab: 'yt-view' });
-        await invoke('eval_script', {
-          webview: 'yt-webview',
-          script: 'window.location.href = "https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F";'
+        await invoke('open_external', {
+          url: 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F'
         });
       } else if (service === 'spotify') {
-        await invoke('switch_tab', { tab: 'spotify-view' });
-        await invoke('eval_script', {
-          webview: 'spotify-webview',
-          script: 'window.location.href = "https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F";'
+        await invoke('open_external', {
+          url: 'https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F'
         });
       } else {
         await invoke('open_provider', { provider: service });
       }
-      return { success: true };
+      return {
+        success: true,
+        message: 'Sign-in complete! Default browser session synced to Brave Music.'
+      };
     },
     cancelServiceLogin: async () => {},
     getAuthStatus: async () => ({

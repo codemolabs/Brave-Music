@@ -4,8 +4,10 @@ const fs = require('fs');
 const os = require('os');
 const backend = require('./backend');
 
-// Standard Google Chrome User-Agent matching underlying Chromium 146
-const CHROME_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.7680.216 Safari/537.36';
+// Standard Google Chrome User-Agent matching underlying Chromium runtime version
+const CHROME_FULL_VERSION = (process.versions && process.versions.chrome) ? process.versions.chrome : '148.0.7778.280';
+const CHROME_MAJOR_VERSION = CHROME_FULL_VERSION.split('.')[0] || '148';
+const CHROME_USER_AGENT = `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_FULL_VERSION} Safari/537.36`;
 const SHARED_PARTITION = 'persist:bravemusic';
 
 // Enforce single instance lock: prevent opening duplicate separate app instances
@@ -234,8 +236,17 @@ app.on('web-contents-created', (event, contents) => {
       console.log(`[Webview Fail Load] ${validatedURL}: ${errorDescription} (${errorCode})`);
     });
     contents.on('did-finish-load', () => {
-      const currentUrl = contents.getURL();
+      const currentUrl = contents.getURL() || '';
       console.log(`[Webview Finished Load] ${currentUrl}`);
+      const lowerUrl = currentUrl.toLowerCase();
+      if (lowerUrl.includes('accounts.google.') && (lowerUrl.includes('/signin/rejected') || lowerUrl.includes('/v3/signin/rejected'))) {
+        console.log('[Main] Google rejected embedded webview sign-in. Recovering webview and opening Brave Music Sign-In modal.');
+        try {
+          contents.loadURL('https://music.youtube.com');
+        } catch (e) {}
+        openLoginModal(currentUrl, contents);
+        return;
+      }
       try {
         const ytmDevtoolsAuthService = require('./backend/services/YTMDevtoolsAuthService');
         if (typeof ytmDevtoolsAuthService.syncFromBrowserMemory === 'function') {
@@ -410,14 +421,14 @@ app.whenReady().then(async () => {
       delete headers['X-Electron'];
       delete headers['x-electron'];
 
-      // Google checks Client Hints (sec-ch-ua). Provide authentic Chrome 146 client hints
-      headers['sec-ch-ua'] = '"Google Chrome";v="146", "Chromium";v="146", "Not?A_Brand";v="24"';
+      // Google checks Client Hints (sec-ch-ua). Provide authentic Chrome client hints matching runtime
+      headers['sec-ch-ua'] = `"Google Chrome";v="${CHROME_MAJOR_VERSION}", "Chromium";v="${CHROME_MAJOR_VERSION}", "Not?A_Brand";v="24"`;
       headers['sec-ch-ua-mobile'] = '?0';
       headers['sec-ch-ua-platform'] = '"Linux"';
       headers['sec-ch-ua-platform-version'] = '"6.8.0"';
       headers['sec-ch-ua-arch'] = '"x86"';
       headers['sec-ch-ua-bitness'] = '"64"';
-      headers['sec-ch-ua-full-version-list'] = '"Google Chrome";v="146.0.7680.216", "Chromium";v="146.0.7680.216", "Not?A_Brand";v="24.0.0.0"';
+      headers['sec-ch-ua-full-version-list'] = `"Google Chrome";v="${CHROME_FULL_VERSION}", "Chromium";v="${CHROME_FULL_VERSION}", "Not?A_Brand";v="24.0.0.0"`;
 
       callback({ requestHeaders: headers });
     });

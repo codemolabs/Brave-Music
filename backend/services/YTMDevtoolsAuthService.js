@@ -249,21 +249,87 @@ class YTMDevtoolsAuthService {
     };
   }
 
-  async startCdpLogin(service = 'youtube', preferredBrowser = 'in-app') {
+  async startCdpLogin(service = 'youtube', preferredBrowser = 'auto') {
     this.cancelCdpLogin();
     const attemptId = this.loginAttemptId;
     const normalizedService = (service || 'youtube').toLowerCase() === 'spotify' ? 'spotify' : 'youtube';
     this.activeLoginService = normalizedService;
     const isSpotify = normalizedService === 'spotify';
+    const useInAppOnly = preferredBrowser === 'in-app';
 
-    this._notify('status', {
-      service: normalizedService,
-      state: 'waiting_login',
-      message: `Sign in directly inside Brave Music (${isSpotify ? 'Spotify' : 'YouTube Music'} tab). Session will be saved in browser memory.`
-    });
+    const authSyncService = require('./AuthSyncService');
+    const targetUrl = isSpotify
+      ? 'https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F'
+      : 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F';
+
+    let browserLabel = 'default browser';
+    if (!useInAppOnly) {
+      try {
+        const rawTarget = authSyncService.getDefaultBrowserTarget() || 'browser';
+        browserLabel = rawTarget.split(':')[0] || 'default browser';
+      } catch (e) {}
+
+      const opened = await authSyncService.openInDefaultBrowser(targetUrl);
+      if (!opened.success) {
+        console.warn('[Auth] openInDefaultBrowser notice:', opened.error);
+      }
+
+      this._notify('status', {
+        service: normalizedService,
+        state: 'waiting_login',
+        message: `Opened your ${browserLabel} browser for sign-in. Brave Music will automatically sync your session into browser memory.`
+      });
+    } else {
+      this._notify('status', {
+        service: normalizedService,
+        state: 'waiting_login',
+        message: `Sign in directly inside Brave Music (${isSpotify ? 'Spotify' : 'YouTube Music'} tab). Session will be saved in browser memory.`
+      });
+    }
 
     const deadline = Date.now() + 300000;
+    let lastError = '';
+
     while (Date.now() < deadline && attemptId === this.loginAttemptId) {
+      // 1. When triggered from Brave Music Sign-In modal, extract from Default Browser & sync into browser memory
+      if (!useInAppOnly) {
+        try {
+          const result = await authSyncService.extractDefaultBrowserCookies(normalizedService);
+          if (result && result.success && Array.isArray(result.cookies) && result.cookies.length > 0) {
+            const cookies = result.cookies;
+            const hasServiceLogin = isSpotify
+              ? cookies.some((c) => c.name === 'sp_dc') ||
+                (cookies.some((c) => c.name === 'sp_key') && cookies.some((c) => c.name === 'sp_t'))
+              : cookies.some((c) => c.name === 'LOGIN_INFO' || c.name === '__Secure-3PAPISID') ||
+                (cookies.some((c) => c.name === 'SAPISID') && cookies.some((c) => c.name === 'SID'));
+
+            if (hasServiceLogin && attemptId === this.loginAttemptId) {
+              const applied = await this._injectCdpCookies(cookies, normalizedService);
+              if (applied && applied.success) {
+                const account = this.saveUserAccount(normalizedService, {
+                  name: isSpotify ? 'Spotify Account' : 'Google Account',
+                  email: isSpotify ? 'Active Spotify Session' : 'Active Google Session',
+                  authenticated: true,
+                  source: 'default-browser'
+                });
+                this._notify('status', {
+                  service: normalizedService,
+                  state: 'complete',
+                  count: applied.count,
+                  message: 'Sign-in complete! Default browser session synced into Brave Music browser memory.'
+                });
+                return { ...applied, account: account.account };
+              }
+            }
+          } else if (result && result.error) {
+            lastError = result.error;
+          }
+        } catch (err) {
+          lastError = err.message || String(err);
+        }
+      }
+
+      // 2. Also check in-app browser session memory (if user signed in inside webview or imported cookies)
       const memState = await this.syncFromBrowserMemory(normalizedService);
       const isLoggedIn = isSpotify ? memState.spotify : memState.ytm;
       const cookieCount = isSpotify ? memState.spotifyCount : memState.ytmCount;
@@ -291,11 +357,22 @@ class YTMDevtoolsAuthService {
       }
 
       if (attemptId !== this.loginAttemptId) break;
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      if (!useInAppOnly) {
+        this._notify('status', {
+          service: normalizedService,
+          state: 'waiting_login',
+          message: 'Waiting for sign-in in your default browser…'
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 
     if (attemptId !== this.loginAttemptId) throw new Error('Sign-in cancelled.');
-    throw new Error('Sign-in timed out. Complete sign-in directly inside the Brave Music tab.');
+    throw new Error(
+      lastError
+        ? `Sign-in timed out. Could not read default browser session (${lastError}). You can also use Emergency Cookies (.json) import.`
+        : 'Sign-in timed out. Sign in via your default browser and try again, or import cookies.json.'
+    );
   }
 
   async _waitForCdpTarget(port, timeoutMs = 20000) {
@@ -451,14 +528,26 @@ class YTMDevtoolsAuthService {
   // COOKIE INJECTION & PERSISTENCE
   // =========================================================================
 
+  _extractCookieHost(c) {
+    if (c && c.domain) {
+      return String(c.domain).toLowerCase().replace(/^\./, '');
+    }
+    if (c && c.url) {
+      try {
+        return new URL(c.url).hostname.toLowerCase();
+      } catch (e) {}
+    }
+    return '';
+  }
+
   async _injectCdpCookies(cdpCookies, targetService = 'youtube') {
     let service = targetService;
     // Auto-detect service from cookies if not clearly specified
     const hasSpotifyCookies = cdpCookies.some(c => {
-      const d = (c.domain || '').toLowerCase();
+      const d = this._extractCookieHost(c);
       return d.includes('spotify.com') || c.name === 'sp_dc';
     });
-    if (hasSpotifyCookies) {
+    if (hasSpotifyCookies && (!targetService || targetService === 'spotify')) {
       service = 'spotify';
     }
 
@@ -466,7 +555,7 @@ class YTMDevtoolsAuthService {
     const relevantCookies = [];
 
     for (const c of cdpCookies) {
-      const d = (c.domain || '').toLowerCase();
+      const d = this._extractCookieHost(c);
       if (isSpotify) {
         if (
           d.includes('spotify.com') ||
@@ -498,16 +587,17 @@ class YTMDevtoolsAuthService {
 
     for (const c of relevantCookies) {
       const rawDomain = (c.domain || '').toLowerCase();
+      const hostFromUrl = this._extractCookieHost(c);
       const domainCookieRoots = ['youtube.com', 'google.com', 'googleusercontent.com', 'gstatic.com', 'spotify.com', 'spotifycdn.com', 'scdn.co'];
-      const isDomain = rawDomain.startsWith('.') || domainCookieRoots.includes(rawDomain);
+      const isHostPrefix = c.name && c.name.startsWith('__Host-');
+      const isDomain = !isHostPrefix && (rawDomain.startsWith('.') || domainCookieRoots.includes(rawDomain));
       const cleanDomain = isDomain 
         ? (rawDomain.startsWith('.') ? rawDomain.substring(1) : rawDomain)
-        : (c.domain || (isSpotify ? 'open.spotify.com' : 'music.youtube.com'));
-      const isHostPrefix = c.name && c.name.startsWith('__Host-');
+        : (hostFromUrl || c.domain || (isSpotify ? 'open.spotify.com' : 'music.youtube.com'));
       const isSecurePrefix = c.name && c.name.startsWith('__Secure-');
       const isSecure = c.secure || isHostPrefix || isSecurePrefix;
       const protocol = isSecure ? 'https://' : 'http://';
-      const cookieUrl = `${protocol}${cleanDomain}${c.path || '/'}`;
+      const cookieUrl = c.url || `${protocol}${cleanDomain}${c.path || '/'}`;
 
       let sameSite = 'unspecified';
       const rawSameSite = (c.sameSite || '').toLowerCase();

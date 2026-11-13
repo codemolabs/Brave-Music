@@ -848,29 +848,59 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================================
 
   btnStartYtmCdp?.addEventListener('click', async () => {
-    const ytmLoginUrl = 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F';
-    closeAuthSyncModal();
-    switchTab('yt-view');
-    if (ytWebview) {
-      try {
-        if (typeof ytWebview.loadURL === 'function') {
-          ytWebview.loadURL(ytmLoginUrl);
-        } else {
-          ytWebview.src = ytmLoginUrl;
+    authSessionTracker.youtube.state = 'loading';
+    if (authSessionTracker.youtube.closeTimer) clearTimeout(authSessionTracker.youtube.closeTimer);
+    btnStartYtmCdp.disabled = true;
+    btnStartYtmCdp.classList.add('is-loading');
+    if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Waiting for Default Browser…';
+    if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'inline-flex';
+    if (ytmCdpStatus) {
+      ytmCdpStatus.className = 'login-live-feedback loading';
+      ytmCdpStatus.style.display = 'flex';
+      ytmCdpStatus.textContent = 'Opening your default browser for YouTube Music sign-in…';
+    }
+    try {
+      const res = await window.braveApi.startServiceLogin('youtube', 'auto');
+      if (res && res.success) {
+        authSessionTracker.youtube.state = 'complete';
+        btnStartYtmCdp.disabled = false;
+        btnStartYtmCdp.classList.remove('is-loading');
+        if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Sign in to YouTube Music';
+        if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
+        if (ytmCdpStatus) {
+          ytmCdpStatus.className = 'login-live-feedback success';
+          ytmCdpStatus.style.display = 'flex';
+          ytmCdpStatus.textContent = res.message || 'Sign-in complete! Session synced to browser memory.';
         }
-      } catch (e) {
-        ytWebview.src = ytmLoginUrl;
+        refreshAuthStatusUI();
+        refreshMusicTabsAfterSignIn('youtube', true);
+        authSessionTracker.youtube.closeTimer = setTimeout(() => {
+          closeAuthSyncModal();
+          authSessionTracker.youtube.state = 'idle';
+        }, 1600);
+      } else if (res && res.error && authSessionTracker.youtube.state !== 'cancelled') {
+        authSessionTracker.youtube.state = 'error';
+        btnStartYtmCdp.disabled = false;
+        btnStartYtmCdp.classList.remove('is-loading');
+        if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Sign in to YouTube Music';
+        if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
+        if (ytmCdpStatus) {
+          ytmCdpStatus.className = 'login-live-feedback error';
+          ytmCdpStatus.style.display = 'flex';
+          ytmCdpStatus.textContent = res.error;
+        }
+      }
+    } catch (e) {
+      btnStartYtmCdp.disabled = false;
+      btnStartYtmCdp.classList.remove('is-loading');
+      if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Sign in to YouTube Music';
+      if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
+      if (ytmCdpStatus && authSessionTracker.youtube.state !== 'cancelled') {
+        ytmCdpStatus.className = 'login-live-feedback error';
+        ytmCdpStatus.style.display = 'flex';
+        ytmCdpStatus.textContent = 'Error opening sign-in: ' + (e?.message || e);
       }
     }
-    if (window.braveApi?.evalScript) {
-      try {
-        window.braveApi.evalScript('yt-view', `window.location.href = ${JSON.stringify(ytmLoginUrl)};`);
-      } catch (e) {}
-    }
-    showToast('Sign in directly inside the YouTube Music tab…');
-    try {
-      await window.braveApi?.startServiceLogin?.('youtube', 'in-app');
-    } catch (e) {}
   });
 
   btnCancelYtmCdp?.addEventListener('click', async () => {
@@ -966,29 +996,59 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================================
 
   btnStartSpotifyLogin?.addEventListener('click', async () => {
-    const spotifyLoginUrl = 'https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F';
-    closeAuthSyncModal();
-    switchTab('spotify-view');
-    if (spotifyWebview) {
-      try {
-        if (typeof spotifyWebview.loadURL === 'function') {
-          spotifyWebview.loadURL(spotifyLoginUrl);
-        } else {
-          spotifyWebview.src = spotifyLoginUrl;
+    authSessionTracker.spotify.state = 'loading';
+    if (authSessionTracker.spotify.closeTimer) clearTimeout(authSessionTracker.spotify.closeTimer);
+    btnStartSpotifyLogin.disabled = true;
+    btnStartSpotifyLogin.classList.add('is-loading');
+    if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Waiting for Default Browser…';
+    if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'inline-flex';
+    if (spotifyLoginStatus) {
+      spotifyLoginStatus.className = 'login-live-feedback loading';
+      spotifyLoginStatus.style.display = 'flex';
+      spotifyLoginStatus.textContent = 'Opening your default browser for Spotify sign-in…';
+    }
+    try {
+      const res = await window.braveApi.startServiceLogin('spotify', 'auto');
+      if (res && res.success) {
+        authSessionTracker.spotify.state = 'complete';
+        btnStartSpotifyLogin.disabled = false;
+        btnStartSpotifyLogin.classList.remove('is-loading');
+        if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Sign in to Spotify';
+        if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
+        if (spotifyLoginStatus) {
+          spotifyLoginStatus.className = 'login-live-feedback success';
+          spotifyLoginStatus.style.display = 'flex';
+          spotifyLoginStatus.textContent = res.message || 'Sign-in complete! Session synced to browser memory.';
         }
-      } catch (e) {
-        spotifyWebview.src = spotifyLoginUrl;
+        refreshAuthStatusUI();
+        refreshMusicTabsAfterSignIn('spotify', true);
+        authSessionTracker.spotify.closeTimer = setTimeout(() => {
+          closeAuthSyncModal();
+          authSessionTracker.spotify.state = 'idle';
+        }, 1600);
+      } else if (res && res.error && authSessionTracker.spotify.state !== 'cancelled') {
+        authSessionTracker.spotify.state = 'error';
+        btnStartSpotifyLogin.disabled = false;
+        btnStartSpotifyLogin.classList.remove('is-loading');
+        if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Sign in to Spotify';
+        if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
+        if (spotifyLoginStatus) {
+          spotifyLoginStatus.className = 'login-live-feedback error';
+          spotifyLoginStatus.style.display = 'flex';
+          spotifyLoginStatus.textContent = res.error;
+        }
+      }
+    } catch (e) {
+      btnStartSpotifyLogin.disabled = false;
+      btnStartSpotifyLogin.classList.remove('is-loading');
+      if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Sign in to Spotify';
+      if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
+      if (spotifyLoginStatus && authSessionTracker.spotify.state !== 'cancelled') {
+        spotifyLoginStatus.className = 'login-live-feedback error';
+        spotifyLoginStatus.style.display = 'flex';
+        spotifyLoginStatus.textContent = 'Error opening sign-in: ' + (e?.message || e);
       }
     }
-    if (window.braveApi?.evalScript) {
-      try {
-        window.braveApi.evalScript('spotify-view', `window.location.href = ${JSON.stringify(spotifyLoginUrl)};`);
-      } catch (e) {}
-    }
-    showToast('Sign in directly inside the Spotify tab…');
-    try {
-      await window.braveApi?.startServiceLogin?.('spotify', 'in-app');
-    } catch (e) {}
   });
 
   btnCancelSpotifyLogin?.addEventListener('click', async () => {
@@ -1103,7 +1163,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (targetCancel) targetCancel.style.display = 'none';
       targetStatusEl.className = 'login-live-feedback success';
       targetStatusEl.textContent = status.message || 'Sign-in complete! Session applied.';
-      refreshMusicTabsAfterSignIn(serviceKey);
+      refreshMusicTabsAfterSignIn(serviceKey, true);
       refreshAuthStatusUI();
       if (tracker.closeTimer) clearTimeout(tracker.closeTimer);
       tracker.closeTimer = setTimeout(() => {
@@ -1131,11 +1191,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Intercepted webview login click handler
+  // Intercepted webview login click handler (e.g. when Google rejects embedded webview sign-in)
   window.braveApi?.onAuthBrowserOpened?.((data) => {
     const service = data?.service;
     const targetTab = service === 'spotify' ? 'spotify' : 'ytm';
     openAuthSyncModal(targetTab);
+    if (targetTab === 'ytm' && ytmCdpStatus) {
+      ytmCdpStatus.className = 'login-live-feedback info';
+      ytmCdpStatus.style.display = 'flex';
+      ytmCdpStatus.textContent = 'Google blocked embedded browser sign-in. Click "Sign in to YouTube Music" above to sign in via your default browser and auto-sync.';
+    }
   });
 
   document.addEventListener('keydown', (e) => {

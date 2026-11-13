@@ -39,14 +39,14 @@ This document tracks official version releases, changelogs, binary checksums, an
 - **Self-Contained Media Download & Spotify/YouTube Engine (`backend/bin/`)**:
   - Bundled standalone `yt-dlp` (with embedded `yt_dlp_ejs` JS challenge solver, `mutagen`, `certifi`, `urllib3`, `requests`, and `websockets`), `node` JS runtime shim (`ELECTRON_RUN_AS_NODE=1`), and `glibc 2.31`-compatible `ffmpeg` + `ffprobe` + `libav*.so`/`libsw*.so` directly inside `backend/bin/`.
   - Guarantees zero-dependency, out-of-the-box YouTube Music & Spotify track/playlist downloading and 320kbps MP3/M4A/FLAC conversion inside the strict Ubuntu Snap (`core22`) sandbox as well as Debian `.deb` and Cross-Platform Preview runtimes.
-- **Native In-Browser Sign-In & Persistent Browser Memory (`persist:bravemusic`)**:
-  - Eliminated external browser forcing during YouTube Music and Spotify authentication; sign-in now occurs directly inside Brave Music's built-in browser (`partition="persist:bravemusic"`) and in-app OAuth popups sharing the same browser session.
-  - Added automatic live browser-memory cookie inspection and disk flushing (`session.cookies.flushStore()` + `syncFromBrowserMemory`) so sessions persist natively across restarts while keeping `cookies.json` import strictly as an emergency manual fallback.
+- **Smart Dual-Mode Authentication & Persistent Browser Memory (`persist:bravemusic`)**:
+  - **Brave Music Sign-In Modal (Top Header Profile Button)**: Opens the system Default Browser to sign in safely (bypassing Google `"This browser or app may not be secure"` blocks) and automatically extracts/syncs authenticated sessions (`__Host-*`, `LOGIN_INFO`, `__Secure-3PAPISID`, `sp_dc`) into Brave Music's persistent browser memory (`persist:bravemusic` + `session.cookies.flushStore()`), with **Emergency Fallback: Import Cookies (`.json`)** included.
+  - **Inside App Web (`#yt-webview` & `#spotify-webview`)**: Navigating or signing in directly inside the embedded player tabs stays in-app without forcing an external browser and automatically persists sessions in browser memory (`syncFromBrowserMemory`), with automatic recovery to the Brave Music Sign-In modal if Google rejects embedded sign-in.
 - **Official Linux Packages & Checksums (SHA-256)**:
   - **Ubuntu Snap Package (`.snap` — Official Recommended)**: `Install/Linux/brave-music_1.0.19-r_amd64.snap`
-    - SHA-256: `4634a36646fe34f116e5df3784f1201708e712d1e2cb868a756bfe0c5a4bcb94`
+    - SHA-256: `91eb486c14943e2e59b9813a5727147127daffd56860720162e36c40ce068d0a`
   - **Debian Package (`.deb`)**: `Install/Linux/brave-music_1.0.19-r_amd64.deb`
-    - SHA-256: `64a4c59f2679fab03d0175ccd3b50941615ceff85bc183dc4b33be5c97c26b74`
+    - SHA-256: `0969200a7e8c8698f89e67fcf6aa1cb2c27d0f42cdcfeb04c86c5ddfd492eb07`
 
 ### Release v1.0.18
 
