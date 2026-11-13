@@ -14,8 +14,18 @@
 
 <body class="dark-theme">
 
+  <!-- Perimeter Window Resize Grips (Ubuntu / Frameless Desktop Support) -->
+  <div class="window-resize-handle resize-n" data-resize-dir="n" aria-hidden="true"></div>
+  <div class="window-resize-handle resize-s" data-resize-dir="s" aria-hidden="true"></div>
+  <div class="window-resize-handle resize-w" data-resize-dir="w" aria-hidden="true"></div>
+  <div class="window-resize-handle resize-e" data-resize-dir="e" aria-hidden="true"></div>
+  <div class="window-resize-handle resize-nw" data-resize-dir="nw" aria-hidden="true"></div>
+  <div class="window-resize-handle resize-ne" data-resize-dir="ne" aria-hidden="true"></div>
+  <div class="window-resize-handle resize-sw" data-resize-dir="sw" aria-hidden="true"></div>
+  <div class="window-resize-handle resize-se" data-resize-dir="se" aria-hidden="true"></div>
+
   <!-- Top Title & Navigation Bar -->
-  <header class="app-header" data-tauri-drag-region>
+  <header class="app-header" id="app-header">
     <!-- Left: Navigation Tabs (Dynamic Pills) & History Controls -->
     <div class="header-left">
       <div class="header-history-nav">
@@ -70,7 +80,7 @@
     <!-- Center: Brand Name (Centered in Header) -->
     <div class="header-center">
       <div class="brand-pill">
-        <span class="brand-name" data-tauri-drag-region>Brave Music</span>
+        <span class="brand-name">Brave Music</span>
       </div>
     </div>
 
@@ -109,17 +119,30 @@
       </button>
 
       <div class="window-controls">
-        <button class="win-btn win-min" id="win-min" title="Minimize">
+        <button class="win-btn win-menu" id="win-menu" title="Window Options (Ubuntu Menu)"
+          aria-label="Window Options">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line>
+            <polyline points="9 14 12 17 15 14"></polyline>
+          </svg>
+        </button>
+        <button class="win-btn win-min" id="win-min" title="Minimize" aria-label="Minimize Window">
           <svg width="10" height="1" viewBox="0 0 10 1">
             <rect width="10" height="1" fill="currentColor" />
           </svg>
         </button>
-        <button class="win-btn win-max" id="win-max" title="Maximize">
-          <svg width="10" height="10" viewBox="0 0 10 10">
+        <button class="win-btn win-max" id="win-max" title="Maximize" aria-label="Maximize or Restore Window">
+          <svg class="icon-win-maximize" width="10" height="10" viewBox="0 0 10 10">
             <rect x="1" y="1" width="8" height="8" stroke="currentColor" stroke-width="1.2" fill="none" />
           </svg>
+          <svg class="icon-win-restore" width="10" height="10" viewBox="0 0 10 10" style="display:none;">
+            <path d="M2.5 3.5h5v5h-5z" stroke="currentColor" stroke-width="1.15" fill="none" />
+            <path d="M3.5 3.5V2h4.5v4.5H6.5" stroke="currentColor" stroke-width="1.15" fill="none" />
+          </svg>
         </button>
-        <button class="win-btn win-close" id="win-close" title="Close">
+        <button class="win-btn win-close" id="win-close" title="Close" aria-label="Close Window">
           <svg width="10" height="10" viewBox="0 0 10 10">
             <path d="M1 1 L9 9 M9 1 L1 9" stroke="currentColor" stroke-width="1.2" />
           </svg>
@@ -989,25 +1012,38 @@
           </p>
         </div>
 
-        <!-- Action Buttons Outside the Bubble: Donation Email & Report Issue -->
+        <!-- Action Buttons Outside the Bubble: Email Us, Update & Report -->
         <div class="about-external-actions-row">
           <button class="about-white-action-btn" id="btn-email-donation"
-            title="Contact / Donate via cosl@codemoteams.org">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            title="Email us at cosl@codemoteams.org">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
               <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
               <polyline points="22,6 12,13 2,6"></polyline>
             </svg>
-            <span>cosl@codemoteams.org</span>
+            <span>Email Us</span>
+          </button>
+
+          <button class="about-white-action-btn btn-update-highlight" id="btn-check-update"
+            title="Open current release page on GitHub">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span>Update</span>
           </button>
 
           <button class="about-white-action-btn btn-report-issue-highlight" id="btn-report-issue"
-            title="Press to report bug or issue">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            title="Report a bug or issue">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"></circle>
               <line x1="12" y1="8" x2="12" y2="12"></line>
               <line x1="12" y1="16" x2="12.01" y2="16"></line>
             </svg>
-            <span>Report an Issue (Press me)</span>
+            <span>Report</span>
           </button>
         </div>
       </div>

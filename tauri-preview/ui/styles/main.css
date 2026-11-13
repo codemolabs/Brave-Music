@@ -73,6 +73,97 @@ body {
   flex-direction: column;
 }
 
+/* Frameless Window Edge Frame & Perimeter Resize Grips (Ubuntu X11/Wayland) */
+body:not(.win-maximized):not(.win-fullscreen):not(.win-decorated)::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 99989;
+}
+
+.window-resize-handle {
+  position: fixed;
+  z-index: 99990;
+  background: transparent;
+  -webkit-app-region: no-drag;
+}
+
+.window-resize-handle.resize-n {
+  top: 0;
+  left: 10px;
+  right: 10px;
+  height: 5px;
+  cursor: ns-resize;
+}
+
+.window-resize-handle.resize-s {
+  bottom: 0;
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.window-resize-handle.resize-w {
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.window-resize-handle.resize-e {
+  right: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.window-resize-handle.resize-nw {
+  top: 0;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  z-index: 99991;
+}
+
+.window-resize-handle.resize-ne {
+  top: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  cursor: nesw-resize;
+  z-index: 99991;
+}
+
+.window-resize-handle.resize-sw {
+  bottom: 0;
+  left: 0;
+  width: 12px;
+  height: 12px;
+  cursor: nesw-resize;
+  z-index: 99991;
+}
+
+.window-resize-handle.resize-se {
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  cursor: nwse-resize;
+  z-index: 99991;
+}
+
+body.win-maximized .window-resize-handle,
+body.win-fullscreen .window-resize-handle,
+body.win-decorated .window-resize-handle {
+  display: none;
+}
+
 /* Universal Smooth Dark Scrollbars */
 *::-webkit-scrollbar {
   width: 7px;
@@ -118,15 +209,30 @@ body {
   align-items: center;
   padding: 0 16px;
   -webkit-app-region: drag;
+  user-select: none;
   z-index: 50;
   flex-shrink: 0;
   box-shadow: var(--inner-highlight);
   transform: translateZ(0);
 }
 
-.header-left,
-.header-right {
+.app-header button,
+.app-header a,
+.app-header input,
+.app-header .nav-tab {
   -webkit-app-region: no-drag;
+}
+
+.header-center,
+.brand-pill,
+.brand-name {
+  cursor: grab;
+}
+
+.header-center:active,
+.brand-pill:active,
+.brand-name:active {
+  cursor: grabbing;
 }
 
 .header-left {
@@ -3601,33 +3707,51 @@ webview {
   color: #0f172a;
 }
 
-/* External Actions Row: Donation & Report Issue */
+/* External Actions Row: Email Us, Update & Report */
 .about-external-actions-row {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
   gap: 10px;
-  flex-wrap: wrap;
+}
+
+@media (max-width: 440px) {
+  .about-external-actions-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .about-white-action-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  font-size: 0.78rem;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  font-size: 0.8rem;
   font-weight: 600;
   border: 1px solid #cbd5e1;
   background: #ffffff;
-  color: #334155;
+  color: #1e293b;
   cursor: pointer;
-  transition: all 0.15s ease;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
 }
 
 .about-white-action-btn:hover {
   background: #f1f5f9;
   border-color: #94a3b8;
   color: #0f172a;
+}
+
+.about-white-action-btn:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 2px;
+}
+
+.about-white-action-btn:active {
+  transform: translateY(1px);
 }
 
 .btn-update-highlight {

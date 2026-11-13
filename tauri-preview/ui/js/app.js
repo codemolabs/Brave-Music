@@ -160,17 +160,105 @@ document.addEventListener('DOMContentLoaded', () => {
   // WINDOW CONTROLS & HEADER ACTIONS
   // ==========================================================================
 
+  const winMaxBtn = document.getElementById('win-max');
+  const appHeaderEl = document.getElementById('app-header') || document.querySelector('.app-header');
+
+  function applyWindowStateToUI(winState) {
+    if (!winState || typeof winState !== 'object') return;
+    document.body.classList.toggle('win-maximized', !!winState.maximized);
+    document.body.classList.toggle('win-fullscreen', !!winState.fullscreen);
+    document.body.classList.toggle('win-decorated', !!winState.decorated);
+    document.body.classList.toggle('win-always-on-top', !!winState.alwaysOnTop);
+
+    if (winMaxBtn) {
+      const isMax = !!winState.maximized;
+      winMaxBtn.classList.toggle('is-maximized', isMax);
+      winMaxBtn.title = isMax ? 'Restore Down' : 'Maximize';
+      const maxIcon = winMaxBtn.querySelector('.icon-win-maximize');
+      const restoreIcon = winMaxBtn.querySelector('.icon-win-restore');
+      if (maxIcon) maxIcon.style.display = isMax ? 'none' : '';
+      if (restoreIcon) restoreIcon.style.display = isMax ? '' : 'none';
+    }
+  }
+
+  document.getElementById('win-menu')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const rect = e.currentTarget?.getBoundingClientRect?.();
+    if (rect) {
+      window.braveApi?.showWindowMenu?.(rect.right, rect.bottom + 4);
+    } else {
+      window.braveApi?.showWindowMenu?.();
+    }
+  });
+
   document.getElementById('win-min')?.addEventListener('click', () => {
     window.braveApi?.minimize();
   });
 
-  document.getElementById('win-max')?.addEventListener('click', () => {
+  winMaxBtn?.addEventListener('click', () => {
     window.braveApi?.maximize();
   });
 
   document.getElementById('win-close')?.addEventListener('click', () => {
     window.braveApi?.close();
   });
+
+  // Explicit single-path window move (drag), double-click maximize, and Ubuntu window context menu
+  if (appHeaderEl) {
+    appHeaderEl.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (e.target.closest('button, a, input, select, textarea, .nav-tab, .win-btn, .window-resize-handle')) {
+        return;
+      }
+      e.preventDefault();
+      window.braveApi?.startDragging?.();
+    });
+
+    appHeaderEl.addEventListener('dblclick', (e) => {
+      if (e.target.closest('button, a, input, select, textarea, .nav-tab, .win-btn, .window-resize-handle')) {
+        return;
+      }
+      window.braveApi?.maximize?.();
+    });
+
+    appHeaderEl.addEventListener('contextmenu', (e) => {
+      if (e.target.closest('button, a, input, select, textarea')) {
+        return;
+      }
+      e.preventDefault();
+      window.braveApi?.showWindowMenu?.(e.clientX, e.clientY);
+    });
+  }
+
+  // 8-direction perimeter resize handles (n, s, w, e, nw, ne, sw, se)
+  document.querySelectorAll('.window-resize-handle[data-resize-dir]').forEach((handle) => {
+    handle.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      const dir = handle.getAttribute('data-resize-dir');
+      if (dir) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.braveApi?.startResizeDragging?.(dir);
+      }
+    });
+  });
+
+  // Ubuntu standard keyboard window shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'F11') {
+      e.preventDefault();
+      window.braveApi?.toggleFullscreen?.().then(applyWindowStateToUI).catch(() => {});
+    } else if (e.altKey && e.key === 'F10') {
+      e.preventDefault();
+      window.braveApi?.maximize?.();
+    } else if (e.altKey && e.key === ' ') {
+      e.preventDefault();
+      window.braveApi?.showWindowMenu?.();
+    }
+  });
+
+  window.braveApi?.onWindowStateChanged?.(applyWindowStateToUI);
+  window.braveApi?.getWindowState?.().then(applyWindowStateToUI).catch(() => {});
 
   // ==========================================================================
   // IN-APP HISTORY & PAGE VIEW NAVIGATION (< BACK, > FORWARD)
@@ -465,15 +553,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnCheckUpdate = document.getElementById('btn-check-update');
   btnCheckUpdate?.addEventListener('click', () => {
     const releaseUrl = 'https://github.com/codemolabs/Brave-Music/releases';
-    window.braveApi?.openExternal(releaseUrl);
-    showToast('Opening Brave Music current release page...');
+    window.braveApi?.openExternal(releaseUrl)?.catch?.(() => {});
+    showToast('Opening releases page...');
   });
 
   const btnReportIssue = document.getElementById('btn-report-issue');
   btnReportIssue?.addEventListener('click', () => {
     const issuesUrl = 'https://github.com/codemolabs/Brave-Music/issues';
-    window.braveApi?.openExternal(issuesUrl);
-    showToast('Opening Brave Music issue reporting page...');
+    window.braveApi?.openExternal(issuesUrl)?.catch?.(() => {});
+    showToast('Opening issues page...');
   });
 
   // ==========================================================================

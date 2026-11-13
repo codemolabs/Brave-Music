@@ -25,6 +25,12 @@ static APP_SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 static SPOTIFY_WEBVIEW_CREATING: AtomicBool = AtomicBool::new(false);
 static YT_AUTH_COOKIE_HINT: AtomicBool = AtomicBool::new(false);
 static SP_AUTH_COOKIE_HINT: AtomicBool = AtomicBool::new(false);
+static WINDOW_ALWAYS_ON_TOP: AtomicBool = AtomicBool::new(false);
+static WINDOW_DECORATED: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "linux")]
+thread_local! {
+    static ACTIVE_WINDOW_MENU: std::cell::RefCell<Option<gtk::Menu>> = const { std::cell::RefCell::new(None) };
+}
 static AUTH_ACTIVE_SERVICE: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 static CURRENT_YT_URL: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("https://music.youtube.com/".to_string()));
 static CURRENT_SPOTIFY_URL: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("https://open.spotify.com/".to_string()));
@@ -1266,7 +1272,48 @@ fn ensure_spotify_webview_on_main_thread(app: &AppHandle) {
 }
 
 #[cfg(target_os = "linux")]
+fn linux_overlay_edge_inset(window: &Window) -> i32 {
+    let maximized = window.is_maximized().unwrap_or(false);
+    let fullscreen = window.is_fullscreen().unwrap_or(false);
+    let decorated = WINDOW_DECORATED.load(Ordering::Relaxed)
+        || window.is_decorated().unwrap_or(false);
+    if maximized || fullscreen || decorated {
+        0
+    } else {
+        6
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn apply_linux_overlay_child_margins(widget: &gtk::Widget, edge: i32) {
+    widget.set_margin_top(58);
+    widget.set_margin_start(edge);
+    widget.set_margin_end(edge);
+    widget.set_margin_bottom(edge);
+}
+
+#[cfg(target_os = "linux")]
+fn sync_linux_overlay_margins(window: &Window) {
+    let edge = linux_overlay_edge_inset(window);
+    if let Ok(vbox) = window.default_vbox() {
+        let children = vbox.children();
+        if let Some(overlay_widget) = children.first() {
+            if let Ok(overlay) = overlay_widget.clone().downcast::<gtk::Overlay>() {
+                for child in overlay.children().into_iter().skip(1) {
+                    apply_linux_overlay_child_margins(&child, edge);
+                }
+                overlay.queue_draw();
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
 fn setup_linux_overlay(window: &Window) {
+    if let Ok(gtk_win) = window.gtk_window() {
+        gtk_win.set_resizable(true);
+    }
+    let edge = linux_overlay_edge_inset(window);
     if let Ok(vbox) = window.default_vbox() {
         let children = vbox.children();
         if children.len() >= 2 {
@@ -1282,7 +1329,7 @@ fn setup_linux_overlay(window: &Window) {
             overlay.add(&main_ui);
 
             for w in rest {
-                w.set_margin_top(58);
+                apply_linux_overlay_child_margins(&w, edge);
                 overlay.add_overlay(&w);
             }
 
@@ -1294,13 +1341,14 @@ fn setup_linux_overlay(window: &Window) {
 
 #[cfg(target_os = "linux")]
 fn attach_pending_linux_overlay_children(window: &Window) {
+    let edge = linux_overlay_edge_inset(window);
     if let Ok(vbox) = window.default_vbox() {
         let children = vbox.children();
         if children.len() >= 2 {
             if let Ok(overlay) = children[0].clone().downcast::<gtk::Overlay>() {
                 for extra in &children[1..] {
                     vbox.remove(extra);
-                    extra.set_margin_top(58);
+                    apply_linux_overlay_child_margins(extra, edge);
                     overlay.add_overlay(extra);
                 }
                 overlay.queue_draw();
@@ -3241,18 +3289,100 @@ async fn select_download_folder(app: AppHandle) -> Result<Value, String> {
     }
 }
 
-#[tauri::command]
-fn window_minimize(window: Window) -> Result<(), String> {
-    window.minimize().map_err(|e| e.to_string())
+fn parse_resize_direction(direction: &str) -> Option<tauri_runtime::ResizeDirection> {
+    match direction.trim().to_ascii_lowercase().as_str() {
+        "n" | "north" | "top" => Some(tauri_runtime::ResizeDirection::North),
+        "s" | "south" | "bottom" => Some(tauri_runtime::ResizeDirection::South),
+        "w" | "west" | "left" => Some(tauri_runtime::ResizeDirection::West),
+        "e" | "east" | "right" => Some(tauri_runtime::ResizeDirection::East),
+        "nw" | "northwest" | "top-left" => Some(tauri_runtime::ResizeDirection::NorthWest),
+        "ne" | "northeast" | "top-right" => Some(tauri_runtime::ResizeDirection::NorthEast),
+        "sw" | "southwest" | "bottom-left" => Some(tauri_runtime::ResizeDirection::SouthWest),
+        "se" | "southeast" | "bottom-right" => Some(tauri_runtime::ResizeDirection::SouthEast),
+        _ => None,
+    }
+}
+
+fn window_state_payload(window: &Window) -> Value {
+    let maximized = window.is_maximized().unwrap_or(false);
+    let fullscreen = window.is_fullscreen().unwrap_or(false);
+    let decorated = window
+        .is_decorated()
+        .unwrap_or_else(|_| WINDOW_DECORATED.load(Ordering::Relaxed));
+    WINDOW_DECORATED.store(decorated, Ordering::Relaxed);
+    let always_on_top = window
+        .is_always_on_top()
+        .unwrap_or_else(|_| WINDOW_ALWAYS_ON_TOP.load(Ordering::Relaxed));
+    WINDOW_ALWAYS_ON_TOP.store(always_on_top, Ordering::Relaxed);
+    let resizable = window.is_resizable().unwrap_or(true);
+    serde_json::json!({
+        "maximized": maximized,
+        "fullscreen": fullscreen,
+        "decorated": decorated,
+        "alwaysOnTop": always_on_top,
+        "resizable": resizable,
+    })
+}
+
+fn sync_window_state_and_layout(app: &AppHandle, window: &Window) -> Value {
+    #[cfg(target_os = "linux")]
+    sync_linux_overlay_margins(window);
+    let payload = window_state_payload(window);
+    let _ = app.emit("window-state-changed", payload.clone());
+    payload
+}
+
+fn snap_window_to_half(window: &Window, left: bool) -> Result<Value, String> {
+    if window.is_fullscreen().unwrap_or(false) {
+        let _ = window.set_fullscreen(false);
+    }
+    if window.is_maximized().unwrap_or(false) {
+        let _ = window.unmaximize();
+    }
+    let _ = window.set_resizable(true);
+    let monitor = window
+        .current_monitor()
+        .map_err(|e| e.to_string())?
+        .or_else(|| window.primary_monitor().ok().flatten())
+        .ok_or_else(|| "No active monitor found".to_string())?;
+    let area = monitor.work_area();
+    let half_w = (area.size.width / 2).max(400);
+    let full_h = area.size.height.max(500);
+    let target_x = if left {
+        area.position.x
+    } else {
+        area.position.x + (area.size.width as i32 - half_w as i32)
+    };
+    window
+        .set_size(tauri::Size::Physical(tauri::PhysicalSize::new(
+            half_w, full_h,
+        )))
+        .map_err(|e| e.to_string())?;
+    window
+        .set_position(tauri::Position::Physical(tauri::PhysicalPosition::new(
+            target_x,
+            area.position.y,
+        )))
+        .map_err(|e| e.to_string())?;
+    Ok(sync_window_state_and_layout(window.app_handle(), window))
 }
 
 #[tauri::command]
-fn window_maximize(window: Window) -> Result<(), String> {
+fn window_minimize(app: AppHandle, window: Window) -> Result<(), String> {
+    window.minimize().map_err(|e| e.to_string())?;
+    let _ = sync_window_state_and_layout(&app, &window);
+    Ok(())
+}
+
+#[tauri::command]
+fn window_maximize(app: AppHandle, window: Window) -> Result<(), String> {
     if window.is_maximized().unwrap_or(false) {
-        window.unmaximize().map_err(|e| e.to_string())
+        window.unmaximize().map_err(|e| e.to_string())?;
     } else {
-        window.maximize().map_err(|e| e.to_string())
+        window.maximize().map_err(|e| e.to_string())?;
     }
+    let _ = sync_window_state_and_layout(&app, &window);
+    Ok(())
 }
 
 #[tauri::command]
@@ -3261,6 +3391,340 @@ fn window_close(app: AppHandle, window: Window) -> Result<(), String> {
     let _ = window.close();
     app.exit(0);
     Ok(())
+}
+
+#[tauri::command]
+fn window_start_dragging(window: Window) -> Result<(), String> {
+    if window.is_fullscreen().unwrap_or(false) {
+        return Ok(());
+    }
+    window.start_dragging().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn window_start_resize_dragging(window: Window, direction: String) -> Result<(), String> {
+    if window.is_fullscreen().unwrap_or(false) || window.is_maximized().unwrap_or(false) {
+        return Ok(());
+    }
+    let dir = parse_resize_direction(&direction)
+        .ok_or_else(|| format!("Unsupported resize direction: {direction}"))?;
+    let _ = window.set_resizable(true);
+    window.start_resize_dragging(dir).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn window_get_state(window: Window) -> Result<Value, String> {
+    Ok(window_state_payload(&window))
+}
+
+#[tauri::command]
+fn window_toggle_fullscreen(app: AppHandle, window: Window) -> Result<Value, String> {
+    let next = !window.is_fullscreen().unwrap_or(false);
+    window.set_fullscreen(next).map_err(|e| e.to_string())?;
+    Ok(sync_window_state_and_layout(&app, &window))
+}
+
+#[tauri::command]
+fn window_toggle_always_on_top(app: AppHandle, window: Window) -> Result<Value, String> {
+    let curr = window
+        .is_always_on_top()
+        .unwrap_or_else(|_| WINDOW_ALWAYS_ON_TOP.load(Ordering::Relaxed));
+    let next = !curr;
+    WINDOW_ALWAYS_ON_TOP.store(next, Ordering::Relaxed);
+    window.set_always_on_top(next).map_err(|e| e.to_string())?;
+    Ok(sync_window_state_and_layout(&app, &window))
+}
+
+#[tauri::command]
+fn window_toggle_decorations(app: AppHandle, window: Window) -> Result<Value, String> {
+    let curr = window
+        .is_decorated()
+        .unwrap_or_else(|_| WINDOW_DECORATED.load(Ordering::Relaxed));
+    let next = !curr;
+    WINDOW_DECORATED.store(next, Ordering::Relaxed);
+    window.set_decorations(next).map_err(|e| e.to_string())?;
+    let _ = window.set_resizable(true);
+    Ok(sync_window_state_and_layout(&app, &window))
+}
+
+#[tauri::command]
+fn window_center(app: AppHandle, window: Window) -> Result<Value, String> {
+    if window.is_fullscreen().unwrap_or(false) {
+        let _ = window.set_fullscreen(false);
+    }
+    if window.is_maximized().unwrap_or(false) {
+        let _ = window.unmaximize();
+    }
+    window.center().map_err(|e| e.to_string())?;
+    Ok(sync_window_state_and_layout(&app, &window))
+}
+
+#[tauri::command]
+fn window_reset_size(app: AppHandle, window: Window) -> Result<Value, String> {
+    if window.is_fullscreen().unwrap_or(false) {
+        let _ = window.set_fullscreen(false);
+    }
+    if window.is_maximized().unwrap_or(false) {
+        let _ = window.unmaximize();
+    }
+    let _ = window.set_resizable(true);
+    window
+        .set_size(tauri::Size::Logical(tauri::LogicalSize::new(1100.0, 700.0)))
+        .map_err(|e| e.to_string())?;
+    let _ = window.center();
+    Ok(sync_window_state_and_layout(&app, &window))
+}
+
+#[tauri::command]
+fn window_snap_left(window: Window) -> Result<Value, String> {
+    snap_window_to_half(&window, true)
+}
+
+#[tauri::command]
+fn window_snap_right(window: Window) -> Result<Value, String> {
+    snap_window_to_half(&window, false)
+}
+
+#[cfg(target_os = "linux")]
+fn popup_ubuntu_window_menu(app: &AppHandle, window: &Window, anchor_x: Option<f64>, anchor_y: Option<f64>) {
+    let menu = gtk::Menu::new();
+    let is_max = window.is_maximized().unwrap_or(false);
+    let is_fs = window.is_fullscreen().unwrap_or(false);
+    let is_top = window
+        .is_always_on_top()
+        .unwrap_or_else(|_| WINDOW_ALWAYS_ON_TOP.load(Ordering::Relaxed));
+    let is_dec = window
+        .is_decorated()
+        .unwrap_or_else(|_| WINDOW_DECORATED.load(Ordering::Relaxed));
+
+    let item_min = gtk::MenuItem::with_label("Minimize");
+    {
+        let w = window.clone();
+        let a = app.clone();
+        item_min.connect_activate(move |_| {
+            let _ = w.minimize();
+            let _ = sync_window_state_and_layout(&a, &w);
+        });
+    }
+    menu.append(&item_min);
+
+    let item_max = gtk::MenuItem::with_label(if is_max { "Unmaximize" } else { "Maximize" });
+    {
+        let w = window.clone();
+        let a = app.clone();
+        item_max.connect_activate(move |_| {
+            if w.is_maximized().unwrap_or(false) {
+                let _ = w.unmaximize();
+            } else {
+                let _ = w.maximize();
+            }
+            let _ = sync_window_state_and_layout(&a, &w);
+        });
+    }
+    menu.append(&item_max);
+
+    let item_move = gtk::MenuItem::with_label("Move");
+    {
+        let w = window.clone();
+        let a = app.clone();
+        item_move.connect_activate(move |_| {
+            let win = w.clone();
+            let app_h = a.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(75));
+                let _ = app_h.run_on_main_thread(move || {
+                    let _ = win.start_dragging();
+                });
+            });
+        });
+    }
+    menu.append(&item_move);
+
+    let item_resize = gtk::MenuItem::with_label("Resize (Bottom-Right)");
+    if is_max || is_fs {
+        item_resize.set_sensitive(false);
+    }
+    {
+        let w = window.clone();
+        let a = app.clone();
+        item_resize.connect_activate(move |_| {
+            let win = w.clone();
+            let app_h = a.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(75));
+                let _ = app_h.run_on_main_thread(move || {
+                    let _ = win.set_resizable(true);
+                    let _ = win.start_resize_dragging(tauri_runtime::ResizeDirection::SouthEast);
+                });
+            });
+        });
+    }
+    menu.append(&item_resize);
+
+    menu.append(&gtk::SeparatorMenuItem::new());
+
+    let item_left = gtk::MenuItem::with_label("Tile Left Half");
+    {
+        let w = window.clone();
+        item_left.connect_activate(move |_| {
+            let _ = snap_window_to_half(&w, true);
+        });
+    }
+    menu.append(&item_left);
+
+    let item_right = gtk::MenuItem::with_label("Tile Right Half");
+    {
+        let w = window.clone();
+        item_right.connect_activate(move |_| {
+            let _ = snap_window_to_half(&w, false);
+        });
+    }
+    menu.append(&item_right);
+
+    let item_center = gtk::MenuItem::with_label("Center on Screen");
+    {
+        let w = window.clone();
+        let a = app.clone();
+        item_center.connect_activate(move |_| {
+            if w.is_fullscreen().unwrap_or(false) {
+                let _ = w.set_fullscreen(false);
+            }
+            if w.is_maximized().unwrap_or(false) {
+                let _ = w.unmaximize();
+            }
+            let _ = w.center();
+            let _ = sync_window_state_and_layout(&a, &w);
+        });
+    }
+    menu.append(&item_center);
+
+    let item_reset = gtk::MenuItem::with_label("Reset Window Size (1100×700)");
+    {
+        let w = window.clone();
+        let a = app.clone();
+        item_reset.connect_activate(move |_| {
+            let _ = window_reset_size(a.clone(), w.clone());
+        });
+    }
+    menu.append(&item_reset);
+
+    menu.append(&gtk::SeparatorMenuItem::new());
+
+    let item_top = gtk::CheckMenuItem::with_label("Always on Top");
+    item_top.set_active(is_top);
+    {
+        let w = window.clone();
+        let a = app.clone();
+        item_top.connect_toggled(move |mi| {
+            let next = mi.is_active();
+            WINDOW_ALWAYS_ON_TOP.store(next, Ordering::Relaxed);
+            let _ = w.set_always_on_top(next);
+            let _ = sync_window_state_and_layout(&a, &w);
+        });
+    }
+    menu.append(&item_top);
+
+    let item_fs = gtk::CheckMenuItem::with_label("Fullscreen (F11)");
+    item_fs.set_active(is_fs);
+    {
+        let w = window.clone();
+        let a = app.clone();
+        item_fs.connect_toggled(move |mi| {
+            let _ = w.set_fullscreen(mi.is_active());
+            let _ = sync_window_state_and_layout(&a, &w);
+        });
+    }
+    menu.append(&item_fs);
+
+    let item_dec = gtk::CheckMenuItem::with_label("System Window Frame (Ubuntu Borders)");
+    item_dec.set_active(is_dec);
+    {
+        let w = window.clone();
+        let a = app.clone();
+        item_dec.connect_toggled(move |mi| {
+            let next = mi.is_active();
+            WINDOW_DECORATED.store(next, Ordering::Relaxed);
+            let _ = w.set_decorations(next);
+            let _ = w.set_resizable(true);
+            let _ = sync_window_state_and_layout(&a, &w);
+        });
+    }
+    menu.append(&item_dec);
+
+    menu.append(&gtk::SeparatorMenuItem::new());
+
+    let item_close = gtk::MenuItem::with_label("Close (Alt+F4)");
+    {
+        let w = window.clone();
+        let a = app.clone();
+        item_close.connect_activate(move |_| {
+            cleanup_background_processes(&a);
+            let _ = w.close();
+            a.exit(0);
+        });
+    }
+    menu.append(&item_close);
+
+    menu.connect_deactivate(|_| {
+        ACTIVE_WINDOW_MENU.with(|slot| {
+            *slot.borrow_mut() = None;
+        });
+    });
+
+    menu.show_all();
+    let mut popped = false;
+    if let Ok(gtk_win) = window.gtk_window() {
+        if let Some(gdk_win) = gtk_win.window() {
+            let alloc = gtk_win.allocation();
+            let ax = anchor_x
+                .map(|v| v.round() as i32)
+                .unwrap_or_else(|| (alloc.width() - 108).max(40));
+            let ay = anchor_y.map(|v| v.round() as i32).unwrap_or(54);
+            let rect = gtk::gdk::Rectangle::new(ax.max(0), ay.max(0), 2, 2);
+            let gravity = if ax > (alloc.width() - 240) {
+                gtk::gdk::Gravity::NorthEast
+            } else {
+                gtk::gdk::Gravity::NorthWest
+            };
+            menu.popup_at_rect(
+                &gdk_win,
+                &rect,
+                gtk::gdk::Gravity::SouthEast,
+                gravity,
+                None,
+            );
+            popped = true;
+        }
+    }
+    if !popped {
+        menu.popup_easy(0, gtk::current_event_time());
+    }
+    ACTIVE_WINDOW_MENU.with(|slot| {
+        *slot.borrow_mut() = Some(menu);
+    });
+}
+
+#[tauri::command]
+fn window_show_menu(
+    app: AppHandle,
+    window: Window,
+    x: Option<f64>,
+    y: Option<f64>,
+) -> Result<bool, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let app_clone = app.clone();
+        let win_clone = window.clone();
+        let _ = app.run_on_main_thread(move || {
+            popup_ubuntu_window_menu(&app_clone, &win_clone, x, y);
+        });
+        Ok(true)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (app, window, x, y);
+        Ok(false)
+    }
 }
 
 fn normalize_auth_service(service: &str) -> &'static str {
@@ -4941,6 +5405,12 @@ fn main() {
                         cleanup_background_processes(&app_handle);
                         app_handle.exit(0);
                     }
+                    #[cfg(target_os = "linux")]
+                    tauri::WindowEvent::Resized(_) => {
+                        if let Some(main_win) = app_handle.get_window("main") {
+                            let _ = sync_window_state_and_layout(&app_handle, &main_win);
+                        }
+                    }
                     #[cfg(not(target_os = "linux"))]
                     tauri::WindowEvent::Resized(physical_size) => {
                         let scale = app_handle
@@ -4956,6 +5426,9 @@ fn main() {
                         if let Some(sp) = app_handle.get_webview("spotify-webview") {
                             let _ = sp.set_position(tauri::LogicalPosition::new(0.0, 58.0));
                             let _ = sp.set_size(tauri::LogicalSize::new(child_w, child_h));
+                        }
+                        if let Some(main_win) = app_handle.get_window("main") {
+                            let _ = sync_window_state_and_layout(&app_handle, &main_win);
                         }
                     }
                     _ => {}
@@ -4993,6 +5466,17 @@ fn main() {
             window_minimize,
             window_maximize,
             window_close,
+            window_start_dragging,
+            window_start_resize_dragging,
+            window_get_state,
+            window_toggle_fullscreen,
+            window_toggle_always_on_top,
+            window_toggle_decorations,
+            window_center,
+            window_reset_size,
+            window_snap_left,
+            window_snap_right,
+            window_show_menu,
             get_app_version,
             get_webview_url,
             get_stream_url,
@@ -5021,9 +5505,10 @@ mod tests {
     use super::{
         apply_shield_ok_response, create_ytdlp_base_command, import_library_file, is_auth_url,
         is_service_auth_cookie, is_service_landing_url, is_webkit_native_audio_ext,
-        parse_cookie_json_payload, parse_query_params, persist_service_account, provider_url,
-        prune_spotify_bridge_cache, read_accounts_map, register_child_pid, score_yt_candidate,
-        stable_hash_hex, unregister_child_pid, ACTIVE_CHILD_PIDS, SearchCandidate,
+        parse_cookie_json_payload, parse_query_params, parse_resize_direction,
+        persist_service_account, provider_url, prune_spotify_bridge_cache, read_accounts_map,
+        register_child_pid, score_yt_candidate, stable_hash_hex, unregister_child_pid,
+        SearchCandidate, ACTIVE_CHILD_PIDS,
     };
     use brave_music_core::library::LibraryDocument;
     use serde_json::json;
@@ -5239,5 +5724,18 @@ mod tests {
         assert!(args.contains(&"youtube:player_client=web_embedded,tv_simply,android,web".to_string()));
         assert!(!args.iter().any(|a| a.contains("mweb")));
         assert!(args.contains(&"quickjs:/opt/qjs".to_string()));
+    }
+
+    #[test]
+    fn parses_all_window_resize_directions() {
+        assert_eq!(parse_resize_direction("n"), Some(tauri_runtime::ResizeDirection::North));
+        assert_eq!(parse_resize_direction("S"), Some(tauri_runtime::ResizeDirection::South));
+        assert_eq!(parse_resize_direction("w"), Some(tauri_runtime::ResizeDirection::West));
+        assert_eq!(parse_resize_direction("e"), Some(tauri_runtime::ResizeDirection::East));
+        assert_eq!(parse_resize_direction("nw"), Some(tauri_runtime::ResizeDirection::NorthWest));
+        assert_eq!(parse_resize_direction("NE"), Some(tauri_runtime::ResizeDirection::NorthEast));
+        assert_eq!(parse_resize_direction("sw"), Some(tauri_runtime::ResizeDirection::SouthWest));
+        assert_eq!(parse_resize_direction("se"), Some(tauri_runtime::ResizeDirection::SouthEast));
+        assert_eq!(parse_resize_direction("diagonal"), None);
     }
 }

@@ -323,6 +323,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
+ "tauri-runtime",
  "tempfile",
  "tokio",
  "uuid",

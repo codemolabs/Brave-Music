@@ -93,6 +93,18 @@ window.addEventListener('error', (event) => {
       window.trackEvent(window.ANALYTICS_EVENTS.WINDOW_ACTION, { action: 'close' });
       return invoke('window_close');
     },
+    startDragging: () => invoke('window_start_dragging').catch(() => {}),
+    startResizeDragging: (direction) => invoke('window_start_resize_dragging', { direction }).catch(() => {}),
+    getWindowState: () => invoke('window_get_state').catch(() => null),
+    toggleFullscreen: () => invoke('window_toggle_fullscreen'),
+    toggleAlwaysOnTop: () => invoke('window_toggle_always_on_top'),
+    toggleDecorations: () => invoke('window_toggle_decorations'),
+    snapLeft: () => invoke('window_snap_left'),
+    snapRight: () => invoke('window_snap_right'),
+    centerWindow: () => invoke('window_center'),
+    resetWindowSize: () => invoke('window_reset_size'),
+    showWindowMenu: (x = null, y = null) => invoke('window_show_menu', { x, y }).catch(() => false),
+    onWindowStateChanged: (callback) => listenTauriEvent('window-state-changed', callback),
     getAppVersion: async () => {
       try {
         return await invoke('get_app_version');

@@ -3601,33 +3601,51 @@ webview {
   color: #0f172a;
 }
 
-/* External Actions Row: Donation & Report Issue */
+/* External Actions Row: Email Us, Update & Report */
 .about-external-actions-row {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
   gap: 10px;
-  flex-wrap: wrap;
+}
+
+@media (max-width: 440px) {
+  .about-external-actions-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .about-white-action-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  font-size: 0.78rem;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  font-size: 0.8rem;
   font-weight: 600;
   border: 1px solid #cbd5e1;
   background: #ffffff;
-  color: #334155;
+  color: #1e293b;
   cursor: pointer;
-  transition: all 0.15s ease;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
 }
 
 .about-white-action-btn:hover {
   background: #f1f5f9;
   border-color: #94a3b8;
   color: #0f172a;
+}
+
+.about-white-action-btn:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 2px;
+}
+
+.about-white-action-btn:active {
+  transform: translateY(1px);
 }
 
 .btn-update-highlight {
