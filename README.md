@@ -34,11 +34,11 @@ An open-source desktop music streaming and offline audio engine combining YouTub
 
 Brave Music brings together streaming services, DRM-protected playback, and a native C++ audio engine in a single, lightweight desktop client built for performance and privacy.
 
-- **Unified Streaming**: Seamless YouTube Music and Spotify Web playback in one interface.
-- **Embedded C++ Audio Engine**: Local playback powered by an integrated Musikcube daemon supporting high-fidelity formats.
-- **Offline Media Extraction**: Built-in download manager leveraging `yt-dlp` for local music collections.
-- **Native Brave Shields**: Blocks third-party trackers, telemetry, and intrusive web audio advertisements.
-- **Zero Telemetry**: Completely self-contained and on-device. No telemetry, no activity tracking, and no required accounts.
+- **Unified Streaming**: Seamless YouTube Music and Spotify Web playback in one interface with Widevine DRM support.
+- **Dual-Mode Authentication**: Sign in safely via your Default Browser (auto-syncing into `persist:bravemusic` browser memory) or sign in directly inside app webviews, with Emergency `.json` cookie recovery.
+- **Self-Contained Download & Playlist Engine**: Bundled `backend/bin/` (`yt-dlp` + `node` EJS solver + `ffmpeg` / `ffprobe`) extracts full **Spotify Playlists, Personalized Mixes, Albums, and YouTube Playlists/Mixes** in exact `1..N` provider sequence to 320kbps MP3 (with ID3v2 tags), FLAC, M4A, or MP4.
+- **Collections Bento Library & Audio Player**: Clean 2x2 collage collection cards, audio format badges, Range-seeking HTTP audio player, and Linux MPRIS2 media key integration.
+- **Zero Telemetry**: Completely self-contained and on-device. No telemetry, no activity tracking, and no forced accounts.
 
 ## Application Showcase
 
@@ -107,10 +107,10 @@ brave-music
 
 | Layer | Component | Implementation |
 | :--- | :--- | :--- |
-| **Native Host Core** | Rust + OS Native Webviews | Ultra-lightweight cross-platform shell (`tauri-preview` & `crates/brave-music-core`) |
-| **Desktop Shell** | CastLabs Chromium Electron | Widevine CDM hardware-decoded streaming (Legacy baseline) |
-| **Audio Daemon** | Built-in HTTP Range Server & Musikcube | Multi-threaded local streaming engine with instant 206 Partial Content seeking |
-| **Downloader** | yt-dlp Engine | Local media extraction with automatic metadata tagging |
+| **Desktop Shell** | CastLabs Chromium Electron | Hardware-decoded Widevine CDM streaming + `persist:bravemusic` memory |
+| **Native Stack Preview** | Rust + OS Native Webviews | Modular cross-platform stack (`tauri-preview` & `crates/brave-music-core`) |
+| **Audio & Streaming** | Built-in HTTP Range Server & Musikcube | Multi-threaded local streaming engine with instant 206 Partial Content seeking |
+| **Downloader & Tagging** | Self-Contained `backend/bin/` Engine | Bundled `yt-dlp`, `node` EJS solver, `ffmpeg`/`ffprobe`, Spotify Pathfinder + YouTube sequential playlist extraction, 320kbps MP3 ID3v2 tagging |
 | **Privacy & Shields** | Throttled Brave Shields Engine | Declarative network filtering and debounced DOM ad suppression |
 | **System Integration** | Linux MPRIS2 | Native system media controls and taskbar playback synchronization |
 

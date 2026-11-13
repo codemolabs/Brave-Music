@@ -9,17 +9,20 @@ This document provides technical instructions for setting up the local developme
 Ensure your development environment meets the following specifications:
 
 - **Operating System**: Linux (Ubuntu 22.04+, Debian 12+, Fedora 38+, Arch Linux)
-- **Node.js**: v18.x or v20.x
+- **Node.js**: v18.x, v20.x, or v22.x
 - **Package Manager**: npm v9+
-- **System Binaries**:
-  - `yt-dlp` (required for offline media extraction)
-  - `curl` (used for audio fetching and health checks)
-  - `dpkg-deb` (required for Debian package builds)
+- **Bundled Self-Contained Media Binaries (`backend/bin/`)**:
+  - `backend/bin/yt-dlp` (with embedded `yt_dlp_ejs` JS challenge solver)
+  - `backend/bin/node` (`ELECTRON_RUN_AS_NODE=1` shim for sandboxed JS solving)
+  - `backend/bin/ffmpeg`, `backend/bin/ffprobe`, and bundled `libav*.so` / `libsw*.so`
+- **Packaging & Optional Cross-Platform Stack**:
+  - `dpkg-deb` / `snapcraft` for `.deb` & Ubuntu Snap packaging
+  - `cargo`, `rustc`, `libwebkit2gtk-4.1-dev`, `libgtk-3-dev` for `tauri-preview` + `crates/brave-music-core`
 
-Install system dependencies on Ubuntu/Debian:
+Install system build prerequisites on Ubuntu/Debian (no system `yt-dlp` needed):
 ```bash
 sudo apt update
-sudo apt install -y nodejs npm yt-dlp curl dpkg
+sudo apt install -y nodejs npm curl dpkg
 ```
 
 ---
@@ -49,41 +52,42 @@ graph TD
         B4[System Browser OAuth Fallback]
     end
 
-    subgraph Backend ["Node.js Backend Service Layer"]
+    subgraph Backend ["Node.js Backend Service Layer & Self-Contained Binaries"]
         C[Backend Server Controller - backend/index.js]
         C1[AdBlockService and BraveShieldsRules]
-        C2[AuthSyncService and YTMDevtoolsAuthService]
-        C3[DownloadService with yt-dlp Worker]
-        C4[LibraryService and Metadata Indexer]
-        C5[Local StreamServer HTTP Audio Proxy]
+        C2[AuthSyncService and YTMDevtoolsAuthService - Dual-Mode Auth]
+        C3[DownloadService - Pathfinder/Embed/yt-dlp + ID3v2]
+        C4[LibraryService and Collection Indexer]
+        C5[StreamServer HTTP Range Proxy & MprisService]
+        C6[backend/bin - yt-dlp + node EJS + ffmpeg/ffprobe]
     end
 
-    subgraph Engine ["Native C++ Audio Engine (backend/engine/musikcube)"]
-        D[musikcubed Native Daemon]
+    subgraph Engine ["Native Audio Engine & Rust Core"]
+        D[musikcubed Native Daemon / Stream Pipeline]
         D1[libmusikcore.so Core Pipeline]
-        D2[libtag.so.2 Audio Tag Reader]
-        D3[libavcodec and libavformat FFmpeg Decoders]
-        D4[Audio Output Drivers - PipeWire / PulseAudio / ALSA]
+        D2[crates/brave-music-core Rust Domain Library]
+        D3[Audio Output Drivers - PipeWire / PulseAudio / ALSA]
     end
 
     A -->|User Actions and Tab Events| B1
     B1 -->|Secure IPC Invoke / Send| B
     B -->|Initialize and Manage| B2
     B -->|Manage Cookie Jar and Auth| B3
-    B -->|Trigger External Login| B4
+    B -->|Default Browser OAuth Auto-Sync| B4
     B -->|Dispatch Service Requests| C
     A5 -->|Inject Cosmetic CSS and Scripts| A2
     A5 -->|Inject Cosmetic CSS and Scripts| A3
     C -->|Evaluate Request Blocking| C1
     C -->|Extract Session State| C2
-    C -->|Spawn Audio Extraction Jobs| C3
-    C -->|Track Local Track Database| C4
-    C -->|Control Audio Daemon| D
+    C -->|Run Sequential Mix and Playlist Jobs| C3
+    C3 -->|Execute Self-Contained Tools| C6
+    C -->|Persist Collections and Order| C4
+    C -->|Control Playback and MPRIS| D
     C5 -->|Serve Local Audio Buffers| A4
-    D -->|Process Pipeline| D1
-    D1 -->|Parse File Metadata| D2
-    D1 -->|Decode Audio Streams| D3
-    D3 -->|Stream Decoded PCM| D4
+    D --> D1
+    D --> D2
+    D1 --> D3
+    D2 --> D3
 ```
 
 <details>
@@ -108,21 +112,21 @@ graph TD
         B4[System Browser OAuth Fallback]
     end
 
-    subgraph Backend ["Node.js Backend Service Layer"]
+    subgraph Backend ["Node.js Backend Service Layer & Self-Contained Binaries"]
         C[Backend Server Controller - backend/index.js]
         C1[AdBlockService and BraveShieldsRules]
-        C2[AuthSyncService and YTMDevtoolsAuthService]
-        C3[DownloadService with yt-dlp Worker]
-        C4[LibraryService and Metadata Indexer]
-        C5[Local StreamServer HTTP Audio Proxy]
+        C2[AuthSyncService and YTMDevtoolsAuthService - Dual-Mode Auth]
+        C3[DownloadService - Pathfinder/Embed/yt-dlp + ID3v2]
+        C4[LibraryService and Collection Indexer]
+        C5[StreamServer HTTP Range Proxy & MprisService]
+        C6[backend/bin - yt-dlp + node EJS + ffmpeg/ffprobe]
     end
 
-    subgraph Engine ["Native C++ Audio Engine (backend/engine/musikcube)"]
-        D[musikcubed Native Daemon]
+    subgraph Engine ["Native Audio Engine & Rust Core"]
+        D[musikcubed Native Daemon / Stream Pipeline]
         D1[libmusikcore.so Core Pipeline]
-        D2[libtag.so.2 Audio Tag Reader]
-        D3[libavcodec and libavformat FFmpeg Decoders]
-        D4[Audio Output Drivers - PipeWire / PulseAudio / ALSA]
+        D2[crates/brave-music-core Rust Domain Library]
+        D3[Audio Output Drivers - PipeWire / PulseAudio / ALSA]
     end
 
     A --> B1
@@ -136,13 +140,14 @@ graph TD
     C --> C1
     C --> C2
     C --> C3
+    C3 --> C6
     C --> C4
     C --> D
     C5 --> A4
     D --> D1
-    D1 --> D2
+    D --> D2
     D1 --> D3
-    D3 --> D4
+    D2 --> D3
 ```
 </details>
 
@@ -158,11 +163,11 @@ graph TD
 - Uses `contextBridge.exposeInMainWorld('electronAPI', ...)` to expose strictly typed, safe methods to the frontend renderer.
 - Prevents renderer script access to Node.js internals (`contextIsolation: true`, `nodeIntegration: false`).
 
-#### 3. Backend Services (`backend/`)
+#### 3. Backend Services (`backend/`) & Bundled Binaries (`backend/bin/`)
 - **ShieldsController & AdBlockService**: Evaluates network URLs against declarative Brave Shields ad and tracker lists.
-- **YTMDevtoolsAuthService & AuthSyncService**: Manages session cookies and headers for music services.
-- **DownloadService**: Coordinates `yt-dlp` audio-only stream extraction, YouTube and Spotify playlist metadata extraction, ordered track indexing, and reactive library synchronization.
-- **MusikcubeService & StreamServer**: Manages `musikcubed` lifecycle and local HTTP audio streams.
+- **YTMDevtoolsAuthService & AuthSyncService**: Implements **Dual-Mode Authentication**—Brave Music Sign-In modal uses the Default Browser to bypass embedded Google OAuth restrictions and persists cookies into `persist:bravemusic` browser memory (with emergency `.json` import fallback), while Inside-App webview logins persist natively without forcing external browsers.
+- **DownloadService & `backend/bin/`**: Uses bundled standalone `yt-dlp`, `node` EJS challenge solver (`ELECTRON_RUN_AS_NODE=1`), and `ffmpeg`/`ffprobe` to resolve Spotify Playlists, Personalized Mixes, Albums, and Artists via **Pathfinder GraphQL (paginated) + Embed `__NEXT_DATA__`**, plus YouTube/YouTube Music Playlists & Radio Mixes (`RD...`) via `--flat-playlist` in exact `1..N` provider sequence with 320kbps MP3 extraction and ID3v2 tagging.
+- **LibraryService, StreamServer, & MprisService**: Persists `library.json`, guarantees `syncPlaylistSequence` `1..N` ordering, serves local Range audio, and syncs desktop `org.mpris.MediaPlayer2.bravemusic` media controls.
 
 #### 4. Native Engine (`backend/engine/musikcube/`)
 - Contains precompiled shared objects (`libmusikcore.so`, `libtag.so.2`, `libavcodec-musikcube.so.62`) and daemon binary `musikcubed`.
@@ -301,8 +306,8 @@ cp tauri-preview/src-tauri/target/release/brave-music-linux-preview ~/.cargo/bin
 - **Solution**: Ensure CastLabs Electron is installed from the repository package.json dependencies. Run `node test-widevine-ready.js` to trigger automatic CDM provisioning into your user data directory.
 
 ### Issue: Offline download fails
-- **Cause**: Outdated `yt-dlp` binary.
-- **Solution**: Update `yt-dlp` to the latest release using `sudo yt-dlp -U` or install the latest binary from GitHub releases.
+- **Cause**: Outdated player client configuration, unavailable/private personalized mix without sign-in, or network timeout.
+- **Solution**: Brave Music ships its own self-contained `yt-dlp`, `node` EJS runtime, and `ffmpeg` under `backend/bin/` (`appConfig.resolveYtDlpBinary()`). Verify bundled binaries execute cleanly (`./backend/bin/yt-dlp --version`), and ensure you are signed in to Spotify inside Brave Music for personalized mixes (`Daily Mix`, `Blend`, `Daylist`).
 
 ### Issue: No audio output from local engine
 - **Cause**: Audio daemon lacks active output sink.
@@ -313,7 +318,7 @@ cp tauri-preview/src-tauri/target/release/brave-music-linux-preview ~/.cargo/bin
 
 ---
 
-## 7. Release Management and Documentation Hub
+## 8. Release Management and Documentation Hub
 
 - **Installation and System Deployment**: Detailed distribution instructions for users and system administrators are documented in [INSTALL.md](INSTALL.md).
 - **Release Tracking and Changelogs**: Version tags, SHA-256 checksums, and update notes are maintained in [RELEASE.md](RELEASE.md).

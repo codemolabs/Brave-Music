@@ -47,5 +47,10 @@ Brave Music enforces strict security boundaries:
 - Injected cosmetic styles and network block rules in `src/js/webview-shields.js` are strictly scoped to ad and tracker patterns.
 - No dynamic code evaluation (`eval()` or external script injection) is permitted inside webview partitions.
 
+### Authentication & Persistent Browser Memory (`persist:bravemusic`)
+- Brave Music stores web player sessions locally in the isolated `persist:bravemusic` session partition (`~/.config/brave-music/`).
+- The Default Browser Sign-In Auto-Sync flow extracts strictly session cookies over loopback CDP / saved browser memory without storing plaintext account passwords, and supports an optional Emergency Fallback `.json` cookie import.
+- All bundled download binaries (`backend/bin/yt-dlp`, `node`, `ffmpeg`, `ffprobe`) execute purely locally inside the app / Snap `core22` sandbox with zero third-party telemetry.
+
 ### Dependency Auditing
 - Continuous automated vulnerability scanning is enforced on all npm packages and native engine shared libraries.

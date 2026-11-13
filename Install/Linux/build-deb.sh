@@ -25,7 +25,7 @@ Section: sound
 Priority: optional
 Architecture: amd64
 Maintainer: Brave Music Team <support@bravemusic.org>
-Depends: nodejs, yt-dlp
+Recommends: nodejs, yt-dlp, ffmpeg
 Description: Brave Music OTT Platform
  Ad-free YouTube Music and Spotify streaming with built-in offline music engine.
  Features native tabbed navigation, Brave Shields ad-blocking, high-bitrate offline music downloading, and local runtime player.

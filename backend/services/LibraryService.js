@@ -137,12 +137,16 @@ class LibraryService {
   addTrack(track) {
     if (!track || !track.id) return null;
 
-    // Check file stats if filename exists
+    // Check file stats & format if filename exists
     if (track.filename) {
       const fullPath = path.join(this.downloadsDir, track.filename);
       if (fs.existsSync(fullPath)) {
         const stat = fs.statSync(fullPath);
         track.sizeBytes = stat.size;
+      }
+      if (!track.format) {
+        const ext = path.extname(track.filename).replace('.', '').toUpperCase();
+        if (ext) track.format = ext;
       }
     }
 
@@ -334,6 +338,35 @@ class LibraryService {
     }
   }
 
+  /**
+   * Align a downloaded playlist's track array strictly to provider sequence (1..N)
+   * while keeping any manually appended user tracks afterward.
+   */
+  syncPlaylistSequence(playlistName, orderedTrackIds = []) {
+    const cleanName = String(playlistName || '').trim();
+    if (!cleanName || !Array.isArray(orderedTrackIds) || orderedTrackIds.length === 0) return;
+
+    const existing = Array.isArray(this.db.playlists[cleanName]) ? this.db.playlists[cleanName] : [];
+    const seen = new Set();
+    const merged = [];
+
+    for (const id of orderedTrackIds) {
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        merged.push(id);
+      }
+    }
+    for (const id of existing) {
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        merged.push(id);
+      }
+    }
+
+    this.db.playlists[cleanName] = merged;
+    this.saveDatabase();
+  }
+
   removeTrackFromPlaylist(trackId, playlistName) {
     if (this.db.playlists[playlistName]) {
       this.db.playlists[playlistName] = this.db.playlists[playlistName].filter(id => id !== trackId);
@@ -483,6 +516,7 @@ class LibraryService {
             duration: 0,
             thumbnail: '',
             filename: file,
+            format: ext.replace('.', '').toUpperCase(),
             sizeBytes: stat.size,
             addedAt: stat.birthtime ? stat.birthtime.toISOString() : new Date().toISOString(),
             playlist: null

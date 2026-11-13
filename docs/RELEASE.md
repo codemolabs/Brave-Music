@@ -42,11 +42,16 @@ This document tracks official version releases, changelogs, binary checksums, an
 - **Smart Dual-Mode Authentication & Persistent Browser Memory (`persist:bravemusic`)**:
   - **Brave Music Sign-In Modal (Top Header Profile Button)**: Opens the system Default Browser to sign in safely (bypassing Google `"This browser or app may not be secure"` blocks) and automatically extracts/syncs authenticated sessions (`__Host-*`, `LOGIN_INFO`, `__Secure-3PAPISID`, `sp_dc`) into Brave Music's persistent browser memory (`persist:bravemusic` + `session.cookies.flushStore()`), with **Emergency Fallback: Import Cookies (`.json`)** included.
   - **Inside App Web (`#yt-webview` & `#spotify-webview`)**: Navigating or signing in directly inside the embedded player tabs stays in-app without forcing an external browser and automatically persists sessions in browser memory (`syncFromBrowserMemory`), with automatic recovery to the Brave Music Sign-In modal if Google rejects embedded sign-in.
+- **Sequential Spotify Mixes / Playlists & YouTube Queue Engine**:
+  - Added full support for localized Spotify URLs (`/intl-xx/`), `spotify.link` short links, albums, artists, and personalized Spotify Mixes/Radios via paginated Spotify Pathfinder GraphQL (`fetchPlaylist`, up to 10,000 tracks at 100/page) authenticated with `sp_dc` session cookies when needed, blocking broken 1-track oEmbed fallbacks.
+  - Preserved seed video parameters for YouTube / YouTube Music Radio Mixes (`?v=...&list=RD...`) and enforced sequential `1..N` ordering across backend metadata, `LibraryService.syncPlaylistSequence`, `Play All` playback, and Rust preview (`brave-music-linux-preview`).
+  - Upgraded MP3 downloads to target 320kbps CBR/V0 with clean ID3v2.3 metadata tagging (`title`, `artist`, `album`, `track=N/Total`) written directly via bundled `ffmpeg`, relaxed YouTube Music search fallbacks, and updated `web_embedded,web,default` extraction flags.
+  - Upgraded the Offline Library & Collections UI with Bento collection cards (2x2 album art collages, Spotify/YouTube source pills, duration & format summaries), crisp format pills (`MP3`, `FLAC`, `M4A`, `VIDEO`), clickable collection links, and auto-switching to Full Playlist mode on pasted collection URLs.
 - **Official Linux Packages & Checksums (SHA-256)**:
   - **Ubuntu Snap Package (`.snap` — Official Recommended)**: `Install/Linux/brave-music_1.0.19-r_amd64.snap`
-    - SHA-256: `91eb486c14943e2e59b9813a5727147127daffd56860720162e36c40ce068d0a`
+    - SHA-256: `453b4c6b171c3be63a67c2bc2624891816a99a6e47a2f37d3d894bb3a211ad9c`
   - **Debian Package (`.deb`)**: `Install/Linux/brave-music_1.0.19-r_amd64.deb`
-    - SHA-256: `0969200a7e8c8698f89e67fcf6aa1cb2c27d0f42cdcfeb04c86c5ddfd492eb07`
+    - SHA-256: `62cbbccf217051533ed229243b1969aa2836061a5a30df51137871d78fa31bbc`
 
 ### Release v1.0.18
 

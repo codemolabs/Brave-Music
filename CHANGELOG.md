@@ -10,20 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.19-r] - 2026-11-13
 
 ### Added
-- **Official Ubuntu Snap Packaging**: Added official Snap Store manifest (`snap/snapcraft.yaml`) and automated builder (`Install/Linux/build-snap.sh`) generating `brave-music_1.0.19-r_amd64.snap` alongside `brave-music_1.0.19-r_amd64.deb`.
-- **Official Brand Mascot Icon**: Replaced legacy organizational network nodes logo with the authentic official Brave Music brand icon (vibrant orange lion wearing headphones) across multi-resolution `.ico` (`16x16` up to `256x256`), master 512x512 transparent PNG, and clean SVG.
-- **Full Linux Desktop Icon Suite**: Debian package automatically installs standard hicolor icons (`16x16`, `24x24`, `32x32`, `48x48`, `64x64`, `128x128`, `256x256`, `512x512`) into `/usr/share/icons/hicolor/` and `/usr/share/pixmaps/brave-music.png`.
-- **Single-Instance Application Lock**: Implemented `app.requestSingleInstanceLock()` to prevent multiple overlapping app instances; re-launching from desktop or terminal automatically restores and focuses the existing window.
-- **Dock Integration Flags**: Configured `StartupWMClass=brave-music`, `StartupNotify=true`, and `--class=brave-music --name=brave-music` flags ensuring running windows group directly under the clicked desktop launcher icon in GNOME Shell and the Ubuntu Dock.
-- **Modern Cross-Platform Native Stack (Rust + Native Webviews)**: Introduced the modular, memory-efficient cross-platform stack under `crates/brave-music-core` and `tauri-preview/src-tauri` with `./run.sh --new-stack` launcher.
-- **Streamlined About Modal Actions**: Added minimal action buttons in the Info modal: `Email us`, `Update`, and `Report Issues`.
+- **Official Ubuntu Snap Store & Debian Packaging**: Added Snapcraft manifest (`snap/snapcraft.yaml`), automated builder (`Install/Linux/build-snap.sh`), self-contained `backend/bin/` binaries (`yt-dlp` with `yt_dlp_ejs`, `node` EJS shim, `ffmpeg`, `ffprobe`, and shared audio libs), alongside `brave-music_1.0.19-r_amd64.deb`.
+- **Smart Dual-Mode Authentication**: Profile Sign-In modal uses Default Browser Auto-Sync (bypassing Google embedded browser blocks) into `persist:bravemusic` browser memory with Emergency `.json` cookie recovery, while inside-app webview navigation stays in-app.
+- **Spotify Pathfinder & Sequential Playlist/Mix Engine**: Added paginated Pathfinder GraphQL (`fetchPlaylist`, >100 tracks), `/intl-xx/` localized Spotify URL normalization, Artist top tracks, Personalized Mix support via `sp_dc` session cookies, YouTube `RD` Mix seed preservation, relaxed Spotify-to-YouTube search fallback, and direct 320kbps MP3 + ID3v2 metadata embedding (`title`, `artist`, `album`, `track`).
+- **Enhanced Collections & Library UI**: Added auto-detection for playlist/mix URLs on input, 2x2 collection collage covers, provider source pills (`Spotify` / `YouTube` / `Collection`), audio format badges (`MP3`, `FLAC`, `M4A`, `VIDEO`), clickable collection links, and `1..N` ordered `Play All`.
+- **Official Brand Mascot Icon & Full Linux Desktop Integration**: Multi-resolution `.ico`, 512x512 PNG, SVG, hicolor icons, `app.requestSingleInstanceLock()`, and `StartupWMClass=brave-music` grouping.
+- **Modern Cross-Platform Native Stack Preview (`--new-stack`)**: Modular Rust core (`crates/brave-music-core`) and `tauri-preview` with 206 Partial Content Range streaming.
 
 ### Fixed
-- **Webview Black Screen Layout Flaw**: Removed faulty `.stream-view-active` CSS display override that was hiding `<main class="app-main">` during streaming tab switches, restoring instant, smooth rendering for both YouTube Music and Spotify webviews.
-- **Zero-Jank Ultra-Smooth Scrolling**: Eliminated conflicting `scroll-behavior: smooth !important` rules from YouTube Music and Spotify, removing kinetic friction and rubber-banding conflicts with Spotify's momentum scrolling engine.
-- **Throttled Shields Scanner**: Debounced DOM mutation scans with a 350ms window and relaxed monitoring to 1500ms, eliminating main-thread blocking during rapid scrolling.
-- **Typography & Border Sharpness**: Replaced fractional `scale()` transforms with GPU pixel-aligned translations (`translateY`) to prevent font fuzziness and border blurring.
-- **High-Fidelity Audio Streaming**: Built-in HTTP Range server with full support for 206 Partial Content, instant seeking, and CORS support for local audio files.
+- **Spotify Mixes/Playlists Downloading 1 Track Bug**: Fixed regexes that missed `/intl-xx/` & `/artist/` paths and prevented Spotify playlist/mix URLs from falling back to single-track oEmbed `ytsearch1:` while still saving as a playlist; fixed `yt-dlp` client flags (`web_embedded,web,default`) replacing broken `tv,web` reloads and fixed `Play All` track ordering so playlists always play in `1..N` provider sequence.
+- **Webview Black Screen Layout & Zero-Jank Smooth Scrolling**: Fixed `.stream-view-active`, removed conflicting CSS scroll overrides, debounced Shields scans to 350ms, and eliminated fractional `scale()` font blur.
 
 ---
 

@@ -301,11 +301,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function refreshMusicTabsAfterSignIn(service) {
+  function refreshMusicTabsAfterSignIn(service, forceReload = false) {
     const webview = service === 'spotify' ? spotifyWebview : ytWebview;
-    try { webview?.reload?.(); } catch (error) {}
+    const expectedHost = service === 'spotify' ? 'open.spotify.com' : 'music.youtube.com';
+    let currentUrl = '';
+    try {
+      if (webview && typeof webview.getURL === 'function') {
+        currentUrl = webview.getURL() || '';
+      }
+    } catch (e) {}
+    if (forceReload || !currentUrl.includes(expectedHost)) {
+      try { webview?.reload?.(); } catch (error) {}
+    }
     const label = service === 'spotify' ? 'Spotify' : 'YouTube Music';
-    showToast(`${label} sign-in saved. ${label} refreshed.`);
+    showToast(`${label} sign-in saved in browser memory.`);
   }
 
   btnReload?.addEventListener('click', () => {
@@ -839,13 +848,58 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================================
 
   btnStartYtmCdp?.addEventListener('click', async () => {
-    closeAuthSyncModal();
-    switchTab('yt-view');
-    showToast('Loading YouTube Music sign-in…');
+    authSessionTracker.youtube.state = 'loading';
+    if (authSessionTracker.youtube.closeTimer) clearTimeout(authSessionTracker.youtube.closeTimer);
+    btnStartYtmCdp.disabled = true;
+    btnStartYtmCdp.classList.add('is-loading');
+    if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Waiting for Default Browser…';
+    if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'inline-flex';
+    if (ytmCdpStatus) {
+      ytmCdpStatus.className = 'login-live-feedback loading';
+      ytmCdpStatus.style.display = 'flex';
+      ytmCdpStatus.textContent = 'Opening your default browser for YouTube Music sign-in…';
+    }
     try {
-      await window.braveApi.startServiceLogin('youtube', 'auto');
+      const res = await window.braveApi.startServiceLogin('youtube', 'auto');
+      if (res && res.success) {
+        authSessionTracker.youtube.state = 'complete';
+        btnStartYtmCdp.disabled = false;
+        btnStartYtmCdp.classList.remove('is-loading');
+        if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Sign in to YouTube Music';
+        if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
+        if (ytmCdpStatus) {
+          ytmCdpStatus.className = 'login-live-feedback success';
+          ytmCdpStatus.style.display = 'flex';
+          ytmCdpStatus.textContent = res.message || 'Sign-in complete! Session synced to browser memory.';
+        }
+        refreshAuthStatusUI();
+        refreshMusicTabsAfterSignIn('youtube', true);
+        authSessionTracker.youtube.closeTimer = setTimeout(() => {
+          closeAuthSyncModal();
+          authSessionTracker.youtube.state = 'idle';
+        }, 1600);
+      } else if (res && res.error && authSessionTracker.youtube.state !== 'cancelled') {
+        authSessionTracker.youtube.state = 'error';
+        btnStartYtmCdp.disabled = false;
+        btnStartYtmCdp.classList.remove('is-loading');
+        if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Sign in to YouTube Music';
+        if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
+        if (ytmCdpStatus) {
+          ytmCdpStatus.className = 'login-live-feedback error';
+          ytmCdpStatus.style.display = 'flex';
+          ytmCdpStatus.textContent = res.error;
+        }
+      }
     } catch (e) {
-      showToast('Error opening sign-in: ' + (e?.message || e));
+      btnStartYtmCdp.disabled = false;
+      btnStartYtmCdp.classList.remove('is-loading');
+      if (btnYtmCdpLabel) btnYtmCdpLabel.textContent = 'Sign in to YouTube Music';
+      if (btnCancelYtmCdp) btnCancelYtmCdp.style.display = 'none';
+      if (ytmCdpStatus && authSessionTracker.youtube.state !== 'cancelled') {
+        ytmCdpStatus.className = 'login-live-feedback error';
+        ytmCdpStatus.style.display = 'flex';
+        ytmCdpStatus.textContent = 'Error opening sign-in: ' + (e?.message || e);
+      }
     }
   });
 
@@ -892,7 +946,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           showToast('Sign-in cookies applied. Refreshing music tabs…');
           refreshAuthStatusUI();
-          refreshMusicTabsAfterSignIn('youtube');
+          refreshMusicTabsAfterSignIn('youtube', true);
           setTimeout(() => closeAuthSyncModal(), 2200);
         } else {
           if (ytmCdpStatus) {
@@ -942,13 +996,58 @@ document.addEventListener('DOMContentLoaded', () => {
   // =========================================================================
 
   btnStartSpotifyLogin?.addEventListener('click', async () => {
-    closeAuthSyncModal();
-    switchTab('spotify-view');
-    showToast('Loading Spotify sign-in…');
+    authSessionTracker.spotify.state = 'loading';
+    if (authSessionTracker.spotify.closeTimer) clearTimeout(authSessionTracker.spotify.closeTimer);
+    btnStartSpotifyLogin.disabled = true;
+    btnStartSpotifyLogin.classList.add('is-loading');
+    if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Waiting for Default Browser…';
+    if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'inline-flex';
+    if (spotifyLoginStatus) {
+      spotifyLoginStatus.className = 'login-live-feedback loading';
+      spotifyLoginStatus.style.display = 'flex';
+      spotifyLoginStatus.textContent = 'Opening your default browser for Spotify sign-in…';
+    }
     try {
-      await window.braveApi.startServiceLogin('spotify', 'auto');
+      const res = await window.braveApi.startServiceLogin('spotify', 'auto');
+      if (res && res.success) {
+        authSessionTracker.spotify.state = 'complete';
+        btnStartSpotifyLogin.disabled = false;
+        btnStartSpotifyLogin.classList.remove('is-loading');
+        if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Sign in to Spotify';
+        if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
+        if (spotifyLoginStatus) {
+          spotifyLoginStatus.className = 'login-live-feedback success';
+          spotifyLoginStatus.style.display = 'flex';
+          spotifyLoginStatus.textContent = res.message || 'Sign-in complete! Session synced to browser memory.';
+        }
+        refreshAuthStatusUI();
+        refreshMusicTabsAfterSignIn('spotify', true);
+        authSessionTracker.spotify.closeTimer = setTimeout(() => {
+          closeAuthSyncModal();
+          authSessionTracker.spotify.state = 'idle';
+        }, 1600);
+      } else if (res && res.error && authSessionTracker.spotify.state !== 'cancelled') {
+        authSessionTracker.spotify.state = 'error';
+        btnStartSpotifyLogin.disabled = false;
+        btnStartSpotifyLogin.classList.remove('is-loading');
+        if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Sign in to Spotify';
+        if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
+        if (spotifyLoginStatus) {
+          spotifyLoginStatus.className = 'login-live-feedback error';
+          spotifyLoginStatus.style.display = 'flex';
+          spotifyLoginStatus.textContent = res.error;
+        }
+      }
     } catch (e) {
-      showToast('Error opening sign-in: ' + (e?.message || e));
+      btnStartSpotifyLogin.disabled = false;
+      btnStartSpotifyLogin.classList.remove('is-loading');
+      if (btnSpotifyLoginLabel) btnSpotifyLoginLabel.textContent = 'Sign in to Spotify';
+      if (btnCancelSpotifyLogin) btnCancelSpotifyLogin.style.display = 'none';
+      if (spotifyLoginStatus && authSessionTracker.spotify.state !== 'cancelled') {
+        spotifyLoginStatus.className = 'login-live-feedback error';
+        spotifyLoginStatus.style.display = 'flex';
+        spotifyLoginStatus.textContent = 'Error opening sign-in: ' + (e?.message || e);
+      }
     }
   });
 
@@ -995,7 +1094,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           showToast('Sign-in cookies applied. Refreshing music tabs…');
           refreshAuthStatusUI();
-          refreshMusicTabsAfterSignIn('spotify');
+          refreshMusicTabsAfterSignIn('spotify', true);
           setTimeout(() => closeAuthSyncModal(), 2200);
         } else {
           if (spotifyLoginStatus) {
@@ -1064,7 +1163,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (targetCancel) targetCancel.style.display = 'none';
       targetStatusEl.className = 'login-live-feedback success';
       targetStatusEl.textContent = status.message || 'Sign-in complete! Session applied.';
-      refreshMusicTabsAfterSignIn(serviceKey);
+      refreshMusicTabsAfterSignIn(serviceKey, true);
       refreshAuthStatusUI();
       if (tracker.closeTimer) clearTimeout(tracker.closeTimer);
       tracker.closeTimer = setTimeout(() => {
@@ -1092,11 +1191,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Intercepted webview login click handler
+  // Intercepted webview login click handler (e.g. when Google rejects embedded webview sign-in)
   window.braveApi?.onAuthBrowserOpened?.((data) => {
     const service = data?.service;
     const targetTab = service === 'spotify' ? 'spotify' : 'ytm';
     openAuthSyncModal(targetTab);
+    if (targetTab === 'ytm' && ytmCdpStatus) {
+      ytmCdpStatus.className = 'login-live-feedback info';
+      ytmCdpStatus.style.display = 'flex';
+      ytmCdpStatus.textContent = 'Google blocked embedded browser sign-in. Click "Sign in to YouTube Music" above to sign in via your default browser and auto-sync.';
+    }
   });
 
   document.addEventListener('keydown', (e) => {
@@ -1246,13 +1350,67 @@ document.addEventListener('DOMContentLoaded', () => {
   setupWebviewShields(ytWebview, 'YouTube Music');
   setupWebviewShields(spotifyWebview, 'Spotify');
 
-  // Automatically inspect and sync signed-in user profiles
-  ytWebview?.addEventListener('did-stop-loading', () => inspectAndSaveWebviewUser('youtube'));
-  spotifyWebview?.addEventListener('did-stop-loading', () => inspectAndSaveWebviewUser('spotify'));
+  // Automatically inspect and sync signed-in user profiles & browser session memory
+  ytWebview?.addEventListener('did-stop-loading', () => {
+    inspectAndSaveWebviewUser('youtube');
+    refreshAuthStatusUI();
+  });
+  spotifyWebview?.addEventListener('did-stop-loading', () => {
+    inspectAndSaveWebviewUser('spotify');
+    refreshAuthStatusUI();
+  });
 
   // ==========================================================================
   // DOWNLOAD CONTROLS (OFFLINE AUDIO ENGINE)
   // ==========================================================================
+
+  function isCollectionUrl(rawUrl) {
+    const u = String(rawUrl || '').trim();
+    if (!u) return false;
+    return /[?&]list=[a-zA-Z0-9_-]+/i.test(u) ||
+           /open\.spotify\.com\/(?:intl-[a-z-]+\/)?(playlist|album|artist)\/[a-zA-Z0-9]+/i.test(u) ||
+           /spotify:(playlist|album|artist):[a-zA-Z0-9]+/i.test(u) ||
+           /\/playlist\?list=/i.test(u);
+  }
+
+  function getTrackFormatMeta(track) {
+    const extMatch = String(track?.filename || '').match(/\.([a-z0-9]+)$/i);
+    const rawExt = (track?.format || (extMatch ? extMatch[1] : 'MP3')).toUpperCase();
+    const isVideo = /\.(mp4|webm|mkv|m4v)$/i.test(track?.filename || '');
+    const sizeBytes = Number(track?.sizeBytes || 0);
+    const sizeLabel = sizeBytes > 0
+      ? (sizeBytes >= 1024 * 1024 ? `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.round(sizeBytes / 1024)} KB`)
+      : '';
+
+    let badgeClass = 'badge-format-tag';
+    if (isVideo) badgeClass = 'badge-video-tag';
+    else if (rawExt === 'MP3') badgeClass = 'badge-format-tag fmt-mp3';
+    else if (rawExt === 'FLAC') badgeClass = 'badge-format-tag fmt-flac';
+    else if (rawExt === 'M4A' || rawExt === 'AAC') badgeClass = 'badge-format-tag fmt-m4a';
+
+    const label = isVideo ? 'VIDEO' : rawExt;
+    const tooltip = [rawExt, track?.bitrate, sizeLabel].filter(Boolean).join(' • ');
+    return { label, rawExt, badgeClass, isVideo, sizeLabel, tooltip };
+  }
+
+  function getOrderedPlaylistTracks(playlistName) {
+    const trackIds = (state.library.playlists || {})[playlistName] || [];
+    const trackMap = new Map((state.library.tracks || []).map(t => [t.id, t]));
+    return trackIds.map(id => trackMap.get(id)).filter(t => t && !isBuiltInTrack(t));
+  }
+
+  function resolvePlaylistSourceBadge(tracks, customCover) {
+    const firstWithSource = tracks.find(t => t && (t.source || t.downloadUrl));
+    const urlStr = String(firstWithSource?.downloadUrl || customCover || '').toLowerCase();
+    const src = String(firstWithSource?.source || '').toLowerCase();
+    if (src === 'spotify' || urlStr.includes('spotify.com') || urlStr.includes('scdn.co')) {
+      return { label: 'Spotify', badgeClass: 'source-spotify' };
+    }
+    if (src === 'youtube' || urlStr.includes('youtube.com') || urlStr.includes('youtu.be') || urlStr.includes('ytimg.com')) {
+      return { label: 'YouTube', badgeClass: 'source-youtube' };
+    }
+    return { label: 'Collection', badgeClass: 'source-custom' };
+  }
 
   toggleSong?.addEventListener('click', () => {
     state.downloadType = 'song';
@@ -1265,7 +1423,17 @@ document.addEventListener('DOMContentLoaded', () => {
     state.downloadType = 'playlist';
     togglePlaylist.classList.add('active');
     toggleSong.classList.remove('active');
-    inputDownloadUrl.placeholder = 'Paste YouTube / Spotify playlist URL…';
+    inputDownloadUrl.placeholder = 'Paste YouTube / Spotify playlist or mix URL…';
+  });
+
+  inputDownloadUrl?.addEventListener('input', () => {
+    const val = inputDownloadUrl.value.trim();
+    if (isCollectionUrl(val) && state.downloadType !== 'playlist') {
+      state.downloadType = 'playlist';
+      togglePlaylist?.classList.add('active');
+      toggleSong?.classList.remove('active');
+      inputDownloadUrl.placeholder = 'Paste YouTube / Spotify playlist or mix URL…';
+    }
   });
 
   btnExecuteDownload?.addEventListener('click', executeDownload);
@@ -1285,26 +1453,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const isVideo = format.startsWith('video');
 
     downloadProgressBox.style.display = 'flex';
-    progressFillBar.style.width = '0%';
-    progressPercentVal.textContent = '0%';
-    progressSpeed.textContent = '0.0 MB/s';
-    const isPlaylistUrl = /[?&]list=[a-zA-Z0-9_-]+/i.test(url) ||
-                          /\/playlist\/[a-zA-Z0-9_-]+/i.test(url) ||
-                          /\/album\/[a-zA-Z0-9_-]+/i.test(url) ||
-                          /\/playlist\?list=/i.test(url);
+    progressFillBar.style.width = '4%';
+    progressPercentVal.textContent = '4%';
+    progressSpeed.textContent = isVideo ? 'Video Engine' : '320k MP3 Engine';
+    if (progressStatusLabel) progressStatusLabel.style.color = '';
+
+    const isPlaylistUrl = isCollectionUrl(url);
     const shouldDownloadAsPlaylist = state.downloadType === 'playlist' || isPlaylistUrl;
     if (isPlaylistUrl && state.downloadType !== 'playlist') {
       state.downloadType = 'playlist';
       if (togglePlaylist && toggleSong) {
         togglePlaylist.classList.add('active');
         toggleSong.classList.remove('active');
-        inputDownloadUrl.placeholder = 'Paste YouTube / Spotify playlist URL…';
+        inputDownloadUrl.placeholder = 'Paste YouTube / Spotify playlist or mix URL…';
       }
     }
 
     progressStatusLabel.textContent = isVideo
       ? (shouldDownloadAsPlaylist ? 'Resolving & downloading video playlist…' : 'Resolving & downloading music video…')
-      : (shouldDownloadAsPlaylist ? 'Fetching playlist information & cover art…' : 'Resolving audio stream…');
+      : (shouldDownloadAsPlaylist ? 'Fetching playlist/mix tracklist & cover art…' : 'Resolving high-quality audio stream…');
 
     btnExecuteDownload.disabled = true;
 
@@ -1317,14 +1484,30 @@ document.addEventListener('DOMContentLoaded', () => {
       });
 
       if (result && result.success) {
+        currentActiveDownloadId = null;
+        if (progressFillBar) progressFillBar.style.width = '100%';
+        if (progressPercentVal) progressPercentVal.textContent = '100%';
+        const countLabel = result.count || 1;
+        if (progressStatusLabel) {
+          progressStatusLabel.textContent = shouldDownloadAsPlaylist
+            ? `Saved ${countLabel} tracks in sequence to "${result.playlist || 'Playlist'}"`
+            : 'Saved track to offline library';
+        }
         showToast(shouldDownloadAsPlaylist
-          ? `Downloaded ${result.count || ''} songs into playlist & library`
-          : (isVideo ? 'Music video downloaded to offline storage' : 'Song downloaded to offline storage'));
+          ? `Downloaded ${countLabel} songs into "${result.playlist || 'Playlist'}" & library`
+          : (isVideo ? 'Music video downloaded to offline storage' : 'Song downloaded cleanly to offline storage'));
         inputDownloadUrl.value = '';
         await loadLibrary();
+        setTimeout(() => {
+          if (!currentActiveDownloadId && downloadProgressBox) {
+            downloadProgressBox.style.display = 'none';
+          }
+        }, 2800);
       } else if (result && result.canceled) {
+        currentActiveDownloadId = null;
         showToast('Download canceled by user');
       } else {
+        currentActiveDownloadId = null;
         const errorMsg = (result && result.error) ? result.error : 'Download failed';
         if (progressStatusLabel) {
           progressStatusLabel.textContent = errorMsg;
@@ -1333,6 +1516,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast(`Download failed: ${errorMsg}`);
       }
     } catch (err) {
+      currentActiveDownloadId = null;
       if (progressStatusLabel) {
         progressStatusLabel.textContent = `Error: ${err.message}`;
         progressStatusLabel.style.color = '#f87171';
@@ -1988,7 +2172,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     tracks.forEach((track, idx) => {
       const isCurrentlyPlayingThis = state.player.currentTrack && state.player.currentTrack.id === track.id;
-      const isVideoFile = /\.(mp4|webm|mkv|m4v)$/i.test(track.filename || '');
+      const fmt = getTrackFormatMeta(track);
       const tr = document.createElement('tr');
       if (isCurrentlyPlayingThis) {
         tr.classList.add('playing-row');
@@ -2004,7 +2188,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="track-meta-cell">
             <img class="track-thumb" src="${getTrackThumbnail(track)}" alt="" onerror="this.src='${EMPTY_MUSIC_THUMBNAIL}'">
             <span class="track-title-text" title="${escapeHtml(track.title)}">${escapeHtml(track.title)}</span>
-            ${isVideoFile ? '<span class="badge-video-tag" title="Video file plays as audio in built-in player"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>VIDEO</span>' : ''}
+            <span class="${fmt.badgeClass}" title="${escapeHtml(fmt.tooltip || fmt.label)}">${escapeHtml(fmt.label)}</span>
           </div>
         </td>
         <td class="col-artist" title="${escapeHtml(track.artist || 'Unknown Artist')}">${escapeHtml(track.artist || 'Unknown Artist')}</td>
@@ -3349,7 +3533,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     visibleTracks.forEach((track, idx) => {
       const isCurrentlyPlayingThis = state.player.currentTrack && state.player.currentTrack.id === track.id;
-      const isVideoFile = /\.(mp4|webm|mkv|m4v)$/i.test(track.filename || '');
+      const fmt = getTrackFormatMeta(track);
       const isBuiltIn = isBuiltInTrack(track);
       const isSelected = state.selectedTrackIds.has(track.id);
 
@@ -3414,12 +3598,12 @@ document.addEventListener('DOMContentLoaded', () => {
             <img class="track-thumb" src="${getTrackThumbnail(track)}" alt="" onerror="this.src='${EMPTY_MUSIC_THUMBNAIL}'">
             <span class="track-title-text" title="${escapeHtml(track.title)}">${escapeHtml(track.title)}</span>
             ${isBuiltIn ? '<span class="badge-builtin-tag" title="Built-in core track (Excluded from custom playlists & protected from deletion)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>BUILT-IN</span>' : ''}
-            ${isVideoFile ? '<span class="badge-video-tag" title="Video file plays as audio in built-in player"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>VIDEO</span>' : ''}
+            <span class="${fmt.badgeClass}" title="${escapeHtml(fmt.tooltip || fmt.label)}">${fmt.isVideo ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>' : ''}${escapeHtml(fmt.label)}</span>
           </div>
         </td>
         <td class="col-artist" title="${escapeHtml(track.artist || 'Unknown Artist')}">${escapeHtml(track.artist || 'Unknown Artist')}</td>
-        <td class="col-album" title="${escapeHtml(albumDisplay)}">${escapeHtml(albumDisplay)}</td>
-        <td class="col-duration">${formatDuration(track.duration)}</td>
+        <td class="col-album${assignedPlaylists.length > 0 ? ' col-album-link' : ''}" title="${assignedPlaylists.length > 0 ? `Open collection: ${escapeHtml(assignedPlaylists[0])}` : escapeHtml(albumDisplay)}">${escapeHtml(albumDisplay)}</td>
+        <td class="col-duration" title="${escapeHtml(fmt.sizeLabel || '')}">${formatDuration(track.duration)}</td>
         <td class="col-actions">
           <div class="row-actions-group">
             <button class="row-action-btn play-track-btn" title="Play directly in built-in runtime player">
@@ -3480,6 +3664,15 @@ document.addEventListener('DOMContentLoaded', () => {
           handleRowSelect(track.id, tr);
         }
       });
+
+      // Open collection directly when clicking its playlist name in table
+      if (assignedPlaylists.length > 0) {
+        tr.querySelector('.col-album-link')?.addEventListener('click', (e) => {
+          if (state.selectionMode) return;
+          e.stopPropagation();
+          openPlaylistDetail(assignedPlaylists[0]);
+        });
+      }
 
       // Play via built-in player
       tr.querySelector('.play-track-btn')?.addEventListener('click', () => {
@@ -3561,43 +3754,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const pNames = Object.keys(playlists);
     pNames.forEach(name => {
-      const trackIds = playlists[name] || [];
-      const count = trackIds.length;
-      const firstTrack = (state.library.tracks || []).find(t => trackIds.includes(t.id));
+      const orderedTracks = getOrderedPlaylistTracks(name);
+      const count = orderedTracks.length;
+      const firstTrack = orderedTracks[0];
       const customCover = playlistCovers[name];
+      const totalDurSec = orderedTracks.reduce((acc, t) => acc + (t.duration || 0), 0);
+      const durLabel = totalDurSec > 0 ? formatDuration(totalDurSec) : null;
+      const dominantFmt = orderedTracks.length > 0 ? getTrackFormatMeta(orderedTracks[0]).label : null;
+      const srcBadge = resolvePlaylistSourceBadge(orderedTracks, customCover);
 
-      let artHtml = '';
+      // Unique thumbnails for 2x2 collage if playlist has no custom gradient/single cover
+      const uniqueThumbs = [...new Set(
+        orderedTracks.map(t => getTrackThumbnail(t)).filter(src => src && src !== EMPTY_MUSIC_THUMBNAIL)
+      )].slice(0, 4);
+
+      let artInnerHtml = '';
       if (customCover && customCover.startsWith('linear-gradient')) {
-        artHtml = `<div class="playlist-card-art custom-art-grad" style="background: ${customCover}; display: flex; align-items: center; justify-content: center;">
+        artInnerHtml = `<div class="playlist-card-art custom-art-grad" style="background: ${customCover}; display: flex; align-items: center; justify-content: center;">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
+          <span class="playlist-cover-badge ${srcBadge.badgeClass}">${srcBadge.label}</span>
         </div>`;
       } else if (customCover && (customCover.startsWith('http://') || customCover.startsWith('https://') || customCover.startsWith('data:'))) {
-        artHtml = `<div class="playlist-card-art">
+        artInnerHtml = `<div class="playlist-card-art">
           <img src="${customCover}" alt="" onerror="this.src='${EMPTY_MUSIC_THUMBNAIL}'">
+          <span class="playlist-cover-badge ${srcBadge.badgeClass}">${srcBadge.label}</span>
         </div>`;
       } else if (customCover && customCover.startsWith('url(')) {
-        artHtml = `<div class="playlist-card-art custom-art-img" style="background: ${customCover};"></div>`;
+        artInnerHtml = `<div class="playlist-card-art custom-art-img" style="background: ${customCover};">
+          <span class="playlist-cover-badge ${srcBadge.badgeClass}">${srcBadge.label}</span>
+        </div>`;
+      } else if (uniqueThumbs.length >= 4) {
+        artInnerHtml = `<div class="playlist-card-art playlist-art-collage">
+          ${uniqueThumbs.map(src => `<img src="${src}" alt="" onerror="this.src='${EMPTY_MUSIC_THUMBNAIL}'">`).join('')}
+          <span class="playlist-cover-badge ${srcBadge.badgeClass}">${srcBadge.label}</span>
+        </div>`;
       } else {
         const thumb = getTrackThumbnail(firstTrack);
-        artHtml = `<div class="playlist-card-art">
+        artInnerHtml = `<div class="playlist-card-art">
           <img src="${thumb}" alt="" onerror="this.src='${EMPTY_MUSIC_THUMBNAIL}'">
+          <span class="playlist-cover-badge ${srcBadge.badgeClass}">${srcBadge.label}</span>
         </div>`;
       }
+
+      const metaParts = [`${count} ${count === 1 ? 'Track' : 'Tracks'}`];
+      if (durLabel) metaParts.push(durLabel);
+      if (dominantFmt) metaParts.push(dominantFmt);
 
       const card = document.createElement('div');
       card.className = 'playlist-card';
       card.innerHTML = `
-        ${artHtml}
+        ${artInnerHtml}
         <div class="playlist-card-info">
-          <h3>${escapeHtml(name)}</h3>
-          <p>${count} ${count === 1 ? 'Track' : 'Tracks'} • Offline Library</p>
+          <h3 title="${escapeHtml(name)}">${escapeHtml(name)}</h3>
+          <p>${metaParts.join(' • ')}</p>
         </div>
-        <div style="display: flex; gap: 8px; margin-top: 10px;">
-          <button class="ghost-btn play-playlist-btn" style="flex: 1; height: 32px; font-size: 0.74rem; justify-content: center;">
+        <div class="playlist-card-actions">
+          <button class="ghost-btn play-playlist-btn">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
             <span>Play All</span>
           </button>
-          <button class="ghost-btn delete-playlist-btn" style="height: 32px; width: 32px; padding: 0; justify-content: center;" title="Delete Playlist">
+          <button class="ghost-btn delete-playlist-btn" title="Delete Playlist">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
           </button>
         </div>
@@ -3609,12 +3825,11 @@ document.addEventListener('DOMContentLoaded', () => {
         openPlaylistDetail(name);
       });
 
-      // Play all tracks in playlist & open detail
+      // Play all tracks in exact provider sequence (1..N) & open detail
       card.querySelector('.play-playlist-btn')?.addEventListener('click', (e) => {
         e.stopPropagation();
         openPlaylistDetail(name);
-        const playlistTrackIds = (state.library.playlists || {})[name] || [];
-        const playlistTracks = (state.library.tracks || []).filter(t => playlistTrackIds.includes(t.id) && !isBuiltInTrack(t));
+        const playlistTracks = getOrderedPlaylistTracks(name);
         if (playlistTracks.length > 0) {
           state.selectedPlaylist = name;
           playTrack(playlistTracks[0], 0);

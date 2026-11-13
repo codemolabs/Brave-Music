@@ -74,10 +74,10 @@ The official standalone Debian package installs Brave Music with all system menu
 ### Step 1: Download or Build the Package
 Download the latest verified package directly from GitHub Releases:
 ```bash
-wget https://github.com/codemolabs/Brave-Music/releases/download/v1.0.19-r/brave-music_1.0.19-r_amd64.deb
+wget https://github.com/codemolabs/Brave-Music/releases/latest/download/brave-music_1.0.19-r_amd64.deb
 ```
 
-Direct binary download: [**brave-music_1.0.19-r_amd64.deb**](https://github.com/codemolabs/Brave-Music/releases/download/v1.0.19-r/brave-music_1.0.19-r_amd64.deb)
+Direct binary download: [**brave-music_1.0.19-r_amd64.deb**](https://github.com/codemolabs/Brave-Music/releases/latest/download/brave-music_1.0.19-r_amd64.deb)
 
 Or build it locally from source:
 ```bash
@@ -157,15 +157,16 @@ When installed via package, Brave Music adheres to Linux Filesystem Hierarchy St
 
 | Target Path | Function |
 | :--- | :--- |
-| `/opt/brave-music/` | Application root, main process, backend services, and embedded Musikcube binaries |
+| `/opt/brave-music/` | Application root, main process, backend services, and bundled binaries (`backend/bin/`) |
+| `/opt/brave-music/backend/bin/` | Self-contained `yt-dlp` (`yt_dlp_ejs`), `node` JS runtime wrapper, `ffmpeg`, `ffprobe`, and shared audio libraries |
 | `/opt/brave-music/run.sh` | Hardened startup script configuring library paths and runtime flags |
-| `/usr/bin/brave-music` | System-wide execution symlink callable from any terminal |
-| `/usr/share/applications/brave-music.desktop` | Desktop entry file registering audio categories and system integration |
+| `/usr/bin/brave-music` | System-wide execution symlink callable from any terminal (or `/snap/bin/brave-music` for Snap) |
+| `/usr/share/applications/brave-music.desktop` | Desktop entry file registering audio categories and `StartupWMClass=brave-music` grouping |
 | `/usr/share/pixmaps/brave-music.png` | System pixmap application icon |
 | `/usr/share/icons/hicolor/<size>/apps/brave-music.png` | Multi-resolution bitmap icons (16x16 up to 512x512) |
 | `/usr/share/icons/hicolor/scalable/apps/brave-music.svg` | Scalable vector application icon |
-| `~/.config/brave-music/` | User application profile, persistent login cookies, and cache partition |
-| `~/.config/musikcube/` | Embedded C++ audio daemon database and library index files |
+| `~/.config/brave-music/` | User application profile, `persist:bravemusic` browser memory, Widevine CDM, and session data |
+| `~/.local/share/brave-music/` | Offline `library.json`, settings, and downloaded media collections (default `$HOME/Music` or Downloads dir) |
 
 ---
 
@@ -263,7 +264,9 @@ rm -rf ~/.config/musikcube
 
 | Issue | Root Cause | Resolution |
 | :--- | :--- | :--- |
-| **Spotify displays "Enable Protected Content"** | Widevine CDM is uninitialized or missing | Run `node test-widevine-ready.js`. If Google Chrome is installed, CastLabs automatically borrows CDM from `/opt/google/chrome/WidevineCdm`. |
-| **Offline download button does not start** | Missing `yt-dlp` or out-of-date binary | Run `sudo apt install yt-dlp` or update with `sudo yt-dlp -U`. |
+| **Spotify displays "Enable Protected Content"** | Widevine CDM is uninitialized or missing | Run `node test-widevine-ready.js`. CastLabs Electron provisions Widevine automatically (or links `/opt/google/chrome/WidevineCdm` when present). |
+| **Google blocks in-app login ("browser or app may not be secure")** | Google restricts embedded webview OAuth flows | Click the **Profile Sign-In button** in the top-right header to authenticate via your Default Browser Auto-Sync (or use Emergency Fallback `cookies.json` import). |
+| **Personalized Spotify Mix fails to extract tracks** | Private/personalized Mix (`Daily Mix`, `Blend`, `Daylist`) requires Spotify session auth | Sign in to Spotify via the Profile modal or Inside App Spotify tab so `sp_dc` session memory authenticates Spotify Pathfinder resolution. |
+| **Offline download fails or stops cleanly** | Temporary CDN/YouTube client block or low disk space | Brave Music bundles self-contained `yt-dlp`, `node` EJS solver, and `ffmpeg` under `backend/bin/` (no system `yt-dlp` needed). Retry or update Brave Music (`sudo snap refresh brave-music`). |
 | **No audio output from offline player** | Sound daemon sink muted or inactive | Verify sound server: `wpctl status` (PipeWire) or `pactl info` (PulseAudio). Ensure volume is above 0 in `alsamixer`. |
 | **Application fails to open in container** | SUID sandbox restriction | Launch with `brave-music --no-sandbox`. |

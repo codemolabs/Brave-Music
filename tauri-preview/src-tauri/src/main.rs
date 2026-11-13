@@ -1228,34 +1228,136 @@ struct SpotifyEmbedMetadata {
 
 fn fetch_spotify_embed_metadata(url: &str) -> Option<SpotifyEmbedMetadata> {
     let py_script = r#"
-import sys, re, json, urllib.request
-url = sys.argv[1].strip()
-m = re.search(r'open\.spotify\.com/(track|album|playlist|episode)/([a-zA-Z0-9]+)', url, re.I) or re.search(r'spotify:(track|album|playlist):([a-zA-Z0-9]+)', url, re.I)
+import sys, re, json, os, urllib.request
+
+HASH = 'b39f62e9b566aa849b1780927de1450f47e02c54abf1e66e513f96e849591e41'
+BOOT_ID = '37i9dQZF1DXcBWIGoYBM5M'
+UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+
+raw_url = sys.argv[1].strip()
+if re.match(r'^https?://spotify\.(link|app\.link)/', raw_url, re.I):
+    try:
+        req = urllib.request.Request(raw_url, headers={'User-Agent': UA})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            raw_url = r.geturl()
+    except Exception:
+        pass
+
+m = re.search(r'open\.spotify\.com/(?:intl-[a-z-]+/)?(track|album|playlist|episode|artist)/([a-zA-Z0-9]+)', raw_url, re.I) or \
+    re.search(r'spotify:(track|album|playlist|episode|artist):([a-zA-Z0-9]+)', raw_url, re.I)
 if not m:
     sys.exit(1)
+
 kind, sid = m.group(1).lower(), m.group(2)
-embed_url = f'https://open.spotify.com/embed/{kind}/{sid}'
-req = urllib.request.Request(embed_url, headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0 Safari/537.36'})
-html = urllib.request.urlopen(req, timeout=10).read().decode('utf-8', 'ignore')
-sm = re.search(r'<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)</script>', html)
-if not sm:
-    sys.exit(1)
-entity = json.loads(sm.group(1)).get('props', {}).get('pageProps', {}).get('state', {}).get('data', {}).get('entity', {})
+
+sp_dc = ''
+sess_path = os.path.expanduser('~/.config/brave-music/spotify_session.json')
+if os.path.exists(sess_path):
+    try:
+        with open(sess_path, 'r', encoding='utf-8') as f:
+            sdata = json.load(f)
+        if isinstance(sdata, list):
+            for c in sdata:
+                if isinstance(c, dict) and c.get('name') == 'sp_dc' and c.get('value'):
+                    sp_dc = c['value']
+                    break
+        elif isinstance(sdata, dict) and sdata.get('sp_dc'):
+            sp_dc = sdata['sp_dc']
+    except Exception:
+        pass
+
+def get_embed(t, i):
+    hdrs = {'User-Agent': UA}
+    if sp_dc:
+        hdrs['Cookie'] = f'sp_dc={sp_dc}'
+    try:
+        req = urllib.request.Request(f'https://open.spotify.com/embed/{t}/{i}', headers=hdrs)
+        html = urllib.request.urlopen(req, timeout=12).read().decode('utf-8', 'ignore')
+        sm = re.search(r'<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)</script>', html)
+        if not sm:
+            return None, None
+        st = json.loads(sm.group(1)).get('props', {}).get('pageProps', {}).get('state', {})
+        return st.get('data', {}).get('entity'), st.get('settings', {}).get('session')
+    except Exception:
+        return None, None
+
+entity, sess = get_embed(kind, sid)
+
+if kind == 'playlist':
+    token = (sess or {}).get('accessToken') or ''
+    if not token and sp_dc:
+        _, boot_sess = get_embed('playlist', BOOT_ID)
+        token = (boot_sess or {}).get('accessToken') or ''
+    if token:
+        all_tracks = []
+        pname = ''
+        pcover = ''
+        total = None
+        for offset in range(0, 1000, 100):
+            body = json.dumps({
+                'variables': {'uri': f'spotify:playlist:{sid}', 'offset': offset, 'limit': 100, 'enableWatchFeedEntrypoint': False},
+                'operationName': 'fetchPlaylist',
+                'extensions': {'persistedQuery': {'version': 1, 'sha256Hash': HASH}},
+            }).encode('utf-8')
+            req = urllib.request.Request(
+                'https://api-partner.spotify.com/pathfinder/v1/query',
+                data=body,
+                headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json', 'app-platform': 'WebPlayer', 'User-Agent': UA},
+            )
+            try:
+                resp = json.loads(urllib.request.urlopen(req, timeout=12).read().decode('utf-8', 'ignore'))
+            except Exception:
+                break
+            pl = (resp.get('data') or {}).get('playlistV2') or {}
+            if not pl or pl.get('__typename') in ('NotFound', 'GenericError'):
+                break
+            if not pname and pl.get('name'):
+                pname = pl['name'].strip()
+            if not pcover:
+                imgs = ((pl.get('images') or {}).get('items') or [{}])[0].get('sources') or []
+                if imgs:
+                    pcover = imgs[-1].get('url') or imgs[0].get('url') or ''
+            content = pl.get('content') or {}
+            items = content.get('items') or []
+            if not items:
+                break
+            if isinstance(content.get('totalCount'), int):
+                total = content['totalCount']
+            for entry in items:
+                td = ((entry or {}).get('itemV2') or {}).get('data') or {}
+                tt = td.get('name') or td.get('title') or ''
+                if not tt:
+                    continue
+                artists = [a.get('profile', {}).get('name', '') for a in ((td.get('artists') or {}).get('items') or [])]
+                artists = [a for a in artists if a]
+                asrcs = ((td.get('albumOfTrack') or {}).get('coverArt') or {}).get('sources') or []
+                tthumb = (asrcs[-1].get('url') or asrcs[0].get('url')) if asrcs else pcover
+                dur = int(round(((td.get('trackDuration') or {}).get('totalMilliseconds') or 0) / 1000))
+                all_tracks.append({'title': tt, 'artist': ', '.join(artists) or 'Unknown Artist', 'duration': dur, 'thumbnail': tthumb or pcover})
+            if len(items) < 100 or (total is not None and len(all_tracks) >= total):
+                break
+        if all_tracks:
+            if not pcover and entity:
+                pcover = ((entity.get('coverArt') or {}).get('sources') or [{}])[0].get('url') or ''
+            print(json.dumps({'kind': 'playlist', 'name': pname or 'Spotify Playlist', 'coverUrl': pcover, 'tracks': all_tracks}))
+            sys.exit(0)
+
 if not entity:
     sys.exit(1)
-name = entity.get('name') or entity.get('title') or 'Spotify'
+
+name = (entity.get('name') or entity.get('title') or 'Spotify').strip()
 cover = ((entity.get('coverArt') or {}).get('sources') or [{}])[0].get('url') or ((entity.get('visualIdentity') or {}).get('image') or [{}])[0].get('url') or ''
-if kind in ('playlist', 'album'):
+if kind in ('playlist', 'album', 'artist'):
     tracks = []
     for t in (entity.get('trackList') or []):
         t_title = t.get('title') or t.get('name') or ''
-        t_artist = t.get('subtitle') or ', '.join(a.get('name','') for a in (t.get('artists') or [])) or 'Unknown Artist'
+        t_artist = (t.get('subtitle') or ', '.join(a.get('name','') for a in (t.get('artists') or [])) or (name if kind == 'artist' else 'Unknown Artist')).replace('\u00a0', ' ').strip()
         t_dur = int(round((t.get('duration') or 0) / 1000))
         if t_title:
             tracks.append({'title': t_title, 'artist': t_artist, 'duration': t_dur, 'thumbnail': cover})
-    print(json.dumps({'kind': kind, 'name': name, 'coverUrl': cover, 'tracks': tracks}))
+    print(json.dumps({'kind': 'playlist' if kind in ('playlist', 'artist') else 'album', 'name': name, 'coverUrl': cover, 'tracks': tracks}))
 else:
-    artist = ', '.join(a.get('name','') for a in (entity.get('artists') or [])) or entity.get('subtitle') or 'Unknown Artist'
+    artist = (', '.join(a.get('name','') for a in (entity.get('artists') or [])) or entity.get('subtitle') or 'Unknown Artist').replace('\u00a0', ' ')
     dur = int(round((entity.get('duration') or 0) / 1000))
     print(json.dumps({'kind': 'track', 'name': name, 'coverUrl': cover, 'tracks': [{'title': name, 'artist': artist, 'duration': dur, 'thumbnail': cover}]}))
 "#;
@@ -1269,6 +1371,57 @@ else:
         return None;
     }
     serde_json::from_slice::<SpotifyEmbedMetadata>(&output.stdout).ok()
+}
+
+fn fetch_youtube_playlist_queue(ytdlp_bin: &PathBuf, url: &str) -> Option<(String, String, Vec<(String, Option<SpotifyEmbedTrack>)>)> {
+    let trimmed = url.trim();
+    let list_pos = trimmed.to_lowercase().find("list=")?;
+    let rest = &trimmed[list_pos + 5..];
+    let list_id: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').collect();
+    if list_id.is_empty() {
+        return None;
+    }
+    let upper = list_id.to_uppercase();
+    let is_dynamic_mix = upper.starts_with("RD") && !upper.starts_with("RDCLAK");
+    let target_url = if is_dynamic_mix {
+        trimmed.to_string()
+    } else {
+        format!("https://www.youtube.com/playlist?list={list_id}")
+    };
+    let item_limit = if is_dynamic_mix { "1:35" } else { "1:500" };
+
+    let out = std::process::Command::new(ytdlp_bin)
+        .args(["--ignore-config", "--no-update", "--flat-playlist", "--playlist-items", item_limit, "--dump-single-json", "--no-warnings", "--socket-timeout", "15", &target_url])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let parsed: Value = serde_json::from_slice(&out.stdout).ok()?;
+    let title = parsed.get("title").and_then(|v| v.as_str()).unwrap_or("YouTube Playlist").trim().to_string();
+    let cover = parsed.get("thumbnails")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.last())
+        .and_then(|t| t.get("url"))
+        .and_then(|u| u.as_str())
+        .or_else(|| parsed.get("thumbnail").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .to_string();
+    let entries = parsed.get("entries").and_then(|v| v.as_array())?;
+    let mut items = Vec::new();
+    for entry in entries {
+        let vid = entry.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        let vtitle = entry.get("title").and_then(|v| v.as_str()).unwrap_or("");
+        if vid.is_empty() || vtitle.is_empty() || vtitle == "[Deleted video]" || vtitle == "[Private video]" {
+            continue;
+        }
+        let vurl = entry.get("url").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| format!("https://www.youtube.com/watch?v={vid}"));
+        items.push((vurl, None));
+    }
+    if items.is_empty() {
+        return None;
+    }
+    Some((title, cover, items))
 }
 
 #[tauri::command]
@@ -1316,14 +1469,16 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
         };
         let has_ffmpeg = ffmpeg_dir.is_some();
 
-        let is_spotify = url.to_lowercase().contains("open.spotify.com/") || url.to_lowercase().starts_with("spotify:");
+        let lower_url = url.to_lowercase();
+        let is_spotify = lower_url.contains("open.spotify.com/") || lower_url.starts_with("spotify:") || lower_url.contains("spotify.link/") || lower_url.contains("spotify.app.link/");
+        let is_spotify_collection = is_spotify && (lower_url.contains("/playlist/") || lower_url.contains("/album/") || lower_url.contains("/artist/") || lower_url.contains("spotify:playlist:") || lower_url.contains("spotify:album:") || lower_url.contains("spotify:artist:"));
         let spotify_meta = if is_spotify {
             fetch_spotify_embed_metadata(&url)
         } else {
             None
         };
 
-        // Build queue of items to download (supports Spotify playlists, single Spotify tracks, and YouTube URLs)
+        // Build queue of items to download (supports Spotify playlists/mixes, single Spotify tracks, and YouTube playlists/mixes in exact order)
         let queue_items: Vec<(String, Option<SpotifyEmbedTrack>)> = if let Some(ref meta) = spotify_meta {
             if (meta.kind == "playlist" || meta.kind == "album") && !meta.tracks.is_empty() {
                 if target_playlist.is_empty() {
@@ -1353,6 +1508,8 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
                         )
                     })
                     .collect()
+            } else if is_spotify_collection {
+                return Err("Could not extract tracks from this Spotify playlist or mix. For personalized mixes (Daily Mix, Blend, Daylist), sign in to Spotify in Brave Music first.".to_string());
             } else if let Some(first) = meta.tracks.first() {
                 let suffix = if requested_format.contains("video") { "official music video" } else { "official audio" };
                 vec![(
@@ -1364,6 +1521,26 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
                         thumbnail: first.thumbnail.clone(),
                     }),
                 )]
+            } else {
+                vec![(url.clone(), None)]
+            }
+        } else if is_spotify_collection {
+            return Err("Could not extract tracks from this Spotify playlist or mix. For personalized mixes (Daily Mix, Blend, Daylist), sign in to Spotify in Brave Music first.".to_string());
+        } else if !is_spotify && (is_playlist || lower_url.contains("list=")) {
+            if let Some((yt_name, yt_cover, yt_items)) = fetch_youtube_playlist_queue(&ytdlp_bin, &url) {
+                if target_playlist.is_empty() {
+                    target_playlist = yt_name;
+                }
+                if let Ok(mut doc) = read_library(&app_handle) {
+                    let cover_opt = if yt_cover.is_empty() { None } else { Some(Value::String(yt_cover)) };
+                    let _ = doc.create_playlist(&target_playlist, cover_opt.clone());
+                    if let Some(c) = cover_opt {
+                        let _ = doc.set_playlist_cover(&target_playlist, c);
+                    }
+                    let _ = write_library(&app_handle, &doc);
+                    let _ = app_handle.emit("library-updated", serde_json::json!({ "status": "playlist_created", "name": target_playlist }));
+                }
+                yt_items
             } else {
                 vec![(url.clone(), None)]
             }
@@ -1386,7 +1563,9 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
             cmd.arg("--ignore-config")
                .arg("--no-update")
                .arg("--extractor-args")
-               .arg("youtube:player_client=tv,web")
+               .arg("youtube:player_client=web_embedded,web,default")
+               .arg("--concurrent-fragments")
+               .arg("4")
                .arg("--newline")
                .arg("--progress")
                .arg("--no-warnings")
@@ -1406,12 +1585,12 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
             } else if has_ffmpeg && requested_format.contains("m4a") {
                 cmd.arg("-f").arg("bestaudio[ext=m4a]/bestaudio/best").arg("-x").arg("--audio-format").arg("m4a");
             } else if has_ffmpeg {
-                cmd.arg("-f").arg("bestaudio/best").arg("-x").arg("--audio-format").arg("mp3").arg("--audio-quality").arg("0");
+                cmd.arg("-f").arg("bestaudio/best").arg("-x").arg("--audio-format").arg("mp3").arg("--audio-quality").arg("0").arg("--postprocessor-args").arg("ExtractAudio+ffmpeg:-b:a 320k");
             } else {
                 cmd.arg("-f").arg("bestaudio[ext=m4a]/bestaudio/best");
             }
 
-            if is_playlist && sp_override.is_none() {
+            if is_playlist && sp_override.is_none() && total_queue == 1 {
                 cmd.arg("--yes-playlist");
             } else {
                 cmd.arg("--no-playlist");
@@ -1523,6 +1702,12 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
                                 current_timestamp_str()
                             );
 
+                            let format_label = path_obj
+                                .extension()
+                                .and_then(|e| e.to_str())
+                                .map(|s| s.to_uppercase())
+                                .unwrap_or_else(|| "MP3".to_string());
+
                             let new_track = serde_json::json!({
                                 "id": track_uuid,
                                 "originalId": original_id,
@@ -1532,6 +1717,9 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
                                 "duration": final_duration,
                                 "thumbnail": final_thumb,
                                 "filename": filename,
+                                "format": format_label,
+                                "source": if sp_override.is_some() { "spotify" } else { "youtube" },
+                                "trackNumber": q_idx + 1,
                                 "downloadUrl": url,
                                 "addedAt": current_timestamp_str(),
                                 "sizeBytes": size_bytes,

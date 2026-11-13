@@ -16,20 +16,22 @@ Brave Music delivers a distraction-free, privacy-first audio experience. The vis
 
 ## 2. Color Palette and Design Tokens
 
-All styles must use the standardized color tokens defined below:
+All styles must use the standardized color tokens defined in `src/styles/main.css`:
 
 | Token Name | Value | Purpose |
 | :--- | :--- | :--- |
-| `--bg-base` | `#0a0b0e` | Window background and outer frame |
-| `--bg-surface` | `#121318` | Navigation bars, cards, and bottom player |
-| `--bg-elevated` | `#1a1c23` | Modals, drawers, and active hover states |
-| `--border-subtle` | `rgba(255, 255, 255, 0.08)` | Container borders, dividers |
-| `--text-primary` | `#ffffff` | Primary headings, active track title |
-| `--text-secondary` | `#a0a5b5` | Artist names, subtitles, secondary labels |
-| `--text-muted` | `#686d7e` | Timestamps, inactive tabs, captions |
-| `--accent-brave` | `#fb542b` | Primary action buttons, shields badge |
-| `--accent-spotify` | `#1db954` | Spotify service indicators |
-| `--accent-ytm` | `#ff0000` | YouTube Music service indicators |
+| `--bg-base` | `#07080c` | Window background and outer frame |
+| `--bg-surface` | `#0e1017` | Navigation bars, cards, and bottom player |
+| `--bg-surface-elevated` | `#151822` | Modals, drawers, and active surface elevation |
+| `--bg-surface-hover` | `#1b1f2d` | Interactive hover surfaces |
+| `--bg-card` | `#12141c` | Library & collection cards |
+| `--border-subtle` | `rgba(255, 255, 255, 0.07)` | Container borders, dividers |
+| `--text-main` | `#f0f2f7` | Primary headings, active track title |
+| `--text-secondary` | `#8e97ab` | Artist names, subtitles, secondary labels |
+| `--text-muted` | `#575f73` | Timestamps, inactive tabs, captions |
+| `--accent-brave` | `#fb542b` | Primary action buttons, shields badge, MP3 badge accent |
+| `--accent-spotify` | `#1ed760` | Spotify service indicators and collection source pills |
+| `--accent-yt` | `#ff0033` | YouTube Music service indicators and collection source pills |
 
 ---
 
@@ -38,40 +40,42 @@ All styles must use the standardized color tokens defined below:
 The typography balances distinct branding with optimal screen legibility:
 
 ### Brand Typography
-- **Font Family**: `Ananda Black`
+- **Font Family**: `AnandaBlack`
 - **Location**: `src/assets/fonts/AnandaBlack.ttf`
-- **Usage**: Application logo, main hero banners, and official release headers.
+- **Usage**: Center header brand pill (`Brave Music`), hero branding, and official release banners.
 
 ### Interface Typography
-- **Font Family**: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif`
+- **Font Family**: `'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif` (14px root scale)
 - **Hierarchy**:
-  - Heading 1: 24px, Bold, letter-spacing -0.5px
-  - Heading 2: 18px, Semi-Bold, letter-spacing -0.3px
-  - Body Text: 14px, Regular, line-height 1.5
-  - Captions / Meta: 12px, Medium, letter-spacing 0.2px
+  - Heading 1: 24px, Bold (`700`), letter-spacing `-0.5px`
+  - Heading 2: 18px, Semi-Bold (`600`), letter-spacing `-0.3px`
+  - Body Text: 14px, Regular (`400`), line-height `1.5`
+  - Captions / Meta / Format Badges: 11–12px, Semi-Bold/Medium (`600`), tabular spacing
 
 ---
 
 ## 4. UI Components and Layout
 
 ### 1. Top Navigation Bar
-- Height: 52px.
-- Background: `--bg-surface` with a 1px solid bottom border (`--border-subtle`).
-- Contains:
-  - App brand mark (`src/assets/app-icon.svg`) and typography.
-  - Tab switchers: YouTube Music, Spotify, Local Offline Library, Downloads.
-  - Brave Shields status pill (displaying real-time blocked item counter).
+- Height: `58px` (`--bg-surface` with `1px solid var(--border-subtle)` bottom divider).
+- Left Zone: History back/forward/reload navigation buttons and dynamic expanding pill tabs (`YouTube Music`, `Spotify`, `Downloads & Library` with live track counter pill).
+- Center Zone: Centered brand wordmark pill (`AnandaBlack`).
+- Right Zone: Brave Shields blocker pill, Profile Account Sync button (`btn-auth-sync`), and Information modal trigger.
 
 ### 2. Embedded Service Webviews
-- Webviews render in absolute layout filling available viewport height below the navigation header.
-- Injected scripts (`src/js/webview-shields.js`) strip banner ads and video overlays without breaking web player media controls.
+- Webviews (`#yt-webview`, `#spotify-webview` or Tauri native overlays) fill available viewport height below the top header inside `.app-main`.
+- Injected cosmetic scripts (`src/js/webview-shields.js`) use a 350ms debounced DOM scan (`scheduleScan()`) so native scrolling remains silky-smooth without frame drops.
 
-### 3. Bottom Player Bar
-- Height: 72px.
-- Sticky position pinned to the bottom of the viewport.
-- Left zone: 48x48px track thumbnail, track title (`--text-primary`), artist name (`--text-secondary`).
-- Center zone: Play/pause toggle, previous/next buttons, continuous timeline scrubber with duration labels.
-- Right zone: Volume slider, download button, repeat/shuffle toggles.
+### 3. Downloads, Music Library & Collections Presentation
+- **Quick Download Bar**: URL input auto-detects Spotify playlists, Personalized Mixes, Albums, Artists, and YouTube Playlists/Mixes (`?list=`), automatically switching to `Full Playlist` mode with format selection (`Audio: MP3 (320k Best)` default, `FLAC`, `M4A`, `Video MP4/720p`).
+- **Music Library Table**: Displays sequential track numbering, artwork thumbnail, audio format badge (`MP3`, `FLAC`, `M4A`, `VIDEO`) with bitrate/file-size tooltips, clickable collection links, selection batch-delete bar, and instant OneUI playback triggers.
+- **Collections Bento Grid**: Responsive card grid (`minmax(220px, 1fr)`) displaying 2x2 collage artwork when collections have multiple unique track covers, provider source pill (`Spotify` / `YouTube` / `Collection`), total track count, duration, dominant format summary, and a **Playlist Detail Modal** preserving exact `1..N` provider track order.
+
+### 4. Bottom Player Bar
+- Height: `66px`, pinned persistently to the bottom of the viewport with zero heavy backdrop blur overhead.
+- Left zone: Artwork thumbnail, track title (`--text-main`), artist subtitle (`--text-secondary`).
+- Center zone: Play/pause, previous/next (strictly scoped to active player source), continuous seekbar, elapsed & total time labels.
+- Right zone: Vertical volume popover, loop/repeat mode toggle, shuffle mode toggle.
 
 ---
 
