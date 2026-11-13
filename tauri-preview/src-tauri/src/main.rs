@@ -22,6 +22,9 @@ static SPOTIFY_BLOCKED_COUNT: AtomicU64 = AtomicU64::new(14);
 static STREAM_SERVER_PORT: AtomicU16 = AtomicU16::new(0);
 static AUTH_LOGIN_CANCELED: AtomicBool = AtomicBool::new(false);
 static AUTH_ACTIVE_SERVICE: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
+static CURRENT_YT_URL: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("https://music.youtube.com/".to_string()));
+static CURRENT_SPOTIFY_URL: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("https://open.spotify.com/".to_string()));
+static LAST_SPOTIFY_BRIDGE_TRIGGER: LazyLock<Mutex<(String, u64)>> = LazyLock::new(|| Mutex::new((String::new(), 0)));
 
 struct ActiveDownloadProcess {
     pid: u32,
@@ -93,24 +96,435 @@ const GUEST_ERROR_CAPTURE_SCRIPT: &str = r#"
       fetch('/__brave_shield_blocked__?log_error=1&msg=' + msg).catch(() => {});
     } catch(_) {}
   }, true);
+
+  // Sync SPA navigation URLs to host so header Download & Open Browser always know the active track/playlist
+  let lastReportedHref = '';
+  const reportHref = () => {
+    try {
+      const href = String(window.location && window.location.href || '');
+      if (!href || href === lastReportedHref || href.startsWith('about:')) return;
+      lastReportedHref = href;
+      fetch('/__brave_shield_blocked__?url_sync=1&u=' + encodeURIComponent(href)).catch(() => {});
+    } catch (_) {}
+  };
+  try {
+    const origPush = history.pushState;
+    const origReplace = history.replaceState;
+    if (typeof origPush === 'function') {
+      history.pushState = function() {
+        const res = origPush.apply(this, arguments);
+        setTimeout(reportHref, 20);
+        return res;
+      };
+    }
+    if (typeof origReplace === 'function') {
+      history.replaceState = function() {
+        const res = origReplace.apply(this, arguments);
+        setTimeout(reportHref, 20);
+        return res;
+      };
+    }
+    window.addEventListener('popstate', () => setTimeout(reportHref, 20));
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', reportHref, { once: true });
+    } else {
+      reportHref();
+    }
+    setInterval(reportHref, 1500);
+  } catch (_) {}
 })();
 "#;
 
 const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
 (() => {
-  try {
-    const style = document.createElement('style');
-    style.id = 'brave-music-spotify-fix';
-    style.textContent = `
-      [data-testid="left-sidebar"], nav[aria-label="Main"] {
-        display: flex !important;
-        visibility: visible !important;
+  if (window.__braveSpotifyBridgeBootstrapped) return;
+  window.__braveSpotifyBridgeBootstrapped = true;
+
+  const ensureStyle = () => {
+    try {
+      if (document.getElementById('brave-music-spotify-fix')) return;
+      const style = document.createElement('style');
+      style.id = 'brave-music-spotify-fix';
+      style.textContent = `
+        [data-testid="left-sidebar"], nav[aria-label="Main"] {
+          display: flex !important;
+          visibility: visible !important;
+        }
+        #brave-spotify-bridge-bar {
+          position: fixed;
+          right: 16px;
+          bottom: 16px;
+          z-index: 2147483640;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          max-width: min(640px, calc(100vw - 32px));
+          padding: 10px 14px;
+          border-radius: 14px;
+          background: rgba(15, 17, 26, 0.94);
+          border: 1px solid rgba(255, 85, 0, 0.42);
+          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+          color: #f8fafc;
+          font-family: Inter, system-ui, -apple-system, sans-serif;
+          font-size: 13px;
+          backdrop-filter: blur(12px);
+        }
+        #brave-spotify-bridge-bar.minimized {
+          padding: 7px 11px;
+          gap: 8px;
+        }
+        #brave-spotify-bridge-bar .bsb-meta {
+          display: flex;
+          flex-direction: column;
+          min-width: 140px;
+          max-width: 240px;
+          overflow: hidden;
+        }
+        #brave-spotify-bridge-bar.minimized .bsb-meta,
+        #brave-spotify-bridge-bar.minimized .bsb-secondary {
+          display: none;
+        }
+        #brave-spotify-bridge-bar .bsb-title {
+          font-weight: 600;
+          color: #ffffff;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          font-size: 12.5px;
+        }
+        #brave-spotify-bridge-bar .bsb-sub {
+          color: #94a3b8;
+          font-size: 11px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        #brave-spotify-bridge-bar .bsb-badge {
+          width: 8px;
+          height: 8px;
+          border-radius: 999px;
+          background: #1db954;
+          flex-shrink: 0;
+        }
+        #brave-spotify-bridge-bar .bsb-badge.resolving {
+          background: #f59e0b;
+        }
+        #brave-spotify-bridge-bar button {
+          border: none;
+          border-radius: 8px;
+          padding: 6px 11px;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: opacity 0.15s ease, transform 0.1s ease;
+        }
+        #brave-spotify-bridge-bar button:hover {
+          opacity: 0.92;
+        }
+        #brave-spotify-bridge-bar .bsb-primary {
+          background: linear-gradient(135deg, #ff5500, #ff7a1a);
+          color: #fff;
+        }
+        #brave-spotify-bridge-bar .bsb-secondary {
+          background: rgba(255, 255, 255, 0.1);
+          color: #e2e8f0;
+        }
+        #brave-spotify-bridge-bar .bsb-icon {
+          background: transparent;
+          color: #94a3b8;
+          padding: 4px 6px;
+        }
+      `;
+      (document.head || document.documentElement).appendChild(style);
+    } catch (_) {}
+  };
+
+  window.__braveSpotifyBridgeState = {
+    status: 'ready',
+    title: 'Brave Music Audio Bridge',
+    artist: 'Stream any Spotify track in-app',
+    isPlaying: false
+  };
+
+  const renderBridgeBar = () => {
+    try {
+      ensureStyle();
+      if (!document.body) return;
+      let bar = document.getElementById('brave-spotify-bridge-bar');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'brave-spotify-bridge-bar';
+        bar.innerHTML = `
+          <span class="bsb-badge" id="bsb-dot"></span>
+          <div class="bsb-meta">
+            <span class="bsb-title" id="bsb-title">Brave Music Audio Bridge</span>
+            <span class="bsb-sub" id="bsb-sub">Stream any Spotify track in-app</span>
+          </div>
+          <button type="button" class="bsb-primary" id="bsb-play-btn">Play in App</button>
+          <button type="button" class="bsb-secondary" id="bsb-dl-btn" title="Download current Spotify track or playlist">Download</button>
+          <button type="button" class="bsb-secondary" id="bsb-browser-btn" title="Open Spotify in a Widevine-enabled browser">Widevine Browser</button>
+          <button type="button" class="bsb-icon" id="bsb-min-btn" title="Minimize / Expand">_</button>
+        `;
+        document.body.appendChild(bar);
+
+        document.getElementById('bsb-play-btn')?.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const st = window.__braveSpotifyBridgeState || {};
+          if (st.active && (st.status === 'playing' || st.status === 'paused')) {
+            fetch('/__brave_shield_blocked__?spotify_control=toggle').catch(() => {});
+            return;
+          }
+          const ctx = extractPageContext();
+          triggerBridgePlay(ctx);
+        });
+
+        document.getElementById('bsb-dl-btn')?.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          fetch('/__brave_shield_blocked__?spotify_download=1&url=' + encodeURIComponent(window.location.href)).catch(() => {});
+        });
+
+        document.getElementById('bsb-browser-btn')?.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          fetch('/__brave_shield_blocked__?spotify_open_browser=1&url=' + encodeURIComponent(window.location.href)).catch(() => {});
+        });
+
+        document.getElementById('bsb-min-btn')?.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          bar.classList.toggle('minimized');
+        });
       }
-    `;
-    (document.head || document.documentElement).appendChild(style);
-  } catch(e) {}
+
+      const st = window.__braveSpotifyBridgeState || {};
+      const dot = document.getElementById('bsb-dot');
+      const titleEl = document.getElementById('bsb-title');
+      const subEl = document.getElementById('bsb-sub');
+      const playBtn = document.getElementById('bsb-play-btn');
+      if (dot) dot.className = 'bsb-badge' + (st.status === 'resolving' ? ' resolving' : '');
+      if (titleEl) titleEl.textContent = st.title || 'Brave Music Audio Bridge';
+      if (subEl) subEl.textContent = st.artist || 'Stream any Spotify track in-app';
+      if (playBtn) {
+        if (st.status === 'resolving') playBtn.textContent = 'Resolving...';
+        else if (st.status === 'playing') playBtn.textContent = 'Pause';
+        else if (st.status === 'paused') playBtn.textContent = 'Resume';
+        else playBtn.textContent = 'Play in App';
+      }
+    } catch (_) {}
+  };
+
+  window.__braveSpotifyBridgeSync = (next) => {
+    try {
+      window.__braveSpotifyBridgeState = Object.assign({}, window.__braveSpotifyBridgeState || {}, next || {});
+      renderBridgeBar();
+    } catch (_) {}
+  };
+
+  const suppressProtectedContentBanners = () => {
+    try {
+      const candidates = document.querySelectorAll('[data-testid="message-bar"], [role="alert"], .main-view-container div, footer + div');
+      for (const el of candidates) {
+        if (!el || el.id === 'brave-spotify-bridge-bar' || el.closest('#brave-spotify-bridge-bar')) continue;
+        const txt = (el.textContent || '').toLowerCase();
+        if (
+          txt.length > 0 &&
+          txt.length < 360 &&
+          (
+            txt.includes('protected content is not enabled') ||
+            txt.includes('playback of protected content') ||
+            txt.includes('enable playback in your browser') ||
+            (txt.includes('spotify support') && txt.includes('playback'))
+          )
+        ) {
+          window.__braveSpotifyDrmBlocked = true;
+          if (el.getAttribute('data-brave-drm-hidden') !== '1') {
+            el.setAttribute('data-brave-drm-hidden', '1');
+            el.style.setProperty('display', 'none', 'important');
+          }
+        }
+      }
+    } catch (_) {}
+  };
+
+  const extractTrackFromElement = (target) => {
+    const row = target?.closest?.('[data-testid="tracklist-row"], [role="row"], [data-testid="track-row"], section, article');
+    let trackUrl = '';
+    let title = '';
+    let artist = '';
+    let art = '';
+
+    if (row) {
+      const trackLink = row.querySelector('a[href*="/track/"]');
+      if (trackLink) {
+        trackUrl = trackLink.href || '';
+        title = (trackLink.textContent || '').trim();
+      }
+      if (!title) {
+        const tEl = row.querySelector('[data-testid="internal-track-link"] div, [dir="auto"], a[href*="/album/"]');
+        title = (tEl?.textContent || '').trim();
+      }
+      const artistLinks = Array.from(row.querySelectorAll('a[href*="/artist/"]'))
+        .map((a) => (a.textContent || '').trim())
+        .filter(Boolean);
+      if (artistLinks.length > 0) artist = [...new Set(artistLinks)].join(', ');
+      const img = row.querySelector('img');
+      if (img && img.src) art = img.src;
+    }
+
+    if (!trackUrl) {
+      const href = String(window.location.href || '');
+      if (/open\.spotify\.com\/(?:intl-[a-z-]+\/)?(track|album|playlist|artist|episode)\//i.test(href)) {
+        trackUrl = href;
+      }
+    }
+    if (!title) {
+      const h1 = document.querySelector('[data-testid="entityTitle"] h1, main h1');
+      if (h1) title = (h1.textContent || '').trim();
+    }
+    if (!artist) {
+      const metaArtist = document.querySelector('[data-testid="creator-link"], [data-testid="entityTitle"] a[href*="/artist/"], main a[href*="/artist/"]');
+      if (metaArtist) artist = (metaArtist.textContent || '').trim();
+    }
+    if (!art) {
+      const coverImg = document.querySelector('main img[src*="i.scdn.co"], [data-testid="entity-image"] img');
+      if (coverImg && coverImg.src) art = coverImg.src;
+    }
+    return { url: trackUrl || window.location.href, title, artist, art };
+  };
+
+  const extractPageContext = () => extractTrackFromElement(document.querySelector('main'));
+
+  const triggerBridgePlay = (ctx) => {
+    try {
+      window.__braveSpotifyBridgeSync({
+        active: true,
+        status: 'resolving',
+        title: ctx.title || 'Resolving Spotify stream...',
+        artist: ctx.artist || 'Matching audio track...'
+      });
+      const q = new URLSearchParams({
+        spotify_play: '1',
+        url: ctx.url || window.location.href,
+        title: ctx.title || '',
+        artist: ctx.artist || '',
+        art: ctx.art || ''
+      });
+      fetch('/__brave_shield_blocked__?' + q.toString()).catch(() => {});
+    } catch (_) {}
+  };
+
+  document.addEventListener('click', (ev) => {
+    try {
+      if (ev.target?.closest?.('#brave-spotify-bridge-bar')) return;
+      const btn = ev.target?.closest?.(
+        'button[data-testid="play-button"], [data-testid="action-bar-row"] button[data-testid="play-button"], [data-testid="tracklist-row"] button, button[data-testid="control-button-playpause"], button[aria-label^="Play"]'
+      );
+      if (!btn) return;
+      const ctx = extractTrackFromElement(btn);
+      if (!ctx.url && !ctx.title) return;
+      const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+      if (btn.getAttribute('data-testid') === 'control-button-playpause' && window.__braveSpotifyBridgeState?.active) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        fetch('/__brave_shield_blocked__?spotify_control=toggle').catch(() => {});
+        return;
+      }
+      // If Spotify DRM banner appeared or native <audio> doesn't play within 450ms, take over seamlessly
+      if (window.__braveSpotifyDrmBlocked) {
+        triggerBridgePlay(ctx);
+      } else {
+        setTimeout(() => {
+          const audio = document.querySelector('audio');
+          const nativePlaying = !!(audio && !audio.paused && audio.currentTime > 0);
+          if (!nativePlaying) {
+            triggerBridgePlay(ctx);
+          }
+        }, 450);
+      }
+    } catch (_) {}
+  }, true);
+
+  document.addEventListener('dblclick', (ev) => {
+    try {
+      const row = ev.target?.closest?.('[data-testid="tracklist-row"]');
+      if (!row) return;
+      const ctx = extractTrackFromElement(row);
+      setTimeout(() => {
+        const audio = document.querySelector('audio');
+        if (!audio || audio.paused) triggerBridgePlay(ctx);
+      }, 450);
+    } catch (_) {}
+  }, true);
+
+  const bootObserver = () => {
+    suppressProtectedContentBanners();
+    renderBridgeBar();
+    const obs = new MutationObserver(() => {
+      suppressProtectedContentBanners();
+      if (!document.getElementById('brave-spotify-bridge-bar')) renderBridgeBar();
+    });
+    if (document.body) {
+      obs.observe(document.body, { childList: true, subtree: true });
+    }
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootObserver, { once: true });
+  } else {
+    bootObserver();
+  }
 })();
 "#;
+
+#[cfg(target_os = "linux")]
+fn apply_webkit_platform_settings(platform_wv: tauri::webview::PlatformWebview, allow_popups: bool) {
+    use webkit2gtk::{
+        MediaKeySystemPermissionRequest, PermissionRequestExt, SettingsExt, WebViewExt,
+        WebsiteDataAccessPermissionRequest,
+    };
+    let inner = platform_wv.inner();
+    if let Some(settings) = WebViewExt::settings(&inner) {
+        settings.set_enable_javascript(true);
+        settings.set_enable_webgl(true);
+        settings.set_enable_webaudio(true);
+        settings.set_enable_mediasource(true);
+        settings.set_enable_media(true);
+        settings.set_enable_media_capabilities(true);
+        settings.set_enable_media_stream(true);
+        settings.set_enable_encrypted_media(true);
+        settings.set_media_playback_requires_user_gesture(false);
+        settings.set_javascript_can_open_windows_automatically(allow_popups);
+        settings.set_enable_write_console_messages_to_stdout(false);
+    }
+    inner.connect_permission_request(|_wv, request| {
+        if request.is::<MediaKeySystemPermissionRequest>()
+            || request.is::<WebsiteDataAccessPermissionRequest>()
+        {
+            request.allow();
+            return true;
+        }
+        false
+    });
+}
+
+#[cfg(target_os = "linux")]
+fn configure_webkit_webview_settings(wv: &tauri::Webview, allow_popups: bool) {
+    let _ = wv.with_webview(move |platform_wv| apply_webkit_platform_settings(platform_wv, allow_popups));
+}
+
+#[cfg(target_os = "linux")]
+fn configure_webkit_window_settings(win: &tauri::WebviewWindow, allow_popups: bool) {
+    let _ = win.with_webview(move |platform_wv| apply_webkit_platform_settings(platform_wv, allow_popups));
+}
+
+#[cfg(not(target_os = "linux"))]
+fn configure_webkit_webview_settings(_wv: &tauri::Webview, _allow_popups: bool) {}
+
+#[cfg(not(target_os = "linux"))]
+fn configure_webkit_window_settings(_win: &tauri::WebviewWindow, _allow_popups: bool) {}
 
 #[derive(Serialize)]
 struct RuntimeInfo {
@@ -320,8 +734,35 @@ fn get_user_downloads_dir(app: &AppHandle) -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("downloads"))
 }
 
+fn spotify_bridge_cache_dir(app: &AppHandle) -> PathBuf {
+    let base = app
+        .path()
+        .app_cache_dir()
+        .ok()
+        .or_else(|| app.path().app_data_dir().ok())
+        .unwrap_or_else(std::env::temp_dir);
+    let dir = base.join("spotify-bridge");
+    let _ = fs::create_dir_all(&dir);
+    dir
+}
+
 fn resolve_audio_file(app: &AppHandle, filename: &str) -> Option<PathBuf> {
-    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+    if filename.contains('\\') || filename.contains("..") {
+        return None;
+    }
+
+    if let Some(sub) = filename.strip_prefix("__bridge/") {
+        if sub.is_empty() || sub.contains('/') {
+            return None;
+        }
+        let bridged = spotify_bridge_cache_dir(app).join(sub);
+        if bridged.exists() && bridged.is_file() {
+            return Some(bridged);
+        }
+        return None;
+    }
+
+    if filename.contains('/') {
         return None;
     }
 
@@ -1094,7 +1535,7 @@ fn handle_stream_client(app: &AppHandle, stream: &mut std::net::TcpStream) {
         "ogg" | "opus" => "audio/ogg",
         "wav" => "audio/wav",
         "mp4" | "m4v" => "video/mp4",
-        "webm" => "video/webm",
+        "webm" => "audio/webm",
         _ => "application/octet-stream",
     };
 
@@ -1481,13 +1922,59 @@ fn score_yt_candidate(cand: &SearchCandidate, target_title: &str, target_artist:
     score
 }
 
+fn resolve_validated_js_runtime() -> Option<String> {
+    if let Some(qb) = resolve_bundled_bin("qjs").filter(|p| {
+        std::process::Command::new(p)
+            .args(["-e", "0"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }) {
+        return Some(format!("quickjs:{}", qb.to_string_lossy()));
+    }
+    resolve_bundled_bin("node")
+        .filter(|nb| {
+            std::process::Command::new(nb)
+                .arg("--version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        })
+        .map(|nb| format!("node:{}", nb.to_string_lossy()))
+}
+
+fn resolve_ffmpeg_dir() -> Option<PathBuf> {
+    let ffmpeg_bin = resolve_bundled_bin("ffmpeg")?;
+    let _ffprobe_bin = resolve_bundled_bin("ffprobe")?;
+    ffmpeg_bin.parent().map(|p| p.to_path_buf())
+}
+
+fn create_ytdlp_base_command(
+    ytdlp_bin: &PathBuf,
+    js_runtime: Option<&str>,
+    ffmpeg_dir: Option<&PathBuf>,
+) -> std::process::Command {
+    let mut cmd = std::process::Command::new(ytdlp_bin);
+    cmd.arg("--ignore-config")
+        .arg("--no-update")
+        .arg("--no-warnings")
+        .arg("--extractor-args")
+        .arg("youtube:player_client=mweb,web,default");
+    if let Some(rt) = js_runtime {
+        cmd.arg("--js-runtimes").arg(rt);
+    }
+    if let Some(fd) = ffmpeg_dir {
+        cmd.arg("--ffmpeg-location")
+            .arg(fd.to_string_lossy().as_ref());
+    }
+    cmd
+}
+
 fn resolve_best_spotify_youtube_url(ytdlp_bin: &PathBuf, title: &str, artist: &str, target_duration: i64, is_video: bool) -> String {
     let suffix = if is_video { "official music video" } else { "official audio" };
     let search_query = format!("ytsearch5:{} {} {}", title, artist, suffix);
-    let output = std::process::Command::new(ytdlp_bin)
-        .arg("--ignore-config")
-        .arg("--no-update")
-        .arg("--no-warnings")
+    let js_runtime = resolve_validated_js_runtime();
+    let output = create_ytdlp_base_command(ytdlp_bin, js_runtime.as_deref(), None)
         .arg("--dump-single-json")
         .arg("--flat-playlist")
         .arg("--socket-timeout")
@@ -1559,8 +2046,9 @@ fn get_recommendations(app_handle: tauri::AppHandle, current_track_id: Option<St
     let mut items: Vec<Value> = Vec::new();
     if let Some(seed_artist) = seed_artists.first() {
         if let Some(ytdlp_bin) = resolve_bundled_bin("yt-dlp") {
-            if let Ok(out) = std::process::Command::new(&ytdlp_bin)
-                .args(["--ignore-config", "--no-update", "--no-warnings", "--dump-single-json", "--flat-playlist", "--socket-timeout", "8", &format!("ytsearch6:{} official audio mix", seed_artist)])
+            let js_runtime = resolve_validated_js_runtime();
+            if let Ok(out) = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), None)
+                .args(["--dump-single-json", "--flat-playlist", "--socket-timeout", "8", &format!("ytsearch6:{} official audio mix", seed_artist)])
                 .output()
             {
                 if out.status.success() {
@@ -1644,8 +2132,9 @@ fn fetch_youtube_playlist_queue(ytdlp_bin: &PathBuf, url: &str) -> Option<(Strin
     };
     let item_limit = if is_dynamic_mix { "1:35" } else { "1:500" };
 
-    let out = std::process::Command::new(ytdlp_bin)
-        .args(["--ignore-config", "--no-update", "--flat-playlist", "--playlist-items", item_limit, "--dump-single-json", "--no-warnings", "--socket-timeout", "15", &target_url])
+    let js_runtime = resolve_validated_js_runtime();
+    let out = create_ytdlp_base_command(ytdlp_bin, js_runtime.as_deref(), None)
+        .args(["--flat-playlist", "--playlist-items", item_limit, "--dump-single-json", "--socket-timeout", "15", &target_url])
         .output()
         .ok()?;
     if !out.status.success() {
@@ -1714,19 +2203,8 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
         });
 
         let ytdlp_bin = resolve_bundled_bin("yt-dlp").unwrap_or_else(|| PathBuf::from("yt-dlp"));
-        let node_bin = resolve_bundled_bin("node").filter(|nb| {
-            std::process::Command::new(nb)
-                .arg("--version")
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
-        });
-        let ffmpeg_bin = resolve_bundled_bin("ffmpeg");
-        let ffprobe_bin = resolve_bundled_bin("ffprobe");
-        let ffmpeg_dir = match (&ffmpeg_bin, &ffprobe_bin) {
-            (Some(f), Some(_)) => f.parent().map(|p| p.to_path_buf()),
-            _ => None,
-        };
+        let js_runtime = resolve_validated_js_runtime();
+        let ffmpeg_dir = resolve_ffmpeg_dir();
         let has_ffmpeg = ffmpeg_dir.is_some();
 
         let lower_url = url.to_lowercase();
@@ -1813,231 +2291,240 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
         let total_queue = queue_items.len() as u32;
 
         for (q_idx, (effective_url, sp_override)) in queue_items.into_iter().enumerate() {
-            if canceled_clone.load(Ordering::SeqCst) {
-                break;
-            }
-
-            let output_template = downloads_dir.join("%(title).100B [%(id)s].%(ext)s");
-            let mut cmd = std::process::Command::new(&ytdlp_bin);
-
-            cmd.arg("--ignore-config")
-               .arg("--no-update")
-               .arg("--extractor-args")
-               .arg("youtube:player_client=web_embedded,web,default")
-               .arg("--concurrent-fragments")
-               .arg("4")
-               .arg("--newline")
-               .arg("--progress")
-               .arg("--no-warnings")
-               .arg("--continue");
-
-            if let Some(ref nb) = node_bin {
-                cmd.arg("--js-runtimes").arg(format!("node:{}", nb.to_string_lossy()));
-            }
-            if let Some(ref fd) = ffmpeg_dir {
-                cmd.arg("--ffmpeg-location").arg(fd.to_string_lossy().as_ref());
-            }
-
-            if requested_format.contains("video") {
-                cmd.arg("-f").arg("best[ext=mp4]/best");
-            } else if has_ffmpeg && requested_format.contains("flac") {
-                cmd.arg("-f").arg("bestaudio/best").arg("-x").arg("--audio-format").arg("flac");
-            } else if has_ffmpeg && requested_format.contains("m4a") {
-                cmd.arg("-f").arg("bestaudio[ext=m4a]/bestaudio/best").arg("-x").arg("--audio-format").arg("m4a");
-            } else if has_ffmpeg {
-                cmd.arg("-f").arg("bestaudio/best").arg("-x").arg("--audio-format").arg("mp3").arg("--audio-quality").arg("0").arg("--postprocessor-args").arg("ExtractAudio+ffmpeg:-b:a 320k");
-            } else {
-                cmd.arg("-f").arg("bestaudio[ext=m4a]/bestaudio/best");
-            }
-
-            if is_playlist && sp_override.is_none() && total_queue == 1 {
-                cmd.arg("--yes-playlist");
-            } else {
-                cmd.arg("--no-playlist");
-            }
-
-            cmd.arg("--output").arg(output_template.to_string_lossy().as_ref());
-            cmd.arg("--print").arg("after_move:RECORD:%(filepath)s<DELIM>%(id)s<DELIM>%(title)s<DELIM>%(uploader)s<DELIM>%(duration)s<DELIM>%(thumbnail)s");
-            cmd.arg(&effective_url);
-
-            cmd.stdout(std::process::Stdio::piped());
-            cmd.stderr(std::process::Stdio::piped());
-
-            let mut child = match cmd.spawn() {
-                Ok(c) => c,
-                Err(e) => {
-                    let err_msg = format!("Failed to launch yt-dlp: {e}");
-                    let _ = app_handle.emit("download-progress", DownloadProgressData {
-                        download_id: id_clone.clone(),
-                        pct: 0,
-                        percent: 0,
-                        item_index: 1,
-                        item_total: 1,
-                        title: "Download Failed".to_string(),
-                        artist: "".to_string(),
-                        speed: "".to_string(),
-                        status: err_msg.clone(),
-                        complete: true,
-                        track_saved: None,
-                    });
-                    return Ok(serde_json::json!({
-                        "success": false,
-                        "downloadId": id_clone,
-                        "error": err_msg
-                    }));
+            let count_before_item = downloaded_tracks.len();
+            for use_progressive_fallback in [false, true] {
+                if canceled_clone.load(Ordering::SeqCst) {
+                    break;
                 }
-            };
-
-            let child_pid = child.id();
-            {
-                let mut map = ACTIVE_DOWNLOADS.lock().unwrap();
-                map.insert(id_clone.clone(), ActiveDownloadProcess {
-                    pid: child_pid,
-                    canceled: canceled_clone.clone(),
-                });
-            }
-
-            let stdout = child.stdout.take();
-            let stderr = child.stderr.take();
-
-            let stderr_thread = std::thread::spawn(move || {
-                let mut lines = Vec::new();
-                if let Some(err) = stderr {
-                    use std::io::{BufRead, BufReader};
-                    let reader = BufReader::new(err);
-                    for line in reader.lines().map_while(Result::ok) {
-                        if !line.trim().is_empty() {
-                            lines.push(line);
-                        }
-                    }
+                if use_progressive_fallback
+                    && (downloaded_tracks.len() > count_before_item
+                        || requested_format.contains("video")
+                        || !has_ffmpeg)
+                {
+                    break;
                 }
-                lines
-            });
 
-            if let Some(out) = stdout {
-                use std::io::{BufRead, BufReader};
-                let reader = BufReader::new(out);
-                for line in reader.lines().map_while(Result::ok) {
-                    if canceled_clone.load(Ordering::SeqCst) {
-                        break;
-                    }
+                let output_template = downloads_dir.join("%(title).100B [%(id)s].%(ext)s");
+                let mut cmd = create_ytdlp_base_command(
+                    &ytdlp_bin,
+                    js_runtime.as_deref(),
+                    ffmpeg_dir.as_ref(),
+                );
 
-                    if let Some(record) = line.strip_prefix("RECORD:") {
-                        let parts: Vec<&str> = record.split("<DELIM>").collect();
-                        if parts.len() >= 4 {
-                            let filepath = parts[0];
-                            let original_id = parts.get(1).unwrap_or(&"");
-                            let raw_title = parts.get(2).unwrap_or(&"Downloaded Track");
-                            let raw_artist = parts.get(3).unwrap_or(&"Unknown Artist");
-                            let duration_sec: u64 = parts.get(4).and_then(|d| d.parse().ok()).unwrap_or(180);
-                            let thumbnail = parts.get(5).unwrap_or(&"");
+                cmd.arg("--concurrent-fragments")
+                   .arg("4")
+                   .arg("--newline")
+                   .arg("--progress")
+                   .arg("--continue");
 
-                            let (clean_title, clean_artist) = if let Some(ref sp) = sp_override {
-                                (sp.title.clone(), sp.artist.clone())
-                            } else {
-                                clean_track_metadata(raw_title, raw_artist)
-                            };
-                            let final_duration = if let Some(ref sp) = sp_override {
-                                if sp.duration > 0 { sp.duration } else { duration_sec }
-                            } else {
-                                duration_sec
-                            };
-                            let final_thumb = if let Some(ref sp) = sp_override {
-                                if !sp.thumbnail.is_empty() { sp.thumbnail.clone() } else { (*thumbnail).to_string() }
-                            } else {
-                                (*thumbnail).to_string()
-                            };
+                let audio_selector = if use_progressive_fallback {
+                    "18/best[ext=mp4]/best"
+                } else {
+                    "bestaudio/best"
+                };
 
-                            let path_obj = std::path::Path::new(filepath);
-                            let filename = path_obj
-                                .file_name()
-                                .map(|f| f.to_string_lossy().to_string())
-                                .unwrap_or_else(|| "track.mp3".to_string());
+                if requested_format.contains("video") {
+                    cmd.arg("-f").arg("best[ext=mp4]/best");
+                } else if has_ffmpeg && requested_format.contains("flac") {
+                    cmd.arg("-f").arg(audio_selector).arg("-x").arg("--audio-format").arg("flac");
+                } else if has_ffmpeg && requested_format.contains("m4a") {
+                    let m4a_sel = if use_progressive_fallback { "18/best[ext=mp4]/best" } else { "bestaudio[ext=m4a]/bestaudio/best" };
+                    cmd.arg("-f").arg(m4a_sel).arg("-x").arg("--audio-format").arg("m4a");
+                } else if has_ffmpeg {
+                    cmd.arg("-f").arg(audio_selector).arg("-x").arg("--audio-format").arg("mp3").arg("--audio-quality").arg("0").arg("--postprocessor-args").arg("ExtractAudio+ffmpeg:-b:a 320k");
+                } else {
+                    cmd.arg("-f").arg("bestaudio[ext=m4a]/bestaudio/best");
+                }
 
-                            let size_bytes: u64 = fs::metadata(path_obj).map(|m| m.len()).unwrap_or(0);
+                if is_playlist && sp_override.is_none() && total_queue == 1 {
+                    cmd.arg("--yes-playlist");
+                } else {
+                    cmd.arg("--no-playlist");
+                }
 
-                            let track_uuid = format!(
-                                "track_{}_{}",
-                                &uuid::Uuid::new_v4().to_string()[..8],
-                                current_timestamp_str()
-                            );
+                cmd.arg("--output").arg(output_template.to_string_lossy().as_ref());
+                cmd.arg("--print").arg("after_move:RECORD:%(filepath)s<DELIM>%(id)s<DELIM>%(title)s<DELIM>%(uploader)s<DELIM>%(duration)s<DELIM>%(thumbnail)s");
+                cmd.arg(&effective_url);
 
-                            let format_label = path_obj
-                                .extension()
-                                .and_then(|e| e.to_str())
-                                .map(|s| s.to_uppercase())
-                                .unwrap_or_else(|| "MP3".to_string());
+                cmd.stdout(std::process::Stdio::piped());
+                cmd.stderr(std::process::Stdio::piped());
 
-                            let new_track = serde_json::json!({
-                                "id": track_uuid,
-                                "originalId": original_id,
-                                "title": clean_title,
-                                "artist": clean_artist,
-                                "album": if target_playlist.is_empty() { "Downloads".to_string() } else { target_playlist.clone() },
-                                "duration": final_duration,
-                                "thumbnail": final_thumb,
-                                "filename": filename,
-                                "format": format_label,
-                                "source": if sp_override.is_some() { "spotify" } else { "youtube" },
-                                "trackNumber": q_idx + 1,
-                                "downloadUrl": url,
-                                "addedAt": current_timestamp_str(),
-                                "sizeBytes": size_bytes,
-                                "playlist": if target_playlist.is_empty() { Value::Null } else { Value::String(target_playlist.clone()) }
-                            });
-
-                            if let Ok(mut doc) = read_library(&app_handle) {
-                                doc.add_track(new_track.clone());
-                                if !target_playlist.is_empty() {
-                                    let _ = doc.create_playlist(&target_playlist, None);
-                                    let _ = doc.add_track_to_playlist(
-                                        &serde_json::Value::String(track_uuid.clone()),
-                                        &target_playlist,
-                                    );
-                                }
-                                let _ = write_library(&app_handle, &doc);
-                            }
-
-                            downloaded_tracks.push(new_track.clone());
-
-                            let _ = app_handle.emit("download-progress", DownloadProgressData {
-                                download_id: id_clone.clone(),
-                                pct: 95,
-                                percent: 95,
-                                item_index: (q_idx as u32) + 1,
-                                item_total: total_queue,
-                                title: clean_title,
-                                artist: clean_artist,
-                                speed: "".to_string(),
-                                status: "Saved to offline library".to_string(),
-                                complete: false,
-                                track_saved: Some(new_track),
-                            });
-                            let _ = app_handle.emit("library-updated", serde_json::json!({ "status": "updated" }));
-                        }
-                    } else if line.contains("[download]") && line.contains('%') {
-                        let pct = parse_download_percentage(&line).unwrap_or(50);
-                        let speed = parse_download_speed(&line).unwrap_or_default();
+                let mut child = match cmd.spawn() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let err_msg = format!("Failed to launch yt-dlp: {e}");
                         let _ = app_handle.emit("download-progress", DownloadProgressData {
                             download_id: id_clone.clone(),
-                            pct,
-                            percent: pct,
-                            item_index: (q_idx as u32) + 1,
-                            item_total: total_queue,
-                            title: "Downloading...".to_string(),
+                            pct: 0,
+                            percent: 0,
+                            item_index: 1,
+                            item_total: 1,
+                            title: "Download Failed".to_string(),
                             artist: "".to_string(),
-                            speed: speed.clone(),
-                            status: if speed.is_empty() { format!("Downloading: {pct}%") } else { format!("Downloading: {pct}% • {speed}") },
-                            complete: false,
+                            speed: "".to_string(),
+                            status: err_msg.clone(),
+                            complete: true,
                             track_saved: None,
                         });
+                        return Ok(serde_json::json!({
+                            "success": false,
+                            "downloadId": id_clone,
+                            "error": err_msg
+                        }));
+                    }
+                };
+
+                let child_pid = child.id();
+                {
+                    let mut map = ACTIVE_DOWNLOADS.lock().unwrap();
+                    map.insert(id_clone.clone(), ActiveDownloadProcess {
+                        pid: child_pid,
+                        canceled: canceled_clone.clone(),
+                    });
+                }
+
+                let stdout = child.stdout.take();
+                let stderr = child.stderr.take();
+
+                let stderr_thread = std::thread::spawn(move || {
+                    let mut lines = Vec::new();
+                    if let Some(err) = stderr {
+                        use std::io::{BufRead, BufReader};
+                        let reader = BufReader::new(err);
+                        for line in reader.lines().map_while(Result::ok) {
+                            if !line.trim().is_empty() {
+                                lines.push(line);
+                            }
+                        }
+                    }
+                    lines
+                });
+
+                if let Some(out) = stdout {
+                    use std::io::{BufRead, BufReader};
+                    let reader = BufReader::new(out);
+                    for line in reader.lines().map_while(Result::ok) {
+                        if canceled_clone.load(Ordering::SeqCst) {
+                            break;
+                        }
+
+                        if let Some(record) = line.strip_prefix("RECORD:") {
+                            let parts: Vec<&str> = record.split("<DELIM>").collect();
+                            if parts.len() >= 4 {
+                                let filepath = parts[0];
+                                let original_id = parts.get(1).unwrap_or(&"");
+                                let raw_title = parts.get(2).unwrap_or(&"Downloaded Track");
+                                let raw_artist = parts.get(3).unwrap_or(&"Unknown Artist");
+                                let duration_sec: u64 = parts.get(4).and_then(|d| d.parse().ok()).unwrap_or(180);
+                                let thumbnail = parts.get(5).unwrap_or(&"");
+
+                                let (clean_title, clean_artist) = if let Some(ref sp) = sp_override {
+                                    (sp.title.clone(), sp.artist.clone())
+                                } else {
+                                    clean_track_metadata(raw_title, raw_artist)
+                                };
+                                let final_duration = if let Some(ref sp) = sp_override {
+                                    if sp.duration > 0 { sp.duration } else { duration_sec }
+                                } else {
+                                    duration_sec
+                                };
+                                let final_thumb = if let Some(ref sp) = sp_override {
+                                    if !sp.thumbnail.is_empty() { sp.thumbnail.clone() } else { (*thumbnail).to_string() }
+                                } else {
+                                    (*thumbnail).to_string()
+                                };
+
+                                let path_obj = std::path::Path::new(filepath);
+                                let filename = path_obj
+                                    .file_name()
+                                    .map(|f| f.to_string_lossy().to_string())
+                                    .unwrap_or_else(|| "track.mp3".to_string());
+
+                                let size_bytes: u64 = fs::metadata(path_obj).map(|m| m.len()).unwrap_or(0);
+
+                                let track_uuid = format!(
+                                    "track_{}_{}",
+                                    &uuid::Uuid::new_v4().to_string()[..8],
+                                    current_timestamp_str()
+                                );
+
+                                let format_label = path_obj
+                                    .extension()
+                                    .and_then(|e| e.to_str())
+                                    .map(|s| s.to_uppercase())
+                                    .unwrap_or_else(|| "MP3".to_string());
+
+                                let new_track = serde_json::json!({
+                                    "id": track_uuid,
+                                    "originalId": original_id,
+                                    "title": clean_title,
+                                    "artist": clean_artist,
+                                    "album": if target_playlist.is_empty() { "Downloads".to_string() } else { target_playlist.clone() },
+                                    "duration": final_duration,
+                                    "thumbnail": final_thumb,
+                                    "filename": filename,
+                                    "format": format_label,
+                                    "source": if sp_override.is_some() { "spotify" } else { "youtube" },
+                                    "trackNumber": q_idx + 1,
+                                    "downloadUrl": url,
+                                    "addedAt": current_timestamp_str(),
+                                    "sizeBytes": size_bytes,
+                                    "playlist": if target_playlist.is_empty() { Value::Null } else { Value::String(target_playlist.clone()) }
+                                });
+
+                                if let Ok(mut doc) = read_library(&app_handle) {
+                                    doc.add_track(new_track.clone());
+                                    if !target_playlist.is_empty() {
+                                        let _ = doc.create_playlist(&target_playlist, None);
+                                        let _ = doc.add_track_to_playlist(
+                                            &serde_json::Value::String(track_uuid.clone()),
+                                            &target_playlist,
+                                        );
+                                    }
+                                    let _ = write_library(&app_handle, &doc);
+                                }
+
+                                downloaded_tracks.push(new_track.clone());
+
+                                let _ = app_handle.emit("download-progress", DownloadProgressData {
+                                    download_id: id_clone.clone(),
+                                    pct: 95,
+                                    percent: 95,
+                                    item_index: (q_idx as u32) + 1,
+                                    item_total: total_queue,
+                                    title: clean_title,
+                                    artist: clean_artist,
+                                    speed: "".to_string(),
+                                    status: "Saved to offline library".to_string(),
+                                    complete: false,
+                                    track_saved: Some(new_track),
+                                });
+                                let _ = app_handle.emit("library-updated", serde_json::json!({ "status": "updated" }));
+                            }
+                        } else if line.contains("[download]") && line.contains('%') {
+                            let pct = parse_download_percentage(&line).unwrap_or(50);
+                            let speed = parse_download_speed(&line).unwrap_or_default();
+                            let _ = app_handle.emit("download-progress", DownloadProgressData {
+                                download_id: id_clone.clone(),
+                                pct,
+                                percent: pct,
+                                item_index: (q_idx as u32) + 1,
+                                item_total: total_queue,
+                                title: "Downloading...".to_string(),
+                                artist: "".to_string(),
+                                speed: speed.clone(),
+                                status: if speed.is_empty() { format!("Downloading: {pct}%") } else { format!("Downloading: {pct}% • {speed}") },
+                                complete: false,
+                                track_saved: None,
+                            });
+                        }
                     }
                 }
-            }
 
-            let _ = child.wait();
-            if let Ok(err_lines) = stderr_thread.join() {
-                stderr_lines.extend(err_lines);
+                let _ = child.wait();
+                if let Ok(err_lines) = stderr_thread.join() {
+                    stderr_lines.extend(err_lines);
+                }
             }
         }
 
@@ -2925,6 +3412,7 @@ fn open_auth_window(app: &AppHandle, service: &str, custom_url: Option<String>) 
     .build()
     .map_err(|e| format!("Failed opening sign-in window: {e}"))?;
 
+    configure_webkit_window_settings(&auth_win, true);
     let _ = auth_win.set_focus();
 
     let app_for_close = app.clone();
@@ -3184,13 +3672,477 @@ fn get_app_version() -> &'static str {
     "1.0.19-r"
 }
 
+fn parse_query_params(path_and_query: &str) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let Some((_, q)) = path_and_query.split_once('?') else {
+        return map;
+    };
+    for pair in q.split('&') {
+        if pair.is_empty() {
+            continue;
+        }
+        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+        let key = percent_decode(k).unwrap_or_else(|| k.to_string());
+        let val = percent_decode(v).unwrap_or_else(|| v.to_string());
+        map.insert(key, val);
+    }
+    map
+}
+
+fn record_webview_url(app: &AppHandle, label: &str, raw_url: &str) {
+    let trimmed = raw_url.trim();
+    if trimmed.is_empty()
+        || trimmed.starts_with("about:")
+        || trimmed.contains("brave-shields.local")
+        || trimmed.contains("/__brave_shield_blocked__")
+    {
+        return;
+    }
+    if label == "yt-webview" {
+        if let Ok(mut guard) = CURRENT_YT_URL.lock() {
+            *guard = trimmed.to_string();
+        }
+    } else if label == "spotify-webview" {
+        if let Ok(mut guard) = CURRENT_SPOTIFY_URL.lock() {
+            *guard = trimmed.to_string();
+        }
+    }
+    let _ = app.emit(
+        "webview-url-changed",
+        serde_json::json!({ "label": label, "url": trimmed }),
+    );
+}
+
+#[tauri::command]
+fn get_webview_url(label: String) -> String {
+    if label == "spotify-webview" {
+        CURRENT_SPOTIFY_URL
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|_| "https://open.spotify.com/".to_string())
+    } else {
+        CURRENT_YT_URL
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_else(|_| "https://music.youtube.com/".to_string())
+    }
+}
+
+fn stable_hash_hex(input: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    input.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn prune_spotify_bridge_cache(cache_dir: &std::path::Path, max_files: usize) {
+    let Ok(entries) = fs::read_dir(cache_dir) else {
+        return;
+    };
+    let mut files: Vec<(std::time::SystemTime, PathBuf)> = entries
+        .flatten()
+        .filter_map(|e| {
+            let p = e.path();
+            if !p.is_file() {
+                return None;
+            }
+            let modified = e
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            Some((modified, p))
+        })
+        .collect();
+    if files.len() <= max_files {
+        return;
+    }
+    files.sort_by_key(|(t, _)| *t);
+    let excess = files.len() - max_files;
+    for (_, old_path) in files.into_iter().take(excess) {
+        let _ = fs::remove_file(old_path);
+    }
+}
+
+fn find_local_playable_match(app: &AppHandle, title: &str, artist: &str) -> Option<(String, String, String)> {
+    let clean_t = title.trim().to_lowercase();
+    if clean_t.len() < 2 {
+        return None;
+    }
+    let clean_a = artist
+        .split(|c| c == ',' || c == ';' || c == '&')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_lowercase();
+    let doc = read_library(app).ok()?;
+    for t in &doc.tracks {
+        let tt = t.get("title").and_then(|v| v.as_str()).unwrap_or("").trim();
+        let ta = t.get("artist").and_then(|v| v.as_str()).unwrap_or("").trim();
+        let tf = t.get("filename").and_then(|v| v.as_str()).unwrap_or("").trim();
+        if tt.is_empty() || tf.is_empty() {
+            continue;
+        }
+        let lower_t = tt.to_lowercase();
+        let lower_a = ta.to_lowercase();
+        let title_matches = lower_t == clean_t || lower_t.contains(&clean_t) || clean_t.contains(&lower_t);
+        let artist_matches = clean_a.is_empty() || clean_a == "unknown artist" || lower_a.contains(&clean_a);
+        if title_matches && artist_matches && resolve_audio_file(app, tf).is_some() {
+            let thumb = t.get("thumbnail").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            return Some((tf.to_string(), tt.to_string(), if thumb.is_empty() { "".to_string() } else { thumb }));
+        }
+    }
+    None
+}
+
+fn ensure_snap_playable_audio(app: &AppHandle, source_path: &std::path::Path) -> Option<String> {
+    if !is_snap_confined() {
+        return None;
+    }
+    let ext = source_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if ext != "m4a" && ext != "aac" {
+        return None;
+    }
+    let cache_dir = spotify_bridge_cache_dir(app);
+    let cached_name = format!("m4a_{}.mp3", stable_hash_hex(&source_path.to_string_lossy()));
+    let cached_path = cache_dir.join(&cached_name);
+    if cached_path.exists() && cached_path.metadata().map(|m| m.len() > 4096).unwrap_or(false) {
+        return Some(format!("__bridge/{cached_name}"));
+    }
+    let ffmpeg_bin = resolve_bundled_bin("ffmpeg")?;
+    let status = std::process::Command::new(ffmpeg_bin)
+        .args(["-y", "-loglevel", "error", "-i"])
+        .arg(source_path)
+        .args(["-vn", "-c:a", "libmp3lame", "-q:a", "2"])
+        .arg(&cached_path)
+        .status()
+        .ok()?;
+    if status.success() && cached_path.exists() {
+        prune_spotify_bridge_cache(&cache_dir, 20);
+        Some(format!("__bridge/{cached_name}"))
+    } else {
+        None
+    }
+}
+
+fn is_webkit_native_audio_ext(ext: &str) -> bool {
+    matches!(
+        ext.to_ascii_lowercase().as_str(),
+        "webm" | "opus" | "ogg" | "mp3" | "flac" | "wav"
+    )
+}
+
+fn resolve_spotify_playable_stream(
+    app: &AppHandle,
+    track_url: &str,
+    raw_title: &str,
+    raw_artist: &str,
+    raw_artwork: &str,
+) -> Result<Value, String> {
+    let port = STREAM_SERVER_PORT.load(Ordering::SeqCst);
+    if port == 0 {
+        return Err("Local audio streaming server not initialized".to_string());
+    }
+
+    let mut eff_title = raw_title.trim().to_string();
+    let mut eff_artist = raw_artist.trim().to_string();
+    let mut eff_artwork = raw_artwork.trim().to_string();
+    let mut eff_duration: i64 = 0;
+    let mut queue_payload: Vec<Value> = Vec::new();
+
+    let meta_opt = if track_url.contains("open.spotify.com/")
+        || track_url.starts_with("spotify:")
+        || track_url.contains("spotify.link/")
+    {
+        fetch_spotify_embed_metadata(track_url)
+    } else {
+        None
+    };
+
+    if let Some(ref meta) = meta_opt {
+        if !meta.tracks.is_empty() {
+            let chosen = if !eff_title.is_empty() {
+                let lower_req = eff_title.to_lowercase();
+                meta.tracks
+                    .iter()
+                    .find(|t| t.title.to_lowercase() == lower_req)
+                    .unwrap_or(&meta.tracks[0])
+            } else {
+                &meta.tracks[0]
+            };
+            eff_title = chosen.title.clone();
+            eff_artist = chosen.artist.clone();
+            eff_duration = chosen.duration as i64;
+            if eff_artwork.is_empty() {
+                eff_artwork = if chosen.thumbnail.is_empty() {
+                    meta.cover_url.clone()
+                } else {
+                    chosen.thumbnail.clone()
+                };
+            }
+            if meta.tracks.len() > 1 {
+                for t in meta.tracks.iter().take(50) {
+                    queue_payload.push(serde_json::json!({
+                        "title": t.title,
+                        "artist": t.artist,
+                        "duration": t.duration,
+                        "artwork": if t.thumbnail.is_empty() { &meta.cover_url } else { &t.thumbnail },
+                        "url": track_url
+                    }));
+                }
+            }
+        }
+    }
+
+    let (clean_t, clean_a) = clean_track_metadata(&eff_title, &eff_artist);
+    if clean_t.is_empty() || clean_t == "Unknown Title" {
+        return Err("Open a Spotify track, album, or playlist to stream via Brave Music.".to_string());
+    }
+    let display_artist = if clean_a == "Brave Music" || clean_a.is_empty() {
+        eff_artist.clone()
+    } else {
+        clean_a.clone()
+    };
+
+    if let Some((local_filename, _, local_thumb)) = find_local_playable_match(app, &clean_t, &display_artist) {
+        let mut served = local_filename.clone();
+        if let Some(full) = resolve_audio_file(app, &local_filename) {
+            if let Some(transcoded) = ensure_snap_playable_audio(app, &full) {
+                served = transcoded;
+            }
+        }
+        let encoded = if let Some(sub) = served.strip_prefix("__bridge/") {
+            format!("__bridge/{}", percent_encode(sub))
+        } else {
+            percent_encode(&served)
+        };
+        let art = if eff_artwork.is_empty() { local_thumb } else { eff_artwork };
+        return Ok(serde_json::json!({
+            "success": true,
+            "streamUrl": format!("http://127.0.0.1:{port}/{encoded}"),
+            "title": clean_t,
+            "artist": if display_artist.is_empty() { "Spotify".to_string() } else { display_artist },
+            "artwork": art,
+            "trackUrl": track_url,
+            "cached": true,
+            "queue": queue_payload
+        }));
+    }
+
+    let cache_dir = spotify_bridge_cache_dir(app);
+    let stem = format!(
+        "sp_{}",
+        stable_hash_hex(&format!("{}|{}", clean_t.to_lowercase(), display_artist.to_lowercase()))
+    );
+
+    for ext in ["webm", "opus", "ogg", "mp3"] {
+        let candidate_name = format!("{stem}.{ext}");
+        let candidate = cache_dir.join(&candidate_name);
+        if candidate.exists() && candidate.metadata().map(|m| m.len() > 8192).unwrap_or(false) {
+            return Ok(serde_json::json!({
+                "success": true,
+                "streamUrl": format!("http://127.0.0.1:{port}/__bridge/{}", percent_encode(&candidate_name)),
+                "title": clean_t,
+                "artist": if display_artist.is_empty() { "Spotify".to_string() } else { display_artist },
+                "artwork": eff_artwork,
+                "trackUrl": track_url,
+                "cached": true,
+                "queue": queue_payload
+            }));
+        }
+    }
+
+    let ytdlp_bin = resolve_bundled_bin("yt-dlp").unwrap_or_else(|| PathBuf::from("yt-dlp"));
+    let js_runtime = resolve_validated_js_runtime();
+    let ffmpeg_dir = resolve_ffmpeg_dir();
+    let matched_yt_url =
+        resolve_best_spotify_youtube_url(&ytdlp_bin, &clean_t, &display_artist, eff_duration, false);
+
+    let out_tpl = cache_dir.join(format!("{stem}.%(ext)s"));
+    let out = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), ffmpeg_dir.as_ref())
+        .args([
+            "--no-playlist",
+            "--socket-timeout",
+            "12",
+            "-f",
+            "bestaudio[ext=webm][acodec=opus]/bestaudio[ext=ogg]/bestaudio[ext=mp3]",
+            "-o",
+        ])
+        .arg(out_tpl.to_string_lossy().as_ref())
+        .arg(&matched_yt_url)
+        .output();
+
+    let mut chosen_file: Option<String> = None;
+    if let Ok(res) = out {
+        if res.status.success() {
+            for ext in ["webm", "opus", "ogg", "mp3", "flac", "wav"] {
+                let candidate_name = format!("{stem}.{ext}");
+                let candidate = cache_dir.join(&candidate_name);
+                if candidate.exists() && is_webkit_native_audio_ext(ext) {
+                    chosen_file = Some(candidate_name);
+                    break;
+                }
+            }
+        }
+    }
+
+    if chosen_file.is_none() && ffmpeg_dir.is_some() {
+        let fb = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), ffmpeg_dir.as_ref())
+            .args([
+                "--no-playlist",
+                "--socket-timeout",
+                "12",
+                "-f",
+                "18/best[ext=mp4]/bestaudio/best",
+                "-x",
+                "--audio-format",
+                "mp3",
+                "--audio-quality",
+                "192K",
+                "-o",
+            ])
+            .arg(out_tpl.to_string_lossy().as_ref())
+            .arg(&matched_yt_url)
+            .output();
+        if let Ok(res) = fb {
+            let mp3_name = format!("{stem}.mp3");
+            if res.status.success() && cache_dir.join(&mp3_name).exists() {
+                chosen_file = Some(mp3_name);
+            }
+        }
+    }
+
+    let final_name = chosen_file.ok_or_else(|| {
+        "Could not resolve a playable audio stream for this Spotify track. Try 'Widevine Browser' to play natively.".to_string()
+    })?;
+    prune_spotify_bridge_cache(&cache_dir, 15);
+
+    Ok(serde_json::json!({
+        "success": true,
+        "streamUrl": format!("http://127.0.0.1:{port}/__bridge/{}", percent_encode(&final_name)),
+        "title": clean_t,
+        "artist": if display_artist.is_empty() { "Spotify".to_string() } else { display_artist },
+        "artwork": eff_artwork,
+        "trackUrl": track_url,
+        "cached": false,
+        "queue": queue_payload
+    }))
+}
+
+fn spawn_spotify_bridge_play(
+    app: AppHandle,
+    track_url: String,
+    title: String,
+    artist: String,
+    artwork: String,
+) {
+    let key = format!("{}|{}|{}", track_url.trim(), title.trim(), artist.trim());
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    {
+        let mut guard = LAST_SPOTIFY_BRIDGE_TRIGGER
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        if guard.0 == key && now_ms.saturating_sub(guard.1) < 900 {
+            return;
+        }
+        *guard = (key, now_ms);
+    }
+
+    let _ = app.emit(
+        "spotify-bridge-status",
+        serde_json::json!({
+            "status": "resolving",
+            "title": title,
+            "artist": artist,
+            "artwork": artwork,
+            "trackUrl": track_url
+        }),
+    );
+
+    std::thread::spawn(move || {
+        match resolve_spotify_playable_stream(&app, &track_url, &title, &artist, &artwork) {
+            Ok(payload) => {
+                let _ = app.emit("spotify-bridge-ready", payload);
+            }
+            Err(err) => {
+                let _ = app.emit(
+                    "spotify-bridge-status",
+                    serde_json::json!({
+                        "status": "error",
+                        "message": err
+                    }),
+                );
+            }
+        }
+    });
+}
+
+#[tauri::command]
+async fn play_spotify_bridge(
+    app: AppHandle,
+    url: String,
+    title: Option<String>,
+    artist: Option<String>,
+    artwork: Option<String>,
+) -> Result<Value, String> {
+    let t = title.unwrap_or_default();
+    let a = artist.unwrap_or_default();
+    let art = artwork.unwrap_or_default();
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        resolve_spotify_playable_stream(&app_clone, &url, &t, &a, &art)
+    })
+    .await
+    .map_err(|e| format!("Spotify bridge task error: {e}"))?
+}
+
+#[tauri::command]
+fn open_spotify_widevine_browser(app: AppHandle, url: Option<String>) -> Result<(), String> {
+    let fallback = get_webview_url("spotify-webview".to_string());
+    let target = url
+        .map(|u| u.trim().to_string())
+        .filter(|u| u.starts_with("https://open.spotify.com"))
+        .unwrap_or(fallback);
+
+    if !is_snap_confined() {
+        for bin in [
+            "google-chrome",
+            "google-chrome-stable",
+            "brave-browser",
+            "chromium",
+            "chromium-browser",
+            "microsoft-edge",
+        ] {
+            if std::process::Command::new(bin)
+                .arg(format!("--app={target}"))
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .is_ok()
+            {
+                return Ok(());
+            }
+        }
+    }
+
+    app.opener()
+        .open_url(&target, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn get_stream_url(app: AppHandle, filename: String) -> Result<Value, String> {
     if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
         return Err("Invalid filename".to_owned());
     }
 
-    let _file_path = resolve_audio_file(&app, &filename)
+    let file_path = resolve_audio_file(&app, &filename)
         .ok_or_else(|| format!("Audio file '{filename}' not found on disk in downloads folder"))?;
 
     let port = STREAM_SERVER_PORT.load(Ordering::SeqCst);
@@ -3198,7 +4150,12 @@ fn get_stream_url(app: AppHandle, filename: String) -> Result<Value, String> {
         return Err("Streaming server not initialized".to_owned());
     }
 
-    let encoded = percent_encode(&filename);
+    let served_rel = ensure_snap_playable_audio(&app, &file_path).unwrap_or(filename);
+    let encoded = if let Some(sub) = served_rel.strip_prefix("__bridge/") {
+        format!("__bridge/{}", percent_encode(sub))
+    } else {
+        percent_encode(&served_rel)
+    };
     let url = format!("http://127.0.0.1:{port}/{encoded}");
 
     Ok(serde_json::json!({
@@ -3216,9 +4173,77 @@ fn provider_url(provider: &str) -> Result<&'static str, &'static str> {
     }
 }
 
+fn handle_shield_or_bridge_request(
+    app: &AppHandle,
+    label: &str,
+    uri: &tauri::http::Uri,
+    provider_counter: &AtomicU64,
+) -> bool {
+    let path_and_query = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("");
+    if uri.host() == Some("brave-shields.local") || path_and_query.starts_with("/__brave_shield_blocked__") {
+        if path_and_query.contains("url_sync=1") {
+            let params = parse_query_params(path_and_query);
+            if let Some(u) = params.get("u") {
+                record_webview_url(app, label, u);
+            }
+        } else if path_and_query.contains("spotify_play=1") {
+            let params = parse_query_params(path_and_query);
+            let track_url = params
+                .get("url")
+                .cloned()
+                .unwrap_or_else(|| get_webview_url("spotify-webview".to_string()));
+            let title = params.get("title").cloned().unwrap_or_default();
+            let artist = params.get("artist").cloned().unwrap_or_default();
+            let art = params.get("art").cloned().unwrap_or_default();
+            spawn_spotify_bridge_play(app.clone(), track_url, title, artist, art);
+        } else if path_and_query.contains("spotify_control=") {
+            let params = parse_query_params(path_and_query);
+            if let Some(action) = params.get("spotify_control") {
+                let _ = app.emit("spotify-bridge-control", serde_json::json!({ "action": action }));
+            }
+        } else if path_and_query.contains("spotify_download=1") {
+            let params = parse_query_params(path_and_query);
+            let dl_url = params
+                .get("url")
+                .cloned()
+                .unwrap_or_else(|| get_webview_url("spotify-webview".to_string()));
+            let _ = app.emit("spotify-bridge-download", serde_json::json!({ "url": dl_url }));
+        } else if path_and_query.contains("spotify_open_browser=1") {
+            let params = parse_query_params(path_and_query);
+            let target = params.get("url").cloned();
+            let app_clone = app.clone();
+            std::thread::spawn(move || {
+                let _ = open_spotify_widevine_browser(app_clone, target);
+            });
+        } else if path_and_query.contains("log_error") {
+            eprintln!(
+                "[{label} Report] {}",
+                percent_decode(path_and_query).unwrap_or_else(|| path_and_query.to_string())
+            );
+        } else {
+            let total = BLOCKED_ADS_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+            provider_counter.fetch_add(1, Ordering::Relaxed);
+            let _ = app.emit("shield-update", serde_json::json!({ "count": total }));
+        }
+        return true;
+    }
+
+    if is_ad_or_tracker_request(uri) {
+        let total = BLOCKED_ADS_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+        provider_counter.fetch_add(1, Ordering::Relaxed);
+        let _ = app.emit("shield-update", serde_json::json!({ "count": total }));
+        return true;
+    }
+
+    false
+}
+
 fn main() {
     #[cfg(target_os = "linux")]
     {
+        if std::env::var_os("NO_AT_BRIDGE").is_none() {
+            std::env::set_var("NO_AT_BRIDGE", "1");
+        }
         if std::env::var_os("SNAP").is_some() {
             if std::env::var_os("GIO_USE_PROXY_RESOLVER").is_none() {
                 std::env::set_var("GIO_USE_PROXY_RESOLVER", "dummy");
@@ -3280,12 +4305,16 @@ fn main() {
             let child_h = (logical_h - 58.0).max(100.0);
 
             let app_handle_for_yt = app.handle().clone();
+            let app_handle_for_yt_nav = app.handle().clone();
             let app_handle_for_yt_popup = app.handle().clone();
             let yt_builder = tauri::WebviewBuilder::new("yt-webview", tauri::WebviewUrl::External(yt_url))
                 .initialization_script(WINDOW_CHROME_POLYFILL_SCRIPT)
                 .initialization_script(GUEST_ERROR_CAPTURE_SCRIPT)
                 .initialization_script(SHIELDS_SCRIPT)
-                .on_navigation(|_url| true)
+                .on_navigation(move |nav_url| {
+                    record_webview_url(&app_handle_for_yt_nav, "yt-webview", nav_url.as_str());
+                    true
+                })
                 .on_new_window(move |url, _features| {
                     if is_auth_url(url.as_str()) {
                         let app_clone = app_handle_for_yt_popup.clone();
@@ -3298,30 +4327,14 @@ fn main() {
                     tauri::webview::NewWindowResponse::Allow
                 })
                 .on_web_resource_request(move |request, response| {
-                    let uri = request.uri();
-                    let path_and_query = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("");
-                    if uri.host() == Some("brave-shields.local") || path_and_query.starts_with("/__brave_shield_blocked__") {
-                        if path_and_query.contains("log_error") {
-                            eprintln!("[Guest Webview Report] {}", percent_decode(path_and_query).unwrap_or_else(|| path_and_query.to_string()));
-                        } else {
-                            let total = BLOCKED_ADS_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-                            YTM_BLOCKED_COUNT.fetch_add(1, Ordering::Relaxed);
-                            let _ = app_handle_for_yt.emit("shield-update", serde_json::json!({ "count": total }));
-                        }
-                        *response.status_mut() = tauri::http::StatusCode::NO_CONTENT;
-                        *response.body_mut() = Cow::Borrowed(b"");
-                        return;
-                    }
-                    if is_ad_or_tracker_request(uri) {
-                        let total = BLOCKED_ADS_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-                        YTM_BLOCKED_COUNT.fetch_add(1, Ordering::Relaxed);
-                        let _ = app_handle_for_yt.emit("shield-update", serde_json::json!({ "count": total }));
+                    if handle_shield_or_bridge_request(&app_handle_for_yt, "yt-webview", request.uri(), &YTM_BLOCKED_COUNT) {
                         *response.status_mut() = tauri::http::StatusCode::NO_CONTENT;
                         *response.body_mut() = Cow::Borrowed(b"");
                     }
                 });
 
             let app_handle_for_spotify = app.handle().clone();
+            let app_handle_for_spotify_nav = app.handle().clone();
             let app_handle_for_spotify_popup = app.handle().clone();
             let spotify_builder = tauri::WebviewBuilder::new("spotify-webview", tauri::WebviewUrl::External(spotify_url))
                 .user_agent(CHROME_USER_AGENT)
@@ -3329,7 +4342,10 @@ fn main() {
                 .initialization_script(GUEST_ERROR_CAPTURE_SCRIPT)
                 .initialization_script(SHIELDS_SCRIPT)
                 .initialization_script(SPOTIFY_NAVBAR_FIX_SCRIPT)
-                .on_navigation(|_url| true)
+                .on_navigation(move |nav_url| {
+                    record_webview_url(&app_handle_for_spotify_nav, "spotify-webview", nav_url.as_str());
+                    true
+                })
                 .on_new_window(move |url, _features| {
                     if is_auth_url(url.as_str()) {
                         let app_clone = app_handle_for_spotify_popup.clone();
@@ -3342,24 +4358,7 @@ fn main() {
                     tauri::webview::NewWindowResponse::Allow
                 })
                 .on_web_resource_request(move |request, response| {
-                    let uri = request.uri();
-                    let path_and_query = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("");
-                    if uri.host() == Some("brave-shields.local") || path_and_query.starts_with("/__brave_shield_blocked__") {
-                        if path_and_query.contains("log_error") {
-                            eprintln!("[Spotify Webview Report] {}", percent_decode(path_and_query).unwrap_or_else(|| path_and_query.to_string()));
-                        } else {
-                            let total = BLOCKED_ADS_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-                            SPOTIFY_BLOCKED_COUNT.fetch_add(1, Ordering::Relaxed);
-                            let _ = app_handle_for_spotify.emit("shield-update", serde_json::json!({ "count": total }));
-                        }
-                        *response.status_mut() = tauri::http::StatusCode::NO_CONTENT;
-                        *response.body_mut() = Cow::Borrowed(b"");
-                        return;
-                    }
-                    if is_ad_or_tracker_request(uri) {
-                        let total = BLOCKED_ADS_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-                        SPOTIFY_BLOCKED_COUNT.fetch_add(1, Ordering::Relaxed);
-                        let _ = app_handle_for_spotify.emit("shield-update", serde_json::json!({ "count": total }));
+                    if handle_shield_or_bridge_request(&app_handle_for_spotify, "spotify-webview", request.uri(), &SPOTIFY_BLOCKED_COUNT) {
                         *response.status_mut() = tauri::http::StatusCode::NO_CONTENT;
                         *response.body_mut() = Cow::Borrowed(b"");
                     }
@@ -3373,6 +4372,7 @@ fn main() {
             ) {
                 Ok(yt_wv) => {
                     eprintln!("[Tauri setup] yt-webview added successfully");
+                    configure_webkit_webview_settings(&yt_wv, true);
                     if !webview_has_service_auth(&yt_wv, "youtube") {
                         if let Ok(bytes) = fs::read(auth_dir.join("ytmusic_session.json")) {
                             if let Ok(records) = serde_json::from_slice::<Vec<Value>>(&bytes) {
@@ -3397,6 +4397,7 @@ fn main() {
             ) {
                 Ok(sp_wv) => {
                     eprintln!("[Tauri setup] spotify-webview added successfully");
+                    configure_webkit_webview_settings(&sp_wv, true);
                     if !webview_has_service_auth(&sp_wv, "spotify") {
                         if let Ok(bytes) = fs::read(auth_dir.join("spotify_session.json")) {
                             if let Ok(records) = serde_json::from_slice::<Vec<Value>>(&bytes) {
@@ -3475,7 +4476,10 @@ fn main() {
             window_maximize,
             window_close,
             get_app_version,
+            get_webview_url,
             get_stream_url,
+            play_spotify_bridge,
+            open_spotify_widevine_browser,
             get_auth_status,
             get_saved_accounts,
             save_user_account,
@@ -3492,8 +4496,9 @@ fn main() {
 mod tests {
     use super::{
         import_library_file, is_auth_url, is_service_auth_cookie, is_service_landing_url,
-        parse_cookie_json_payload, persist_service_account, provider_url, read_accounts_map,
-        score_yt_candidate, SearchCandidate,
+        is_webkit_native_audio_ext, parse_cookie_json_payload, parse_query_params,
+        persist_service_account, provider_url, prune_spotify_bridge_cache, read_accounts_map,
+        score_yt_candidate, stable_hash_hex, SearchCandidate,
     };
     use brave_music_core::library::LibraryDocument;
     use serde_json::json;
@@ -3621,5 +4626,37 @@ mod tests {
         assert_eq!(saved["youtube"]["authenticated"], true);
         assert_eq!(saved["youtube"]["name"], "Tester");
         assert_eq!(saved["youtube"]["source"], "in-app-webview");
+    }
+
+    #[test]
+    fn parses_bridge_query_params_and_validates_webkit_audio_codecs() {
+        let params = parse_query_params(
+            "/__brave_shield_blocked__?spotify_play=1&title=Starboy%20%26%20Friends&artist=The+Weeknd&url=https%3A%2F%2Fopen.spotify.com%2Ftrack%2F123",
+        );
+        assert_eq!(params.get("spotify_play").map(String::as_str), Some("1"));
+        assert_eq!(params.get("title").map(String::as_str), Some("Starboy & Friends"));
+        assert_eq!(params.get("artist").map(String::as_str), Some("The Weeknd"));
+        assert_eq!(
+            params.get("url").map(String::as_str),
+            Some("https://open.spotify.com/track/123")
+        );
+
+        assert!(is_webkit_native_audio_ext("webm"));
+        assert!(is_webkit_native_audio_ext("MP3"));
+        assert!(is_webkit_native_audio_ext("opus"));
+        assert!(is_webkit_native_audio_ext("flac"));
+        assert!(!is_webkit_native_audio_ext("m4a"));
+        assert!(!is_webkit_native_audio_ext("aac"));
+
+        assert_eq!(stable_hash_hex("track|artist").len(), 16);
+
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..4 {
+            fs::write(dir.path().join(format!("item_{i}.webm")), b"audio").unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(12));
+        }
+        prune_spotify_bridge_cache(dir.path(), 2);
+        let remaining: Vec<_> = fs::read_dir(dir.path()).unwrap().collect();
+        assert_eq!(remaining.len(), 2);
     }
 }

@@ -44,6 +44,7 @@ cp -r "$ROOT_DIR/src/assets" "$BUILD_DIR/opt/brave-music/src/"
 
 chmod +x "$BUILD_DIR/opt/brave-music/backend/bin/yt-dlp" \
          "$BUILD_DIR/opt/brave-music/backend/bin/node" \
+         "$BUILD_DIR/opt/brave-music/backend/bin/qjs" \
          "$BUILD_DIR/opt/brave-music/backend/bin/ffmpeg" \
          "$BUILD_DIR/opt/brave-music/backend/bin/ffprobe" 2>/dev/null || true
 
@@ -54,6 +55,7 @@ export PATH="/opt/brave-music/backend/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export LD_LIBRARY_PATH="/opt/brave-music/backend/bin:${LD_LIBRARY_PATH:-}"
 export WEBKIT_FORCE_COMPOSITING_MODE=1
 export WEBKIT_DISABLE_COMPOSITING_MODE=0
+export NO_AT_BRIDGE="${NO_AT_BRIDGE:-1}"
 exec /opt/brave-music/brave-music-linux-preview "$@"
 EOF
 chmod +x "$BUILD_DIR/opt/brave-music/run.sh"

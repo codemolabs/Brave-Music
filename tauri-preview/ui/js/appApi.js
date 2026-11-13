@@ -57,6 +57,28 @@ window.addEventListener('error', (event) => {
         return null;
       };
 
+  const listenTauriEvent = (eventName, callback) => {
+    const tauriEvent = window.__TAURI__?.event;
+    if (tauriEvent && typeof tauriEvent.listen === 'function') {
+      let unlistenFn = null;
+      tauriEvent.listen(eventName, (e) => {
+        if (callback && e && e.payload) callback(e.payload);
+      }).then(unlisten => { unlistenFn = unlisten; }).catch(() => {});
+      return () => { if (unlistenFn) unlistenFn(); };
+    }
+    return () => {};
+  };
+
+  const liveWebviewUrls = {
+    'yt-webview': 'https://music.youtube.com',
+    'spotify-webview': 'https://open.spotify.com'
+  };
+  listenTauriEvent('webview-url-changed', (payload) => {
+    if (payload?.label && payload?.url) {
+      liveWebviewUrls[payload.label] = payload.url;
+    }
+  });
+
   window.braveApi = {
     // Window Management
     minimize: () => {
@@ -181,17 +203,7 @@ window.addEventListener('error', (event) => {
       }
     },
     recordAdBlocked: (count, source) => invoke('record_ad_blocked', { count, source }),
-    onShieldUpdate: (callback) => {
-      const tauriEvent = window.__TAURI__?.event;
-      if (tauriEvent && typeof tauriEvent.listen === 'function') {
-        let unlistenFn = null;
-        tauriEvent.listen('shield-update', (e) => {
-          if (callback && e && e.payload) callback(e.payload);
-        }).then(unlisten => { unlistenFn = unlisten; }).catch(() => {});
-        return () => { if (unlistenFn) unlistenFn(); };
-      }
-      return () => {};
-    },
+    onShieldUpdate: (callback) => listenTauriEvent('shield-update', callback),
 
     // Auth & Accounts
     startServiceLogin: (service, preferredMode) =>
@@ -202,28 +214,8 @@ window.addEventListener('error', (event) => {
     saveUserAccount: (service, profile) => invoke('save_user_account', { service, profile }),
     logoutProvider: (service) => invoke('logout_provider', { service }),
     importCookiesJson: (service, rawJson) => invoke('import_cookies_json', { service, rawJson }),
-    onAuthCdpStatus: (callback) => {
-      const tauriEvent = window.__TAURI__?.event;
-      if (tauriEvent && typeof tauriEvent.listen === 'function') {
-        let unlistenFn = null;
-        tauriEvent.listen('auth-cdp-status', (e) => {
-          if (callback && e && e.payload) callback(e.payload);
-        }).then(unlisten => { unlistenFn = unlisten; }).catch(() => {});
-        return () => { if (unlistenFn) unlistenFn(); };
-      }
-      return () => {};
-    },
-    onAuthSyncCompleted: (callback) => {
-      const tauriEvent = window.__TAURI__?.event;
-      if (tauriEvent && typeof tauriEvent.listen === 'function') {
-        let unlistenFn = null;
-        tauriEvent.listen('auth-sync-completed', (e) => {
-          if (callback && e && e.payload) callback(e.payload);
-        }).then(unlisten => { unlistenFn = unlisten; }).catch(() => {});
-        return () => { if (unlistenFn) unlistenFn(); };
-      }
-      return () => {};
-    },
+    onAuthCdpStatus: (callback) => listenTauriEvent('auth-cdp-status', callback),
+    onAuthSyncCompleted: (callback) => listenTauriEvent('auth-sync-completed', callback),
 
     // Offline Audio Download Engine & Recommendations
     startDownload: async (params) => {
@@ -238,28 +230,16 @@ window.addEventListener('error', (event) => {
         return { success: true, mode: 'starter', seedArtists: [], items: [] };
       }
     },
-    onDownloadProgress: (callback) => {
-      const tauriEvent = window.__TAURI__?.event;
-      if (tauriEvent && typeof tauriEvent.listen === 'function') {
-        let unlistenFn = null;
-        tauriEvent.listen('download-progress', (e) => {
-          if (callback && e && e.payload) callback(e.payload);
-        }).then(unlisten => { unlistenFn = unlisten; }).catch(() => {});
-        return () => { if (unlistenFn) unlistenFn(); };
-      }
-      return () => {};
-    },
-    onLibraryUpdated: (callback) => {
-      const tauriEvent = window.__TAURI__?.event;
-      if (tauriEvent && typeof tauriEvent.listen === 'function') {
-        let unlistenFn = null;
-        tauriEvent.listen('library-updated', (e) => {
-          if (callback && e && e.payload) callback(e.payload);
-        }).then(unlisten => { unlistenFn = unlisten; }).catch(() => {});
-        return () => { if (unlistenFn) unlistenFn(); };
-      }
-      return () => {};
-    },
+    onDownloadProgress: (callback) => listenTauriEvent('download-progress', callback),
+    onLibraryUpdated: (callback) => listenTauriEvent('library-updated', callback),
+
+    // Spotify Audio Bridge & Widevine Browser App Mode
+    playSpotifyBridge: (payload) => invoke('play_spotify_bridge', payload),
+    openSpotifyWidevineBrowser: (url) => invoke('open_spotify_widevine_browser', { url }),
+    onSpotifyBridgeStatus: (callback) => listenTauriEvent('spotify-bridge-status', callback),
+    onSpotifyBridgeReady: (callback) => listenTauriEvent('spotify-bridge-ready', callback),
+    onSpotifyBridgeControl: (callback) => listenTauriEvent('spotify-bridge-control', callback),
+    onSpotifyBridgeDownload: (callback) => listenTauriEvent('spotify-bridge-download', callback),
 
     // Musikcube Backend Status Stub
     getMusikcubeStatus: async () => ({ active: true, connected: true }),
@@ -275,8 +255,11 @@ window.addEventListener('error', (event) => {
     const bindEl = (id, label, tabName) => {
       const el = document.getElementById(id);
       if (!el) return;
-      el.getURL = () => (label === 'yt-webview' ? 'https://music.youtube.com' : 'https://open.spotify.com');
-      el.getAttribute = (attr) => (attr === 'src' ? (label === 'yt-webview' ? 'https://music.youtube.com' : 'https://open.spotify.com') : null);
+      invoke('get_webview_url', { label }).then((u) => {
+        if (typeof u === 'string' && u.startsWith('http')) liveWebviewUrls[label] = u;
+      }).catch(() => {});
+      el.getURL = () => liveWebviewUrls[label] || (label === 'yt-webview' ? 'https://music.youtube.com' : 'https://open.spotify.com');
+      el.getAttribute = (attr) => (attr === 'src' ? el.getURL() : null);
       el.executeJavaScript = (code) => invoke('eval_script', { webview: label, script: code });
       el.reload = () => invoke('reload_tab', { tab: tabName });
       el.reloadIgnoringCache = () => invoke('reload_tab', { tab: tabName });

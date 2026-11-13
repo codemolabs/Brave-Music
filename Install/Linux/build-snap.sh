@@ -42,6 +42,7 @@ environment:
   GTK_USE_PORTAL: '1'
   GIO_USE_PROXY_RESOLVER: dummy
   GIO_USE_NETWORK_MONITOR: netlink
+  NO_AT_BRIDGE: '1'
   WEBKIT_EXEC_PATH: $SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1
 layout:
   /usr/share/libdrm:
@@ -105,11 +106,9 @@ apps:
       - wayland
       - x11
       - audio-playback
-      - pulseaudio
       - network
       - network-bind
       - home
-      - removable-media
       - screen-inhibit-control
 EOF
 sed -i "s/__VERSION__/${VERSION}/" "$STAGE_DIR/meta/snap.yaml"
@@ -161,6 +160,7 @@ cp -r "$ROOT_DIR/src/assets" "$STAGE_DIR/opt/brave-music/src/"
 
 chmod +x "$STAGE_DIR/opt/brave-music/backend/bin/yt-dlp" \
          "$STAGE_DIR/opt/brave-music/backend/bin/node" \
+         "$STAGE_DIR/opt/brave-music/backend/bin/qjs" \
          "$STAGE_DIR/opt/brave-music/backend/bin/ffmpeg" \
          "$STAGE_DIR/opt/brave-music/backend/bin/ffprobe" 2>/dev/null || true
 
@@ -175,6 +175,7 @@ export PATH="$APP_DIR/backend/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export LD_LIBRARY_PATH="${SNAP:+$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu:$SNAP/gnome-platform/lib/x86_64-linux-gnu:}$APP_DIR/backend/bin:${LD_LIBRARY_PATH:-}"
 export GIO_USE_PROXY_RESOLVER="${GIO_USE_PROXY_RESOLVER:-dummy}"
 export GIO_USE_NETWORK_MONITOR="${GIO_USE_NETWORK_MONITOR:-netlink}"
+export NO_AT_BRIDGE="${NO_AT_BRIDGE:-1}"
 export WEBKIT_EXEC_PATH="${SNAP:+$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1}"
 export WEBKIT_FORCE_COMPOSITING_MODE=1
 export WEBKIT_DISABLE_COMPOSITING_MODE=0

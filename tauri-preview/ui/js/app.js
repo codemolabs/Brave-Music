@@ -2501,37 +2501,36 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function togglePlayPause() {
+    if (state.player.currentTrack) {
+      if (state.player.isPlaying) {
+        runtimeAudio.pause();
+        state.player.isPlaying = false;
+        playerPlayIcon.style.display = 'block';
+        playerPauseIcon.style.display = 'none';
+        if (playerWaves) playerWaves.style.display = 'none';
+        syncPlayerToMprisAndMediaSession({ isPlaying: false, isPaused: true });
+      } else {
+        pauseYouTube();
+        if (!state.player.currentTrack.isSpotifyBridge) pauseSpotify();
+        state.activeAudioSource = state.player.currentTrack.isSpotifyBridge ? 'spotify-bridge' : 'local';
+        runtimeAudio.play().catch(() => {});
+        state.player.isPlaying = true;
+        playerPlayIcon.style.display = 'none';
+        playerPauseIcon.style.display = 'block';
+        if (playerWaves) playerWaves.style.display = 'inline-flex';
+        syncPlayerToMprisAndMediaSession({ isPlaying: true, isPaused: false });
+      }
+      renderTracksTable();
+      return;
+    }
+
     const tracks = getSortedAndFilteredTracks();
     if (tracks.length === 0) {
       showToast('No downloaded music in library yet. Paste a link above to download.');
       return;
     }
 
-    if (!state.player.currentTrack) {
-      playTrack(tracks[0], 0);
-      return;
-    }
-
-    if (state.player.isPlaying) {
-      runtimeAudio.pause();
-      state.player.isPlaying = false;
-      playerPlayIcon.style.display = 'block';
-      playerPauseIcon.style.display = 'none';
-      if (playerWaves) playerWaves.style.display = 'none';
-      syncPlayerToMprisAndMediaSession({ isPlaying: false, isPaused: true });
-    } else {
-      pauseYouTube();
-      pauseSpotify();
-      state.activeAudioSource = 'local';
-      runtimeAudio.play().catch(() => {});
-      state.player.isPlaying = true;
-      playerPlayIcon.style.display = 'none';
-      playerPauseIcon.style.display = 'block';
-      if (playerWaves) playerWaves.style.display = 'inline-flex';
-      syncPlayerToMprisAndMediaSession({ isPlaying: true, isPaused: false });
-    }
-
-    renderTracksTable();
+    playTrack(tracks[0], 0);
   }
 
   function pickSmartNextTrackIndex(tracks) {
@@ -2639,11 +2638,155 @@ document.addEventListener('DOMContentLoaded', () => {
     syncPlayerToMprisAndMediaSession();
   });
 
+  function syncSpotifyBridgeOverlay(statusPayload) {
+    if (!spotifyWebview || typeof spotifyWebview.executeJavaScript !== 'function') return;
+    try {
+      spotifyWebview.executeJavaScript(
+        `window.__braveSpotifyBridgeSync?.(${JSON.stringify(statusPayload)});`
+      ).catch(() => {});
+    } catch (_) {}
+  }
+
+  function startSpotifyBridgePlaybackPayload(payload) {
+    if (!payload || !payload.streamUrl) return;
+    pauseYouTube();
+    state.activeAudioSource = 'spotify-bridge';
+    if (Array.isArray(payload.queue) && payload.queue.length > 0) {
+      state.spotifyBridgeQueue = payload.queue;
+      const idx = payload.queue.findIndex(
+        (item) => (item?.title || '').toLowerCase() === (payload.title || '').toLowerCase()
+      );
+      state.spotifyBridgeIndex = idx >= 0 ? idx : 0;
+    }
+    state.player.currentTrack = {
+      id: `spotify_bridge_${Date.now()}`,
+      title: payload.title || 'Spotify Track',
+      artist: payload.artist || 'Spotify',
+      thumbnail: payload.artwork || EMPTY_MUSIC_THUMBNAIL,
+      trackUrl: payload.trackUrl || '',
+      isSpotifyBridge: true
+    };
+    state.player.isPlaying = true;
+
+    runtimeAudio.src = payload.streamUrl;
+    runtimeAudio.volume = state.player.volume;
+    runtimeAudio.muted = state.player.isMuted;
+    runtimeAudio.play().catch((err) => {
+      console.warn('[SpotifyBridge] Audio play failed:', err);
+      showToast('Spotify audio stream failed to start; try Widevine Browser.');
+      syncSpotifyBridgeOverlay({
+        active: false,
+        status: 'ready',
+        title: 'Brave Music Audio Bridge',
+        artist: 'Stream playback failed'
+      });
+    });
+
+    playerTitle.textContent = state.player.currentTrack.title;
+    playerArtist.textContent = state.player.currentTrack.artist;
+    playerArtImg.src = state.player.currentTrack.thumbnail || EMPTY_MUSIC_THUMBNAIL;
+    playerArtImg.onerror = function() { this.src = EMPTY_MUSIC_THUMBNAIL; };
+    if (playerWaves) playerWaves.style.display = 'inline-flex';
+    playerPlayIcon.style.display = 'none';
+    playerPauseIcon.style.display = 'block';
+    syncSpotifyBridgeOverlay({
+      active: true,
+      status: 'playing',
+      title: state.player.currentTrack.title,
+      artist: state.player.currentTrack.artist
+    });
+    syncPlayerToMprisAndMediaSession({ isPlaying: true });
+    showToast(`Playing "${state.player.currentTrack.title}" via Brave Music Engine`);
+  }
+
+  async function stepSpotifyBridgeQueue(delta) {
+    const queue = Array.isArray(state.spotifyBridgeQueue) ? state.spotifyBridgeQueue : [];
+    if (queue.length === 0) return false;
+    const nextIdx = (state.spotifyBridgeIndex + delta + queue.length) % queue.length;
+    state.spotifyBridgeIndex = nextIdx;
+    const target = queue[nextIdx];
+    if (!target || !window.braveApi?.playSpotifyBridge) return false;
+    syncSpotifyBridgeOverlay({
+      active: true,
+      status: 'resolving',
+      title: target.title || 'Loading track...',
+      artist: target.artist || 'Spotify'
+    });
+    try {
+      const res = await window.braveApi.playSpotifyBridge({
+        url: target.url || 'https://open.spotify.com/',
+        title: target.title || '',
+        artist: target.artist || '',
+        artwork: target.artwork || ''
+      });
+      if (res && res.streamUrl) {
+        startSpotifyBridgePlaybackPayload(res);
+        return true;
+      }
+    } catch (e) {
+      showToast(`Spotify queue error: ${e.message || e}`);
+    }
+    return false;
+  }
+
+  window.braveApi?.onSpotifyBridgeStatus?.((st) => {
+    if (!st) return;
+    if (st.status === 'resolving') {
+      showToast(`Resolving Spotify stream: ${st.title || 'Track'}…`);
+      syncSpotifyBridgeOverlay({
+        active: true,
+        status: 'resolving',
+        title: st.title || 'Resolving Spotify stream...',
+        artist: st.artist || 'Brave Music Audio Bridge'
+      });
+    } else if (st.status === 'error') {
+      showToast(st.message || 'Could not resolve Spotify track');
+      syncSpotifyBridgeOverlay({
+        active: false,
+        status: 'ready',
+        title: 'Brave Music Audio Bridge',
+        artist: st.message || 'Try Widevine Browser button'
+      });
+    }
+  });
+
+  window.braveApi?.onSpotifyBridgeReady?.((payload) => {
+    startSpotifyBridgePlaybackPayload(payload);
+  });
+
+  window.braveApi?.onSpotifyBridgeControl?.((ctrl) => {
+    if (!ctrl || !state.player.currentTrack?.isSpotifyBridge) return;
+    if (ctrl.action === 'toggle') {
+      togglePlayPause();
+    } else if (ctrl.action === 'pause' && state.player.isPlaying) {
+      togglePlayPause();
+    } else if (ctrl.action === 'play' && !state.player.isPlaying) {
+      togglePlayPause();
+    }
+  });
+
+  window.braveApi?.onSpotifyBridgeDownload?.((payload) => {
+    if (!payload?.url) return;
+    switchTab('downloads-view');
+    if (inputDownloadUrl) {
+      inputDownloadUrl.value = payload.url;
+      executeDownload();
+    }
+  });
+
   runtimeAudio.addEventListener('play', () => {
     state.player.isPlaying = true;
     playerPlayIcon.style.display = 'none';
     playerPauseIcon.style.display = 'block';
     if (playerWaves) playerWaves.style.display = 'inline-flex';
+    if (state.player.currentTrack?.isSpotifyBridge) {
+      syncSpotifyBridgeOverlay({
+        active: true,
+        status: 'playing',
+        title: state.player.currentTrack.title,
+        artist: state.player.currentTrack.artist
+      });
+    }
     renderTracksTable();
     syncPlayerToMprisAndMediaSession({ isPlaying: true });
   });
@@ -2654,6 +2797,14 @@ document.addEventListener('DOMContentLoaded', () => {
       playerPlayIcon.style.display = 'block';
       playerPauseIcon.style.display = 'none';
       if (playerWaves) playerWaves.style.display = 'none';
+      if (state.player.currentTrack?.isSpotifyBridge) {
+        syncSpotifyBridgeOverlay({
+          active: true,
+          status: 'paused',
+          title: state.player.currentTrack.title,
+          artist: state.player.currentTrack.artist
+        });
+      }
       renderTracksTable();
       syncPlayerToMprisAndMediaSession({ isPlaying: false, isPaused: true });
     }
@@ -2664,6 +2815,8 @@ document.addEventListener('DOMContentLoaded', () => {
       runtimeAudio.currentTime = 0;
       runtimeAudio.play().catch(() => {});
       syncPlayerToMprisAndMediaSession({ isPlaying: true });
+    } else if (state.player.currentTrack?.isSpotifyBridge && Array.isArray(state.spotifyBridgeQueue) && state.spotifyBridgeQueue.length > 1) {
+      stepSpotifyBridgeQueue(1);
     } else {
       playNextTrack();
     }
@@ -3048,11 +3201,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Unified Previous Track Handler - Scoped to the active context, never cross-contaminates
   function handlePrevTrack() {
+    if (state.player.currentTrack?.isSpotifyBridge && state.player.isPlaying && Array.isArray(state.spotifyBridgeQueue) && state.spotifyBridgeQueue.length > 1) {
+      stepSpotifyBridgeQueue(-1);
+      return;
+    }
     const context = getEffectivePlaybackContext();
     if (context === 'youtube') {
       controlYouTube('previous');
     } else if (context === 'spotify') {
-      controlSpotify('previous');
+      if (!state.player.currentTrack?.isSpotifyBridge || !Array.isArray(state.spotifyBridgeQueue) || state.spotifyBridgeQueue.length <= 1) {
+        controlSpotify('previous');
+      } else {
+        stepSpotifyBridgeQueue(-1);
+      }
     } else {
       playPrevTrack();
     }
@@ -3060,11 +3221,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Unified Next Track Handler - Scoped to the active context, never cross-contaminates
   function handleNextTrack() {
+    if (state.player.currentTrack?.isSpotifyBridge && state.player.isPlaying && Array.isArray(state.spotifyBridgeQueue) && state.spotifyBridgeQueue.length > 1) {
+      stepSpotifyBridgeQueue(1);
+      return;
+    }
     const context = getEffectivePlaybackContext();
     if (context === 'youtube') {
       controlYouTube('next');
     } else if (context === 'spotify') {
-      controlSpotify('next');
+      if (!state.player.currentTrack?.isSpotifyBridge || !Array.isArray(state.spotifyBridgeQueue) || state.spotifyBridgeQueue.length <= 1) {
+        controlSpotify('next');
+      } else {
+        stepSpotifyBridgeQueue(1);
+      }
     } else {
       playNextTrack();
     }
