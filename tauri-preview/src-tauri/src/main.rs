@@ -20,6 +20,8 @@ static BLOCKED_ADS_COUNT: AtomicU64 = AtomicU64::new(42);
 static YTM_BLOCKED_COUNT: AtomicU64 = AtomicU64::new(28);
 static SPOTIFY_BLOCKED_COUNT: AtomicU64 = AtomicU64::new(14);
 static STREAM_SERVER_PORT: AtomicU16 = AtomicU16::new(0);
+static AUTH_LOGIN_CANCELED: AtomicBool = AtomicBool::new(false);
+static AUTH_ACTIVE_SERVICE: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
 struct ActiveDownloadProcess {
     pid: u32,
@@ -42,6 +44,21 @@ const SHIELDS_SCRIPT: &str = include_str!("../../../src/js/webview-shields.js");
 
 const WINDOW_CHROME_POLYFILL_SCRIPT: &str = r#"
 (() => {
+  try {
+    const h = (window.location && window.location.hostname || '').toLowerCase();
+    const p = (window.location && window.location.pathname || '').toLowerCase();
+    if (
+      h.includes('accounts.google.') ||
+      h.includes('accounts.youtube.') ||
+      h.includes('myaccount.google.') ||
+      h.includes('consent.google.') ||
+      h === 'accounts.spotify.com' ||
+      p.includes('/servicelogin') ||
+      p.includes('/v3/signin')
+    ) {
+      return;
+    }
+  } catch (_) {}
   if (!window.chrome) {
     window.chrome = {
       app: {
@@ -1189,9 +1206,18 @@ fn resolve_bundled_bin(name: &str) -> Option<PathBuf> {
             return Some(p2);
         }
     }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let beside = dir.join("backend/bin").join(name);
+            if beside.exists() {
+                return Some(beside);
+            }
+        }
+    }
     let candidates = [
-        PathBuf::from("/home/uzairserver/Workspace/Repositories/brave-music/backend/bin").join(name),
         PathBuf::from("/opt/brave-music/backend/bin").join(name),
+        PathBuf::from("/usr/lib/brave-music/backend/bin").join(name),
+        PathBuf::from("/home/uzairserver/Workspace/Repositories/brave-music/backend/bin").join(name),
         std::env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_default()
@@ -1688,7 +1714,13 @@ async fn start_download(app: AppHandle, params: DownloadParams) -> Result<Value,
         });
 
         let ytdlp_bin = resolve_bundled_bin("yt-dlp").unwrap_or_else(|| PathBuf::from("yt-dlp"));
-        let node_bin = resolve_bundled_bin("node");
+        let node_bin = resolve_bundled_bin("node").filter(|nb| {
+            std::process::Command::new(nb)
+                .arg("--version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        });
         let ffmpeg_bin = resolve_bundled_bin("ffmpeg");
         let ffprobe_bin = resolve_bundled_bin("ffprobe");
         let ffmpeg_dir = match (&ffmpeg_bin, &ffprobe_bin) {
@@ -2276,6 +2308,877 @@ fn window_close(window: Window) -> Result<(), String> {
     window.close().map_err(|e| e.to_string())
 }
 
+fn normalize_auth_service(service: &str) -> &'static str {
+    if service.to_ascii_lowercase().contains("spotify") {
+        "spotify"
+    } else {
+        "youtube"
+    }
+}
+
+fn is_auth_url(raw_url: &str) -> bool {
+    let lower = raw_url.trim().to_ascii_lowercase();
+    lower.contains("accounts.google.")
+        || lower.contains("accounts.youtube.")
+        || lower.contains("myaccount.google.")
+        || lower.contains("consent.google.")
+        || lower.contains("accounts.spotify.com")
+        || lower.contains("appleid.apple.com")
+        || lower.contains("login.live.com")
+        || lower.contains("/servicelogin")
+        || lower.contains("/v3/signin")
+}
+
+fn is_service_landing_url(service: &str, raw_url: &str) -> bool {
+    if is_auth_url(raw_url) {
+        return false;
+    }
+    let Ok(parsed) = tauri::Url::parse(raw_url) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str().map(|h| h.to_ascii_lowercase()) else {
+        return false;
+    };
+    if normalize_auth_service(service) == "spotify" {
+        (host == "open.spotify.com" || host == "www.spotify.com")
+            && !parsed.path().to_ascii_lowercase().contains("/login")
+    } else {
+        host == "music.youtube.com"
+    }
+}
+
+fn is_snap_confined() -> bool {
+    std::env::var_os("SNAP").is_some()
+}
+
+fn auth_config_dir(app: &AppHandle) -> PathBuf {
+    if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
+        if !xdg.is_empty() {
+            return PathBuf::from(xdg).join("brave-music");
+        }
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home).join(".config/brave-music");
+    }
+    app.path()
+        .app_config_dir()
+        .unwrap_or_else(|_| PathBuf::from(".brave-music-config"))
+}
+
+fn write_private_json_atomic(path: &std::path::Path, value: &Value) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed creating config dir: {e}"))?;
+        let _ = set_private_permissions(parent, 0o700);
+    }
+    let dir = path
+        .parent()
+        .ok_or_else(|| "Invalid config path".to_string())?;
+    let bytes = serde_json::to_vec_pretty(value).map_err(|e| e.to_string())?;
+    let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(|e| e.to_string())?;
+    tmp.write_all(&bytes)
+        .and_then(|()| tmp.as_file().sync_all())
+        .map_err(|e| e.to_string())?;
+    tmp.persist(path).map_err(|e| e.error.to_string())?;
+    let _ = set_private_permissions(path, 0o600);
+    Ok(())
+}
+
+fn read_accounts_map(dir: &std::path::Path) -> serde_json::Map<String, Value> {
+    let path = dir.join("user_accounts.json");
+    if let Ok(bytes) = fs::read(&path) {
+        if let Ok(Value::Object(map)) = serde_json::from_slice::<Value>(&bytes) {
+            return map;
+        }
+    }
+    serde_json::Map::new()
+}
+
+fn is_service_auth_cookie(service: &str, name: &str, domain: &str) -> bool {
+    let d = domain.to_ascii_lowercase();
+    if normalize_auth_service(service) == "spotify" {
+        d.contains("spotify.com") && matches!(name, "sp_dc" | "sp_key")
+    } else {
+        (d.contains("google.") || d.contains("youtube.com"))
+            && matches!(
+                name,
+                "SID"
+                    | "SAPISID"
+                    | "__Secure-3PSID"
+                    | "__Secure-1PSID"
+                    | "HSID"
+                    | "SSID"
+                    | "LOGIN_INFO"
+            )
+    }
+}
+
+fn cookie_belongs_to_service(service: &str, domain: &str) -> bool {
+    let d = domain.to_ascii_lowercase();
+    if normalize_auth_service(service) == "spotify" {
+        d.contains("spotify.com")
+    } else {
+        d.contains("google.") || d.contains("youtube.com") || d.contains("youtu.be")
+    }
+}
+
+fn cookies_to_json_values<'a>(
+    service: &str,
+    cookies: &[tauri::webview::Cookie<'a>],
+) -> Vec<Value> {
+    cookies
+        .iter()
+        .filter(|c| {
+            let domain = c.domain().unwrap_or("");
+            cookie_belongs_to_service(service, domain)
+        })
+        .map(|c| {
+            serde_json::json!({
+                "name": c.name(),
+                "value": c.value(),
+                "domain": c.domain().unwrap_or(""),
+                "path": c.path().unwrap_or("/"),
+                "secure": c.secure().unwrap_or(true),
+                "httpOnly": c.http_only().unwrap_or(false)
+            })
+        })
+        .collect()
+}
+
+fn webview_has_service_auth(wv: &tauri::Webview, service: &str) -> bool {
+    let Ok(cookies) = wv.cookies() else {
+        return false;
+    };
+    cookies.iter().any(|c| {
+        let domain = c.domain().unwrap_or("");
+        is_service_auth_cookie(service, c.name(), domain)
+    })
+}
+
+fn apply_cookie_values_to_webview(wv: &tauri::Webview, records: &[Value]) -> usize {
+    let mut applied = 0usize;
+    for rec in records {
+        let name = rec
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let value = rec.get("value").and_then(|v| v.as_str()).unwrap_or("");
+        if name.is_empty()
+            || name.contains([';', '\r', '\n'])
+            || value.contains(['\r', '\n'])
+        {
+            continue;
+        }
+        let mut builder = tauri::webview::Cookie::build((name.to_string(), value.to_string()));
+        if !name.starts_with("__Host-") {
+            if let Some(domain) = rec
+                .get("domain")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                builder = builder.domain(domain.to_string());
+            }
+        }
+        let path = rec
+            .get("path")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("/");
+        builder = builder.path(path.to_string());
+        if rec.get("secure").and_then(|v| v.as_bool()).unwrap_or(false) {
+            builder = builder.secure(true);
+        }
+        if rec
+            .get("httpOnly")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            builder = builder.http_only(true);
+        }
+        if wv.set_cookie(builder.build()).is_ok() {
+            applied += 1;
+        }
+    }
+    applied
+}
+
+fn parse_cookie_json_payload(raw_json: &str) -> Result<Vec<Value>, String> {
+    let parsed: Value =
+        serde_json::from_str(raw_json.trim()).map_err(|e| format!("Invalid JSON file: {e}"))?;
+    let items = if let Some(arr) = parsed.as_array() {
+        arr.clone()
+    } else if let Some(arr) = parsed.get("cookies").and_then(|v| v.as_array()) {
+        arr.clone()
+    } else {
+        return Err("Cookies JSON must be an array or an object with a cookies array".to_string());
+    };
+    let clean: Vec<Value> = items
+        .into_iter()
+        .filter(|item| {
+            item.get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false)
+        })
+        .collect();
+    if clean.is_empty() {
+        return Err("No valid cookie entries were found in the selected JSON file".to_string());
+    }
+    Ok(clean)
+}
+
+fn service_session_filename(service: &str) -> &'static str {
+    if normalize_auth_service(service) == "spotify" {
+        "spotify_session.json"
+    } else {
+        "ytmusic_session.json"
+    }
+}
+
+fn persist_service_account(
+    dir: &std::path::Path,
+    service: &str,
+    name: &str,
+    email: &str,
+    avatar: &str,
+    source: &str,
+) -> Result<(), String> {
+    let svc = normalize_auth_service(service);
+    let mut map = read_accounts_map(dir);
+    let existing = map.get(svc).and_then(|v| v.as_object()).cloned();
+    let final_name = if name.trim().is_empty() {
+        existing
+            .as_ref()
+            .and_then(|o| o.get("name").and_then(|v| v.as_str()))
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(if svc == "spotify" {
+                "Spotify Account"
+            } else {
+                "YouTube Music Account"
+            })
+            .to_string()
+    } else {
+        name.trim().to_string()
+    };
+    let final_email = if email.trim().is_empty() {
+        existing
+            .as_ref()
+            .and_then(|o| o.get("email").and_then(|v| v.as_str()))
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(if svc == "spotify" {
+                "Active Spotify Session"
+            } else {
+                "Active Google Session"
+            })
+            .to_string()
+    } else {
+        email.trim().to_string()
+    };
+    let final_avatar = if avatar.trim().is_empty() {
+        existing
+            .as_ref()
+            .and_then(|o| o.get("avatar").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string()
+    } else {
+        avatar.trim().to_string()
+    };
+
+    map.insert(
+        svc.to_string(),
+        serde_json::json!({
+            "service": svc,
+            "name": final_name,
+            "email": final_email,
+            "avatar": final_avatar,
+            "authenticated": true,
+            "lastLogin": current_timestamp_str(),
+            "source": source
+        }),
+    );
+    write_private_json_atomic(&dir.join("user_accounts.json"), &Value::Object(map))
+}
+
+fn build_auth_status_payload(app: &AppHandle) -> Value {
+    let dir = auth_config_dir(app);
+    let mut accounts = read_accounts_map(&dir);
+
+    let ytm_wv_auth = app
+        .get_webview("yt-webview")
+        .map(|wv| webview_has_service_auth(&wv, "youtube"))
+        .unwrap_or(false);
+    let sp_wv_auth = app
+        .get_webview("spotify-webview")
+        .map(|wv| webview_has_service_auth(&wv, "spotify"))
+        .unwrap_or(false);
+
+    let ytm_file_auth = fs::read(dir.join("ytmusic_session.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Vec<Value>>(&b).ok())
+        .map(|arr| {
+            arr.iter().any(|c| {
+                is_service_auth_cookie(
+                    "youtube",
+                    c.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+                    c.get("domain").and_then(|v| v.as_str()).unwrap_or(""),
+                )
+            })
+        })
+        .unwrap_or(false);
+    let sp_file_auth = fs::read(dir.join("spotify_session.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Vec<Value>>(&b).ok())
+        .map(|arr| !arr.is_empty())
+        .unwrap_or(false);
+
+    let ytm_saved = accounts
+        .get("youtube")
+        .and_then(|v| v.get("authenticated"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let sp_saved = accounts
+        .get("spotify")
+        .and_then(|v| v.get("authenticated"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let is_ytm_auth = ytm_saved || ytm_wv_auth || ytm_file_auth;
+    let is_sp_auth = sp_saved || sp_wv_auth || sp_file_auth;
+
+    if is_ytm_auth && !accounts.contains_key("youtube") {
+        accounts.insert(
+            "youtube".to_string(),
+            serde_json::json!({
+                "service": "youtube",
+                "name": "YouTube Music Account",
+                "email": "Active Google Session",
+                "avatar": "",
+                "authenticated": true,
+                "source": "session"
+            }),
+        );
+    }
+    if is_sp_auth && !accounts.contains_key("spotify") {
+        accounts.insert(
+            "spotify".to_string(),
+            serde_json::json!({
+                "service": "spotify",
+                "name": "Spotify Account",
+                "email": "Active Spotify Session",
+                "avatar": "",
+                "authenticated": true,
+                "source": "session"
+            }),
+        );
+    }
+
+    let sp_name = accounts
+        .get("spotify")
+        .and_then(|v| v.get("name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("Spotify Account");
+
+    serde_json::json!({
+        "authenticated": is_ytm_auth || is_sp_auth,
+        "youtube": { "authenticated": is_ytm_auth },
+        "spotify": {
+            "authenticated": is_sp_auth,
+            "user": if is_sp_auth { serde_json::json!({ "display_name": sp_name }) } else { Value::Null }
+        },
+        "accounts": Value::Object(accounts),
+        "capabilities": {
+            "hostSyncAvailable": !is_snap_confined(),
+            "inAppWindowAvailable": true
+        }
+    })
+}
+
+fn emit_auth_status(app: &AppHandle, service: &str, state: &str, message: &str) {
+    let _ = app.emit(
+        "auth-cdp-status",
+        serde_json::json!({
+            "service": normalize_auth_service(service),
+            "state": state,
+            "message": message
+        }),
+    );
+}
+
+fn finalize_auth_cookies(
+    app: &AppHandle,
+    service: &str,
+    records: &[Value],
+    source: &str,
+    close_auth_window: bool,
+) -> Result<usize, String> {
+    let svc = normalize_auth_service(service);
+    let dir = auth_config_dir(app);
+    let session_path = dir.join(service_session_filename(svc));
+    write_private_json_atomic(&session_path, &Value::Array(records.to_vec()))?;
+
+    let target_label = if svc == "spotify" {
+        "spotify-webview"
+    } else {
+        "yt-webview"
+    };
+    let mut applied = 0usize;
+    if let Some(wv) = app.get_webview(target_label) {
+        applied = apply_cookie_values_to_webview(&wv, records);
+        let _ = wv.eval("window.location.reload()");
+    }
+    persist_service_account(&dir, svc, "", "", "", source)?;
+    let _ = app.emit("auth-sync-completed", serde_json::json!({ "service": svc }));
+    emit_auth_status(
+        app,
+        svc,
+        "complete",
+        &format!(
+            "Sign-in complete ({} session cookies synced). Refreshing player…",
+            records.len().max(applied)
+        ),
+    );
+    if close_auth_window {
+        if let Some(win) = app.get_webview_window("auth-window") {
+            let _ = win.close();
+        }
+    }
+    Ok(records.len())
+}
+
+fn extract_host_browser_cookies(service: &str) -> Option<Vec<Value>> {
+    let svc = normalize_auth_service(service);
+    let script = r#"
+import glob, json, os, shutil, sqlite3, sys, tempfile
+
+svc = sys.argv[1]
+domains = ['spotify.com'] if svc == 'spotify' else ['google.com', 'youtube.com']
+required = {'sp_dc', 'sp_key'} if svc == 'spotify' else {'SID', 'SAPISID', '__Secure-3PSID', '__Secure-1PSID'}
+
+def match_domain(host):
+    h = (host or '').lower().lstrip('.')
+    return any(h == d or h.endswith('.' + d) for d in domains)
+
+collected = []
+seen = set()
+
+def add_cookie(name, value, domain, path='/', secure=True, http_only=True):
+    if not name or not value or any(ord(ch) < 32 for ch in value):
+        return
+    key = (name, domain, path)
+    if key in seen:
+        return
+    seen.add(key)
+    collected.append({
+        'name': name,
+        'value': value,
+        'domain': domain,
+        'path': path or '/',
+        'secure': bool(secure),
+        'httpOnly': bool(http_only),
+    })
+
+home = os.path.expanduser('~')
+ff_patterns = [
+    os.path.join(home, '.mozilla/firefox/*/cookies.sqlite'),
+    os.path.join(home, 'snap/firefox/common/.mozilla/firefox/*/cookies.sqlite'),
+    os.path.join(home, '.var/app/org.mozilla.firefox/.mozilla/firefox/*/cookies.sqlite'),
+]
+for pattern in ff_patterns:
+    for db_path in glob.glob(pattern):
+        if not os.path.isfile(db_path):
+            continue
+        tmp_dir = tempfile.mkdtemp(prefix='bm-ff-')
+        try:
+            tmp_db = os.path.join(tmp_dir, 'cookies.sqlite')
+            shutil.copy2(db_path, tmp_db)
+            for suffix in ('-wal', '-shm'):
+                if os.path.isfile(db_path + suffix):
+                    shutil.copy2(db_path + suffix, tmp_db + suffix)
+            conn = sqlite3.connect(tmp_db)
+            for name, value, host, path, is_secure, is_http_only in conn.execute(
+                'SELECT name, value, host, path, isSecure, isHttpOnly FROM moz_cookies'
+            ):
+                if match_domain(host):
+                    add_cookie(name, value, host, path, is_secure, is_http_only)
+            conn.close()
+        except Exception:
+            pass
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+chr_patterns = [
+    os.path.join(home, '.config/google-chrome/*/Cookies'),
+    os.path.join(home, '.config/chromium/*/Cookies'),
+    os.path.join(home, '.config/BraveSoftware/Brave-Browser/*/Cookies'),
+]
+for pattern in chr_patterns:
+    for db_path in glob.glob(pattern):
+        if not os.path.isfile(db_path):
+            continue
+        tmp_dir = tempfile.mkdtemp(prefix='bm-chr-')
+        try:
+            tmp_db = os.path.join(tmp_dir, 'Cookies')
+            shutil.copy2(db_path, tmp_db)
+            conn = sqlite3.connect(tmp_db)
+            for name, value, host, path, is_secure, is_httponly in conn.execute(
+                'SELECT name, value, host_key, path, is_secure, is_httponly FROM cookies'
+            ):
+                if match_domain(host) and value:
+                    add_cookie(name, value, host, path, is_secure, is_httponly)
+            conn.close()
+        except Exception:
+            pass
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+has_req = any(c['name'] in required for c in collected)
+print(json.dumps({'ok': has_req, 'cookies': collected}))
+"#;
+
+    let out = std::process::Command::new("python3")
+        .args(["-c", script, svc])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let parsed: Value = serde_json::from_slice(&out.stdout).ok()?;
+    if parsed.get("ok").and_then(|v| v.as_bool()) == Some(true) {
+        parsed
+            .get("cookies")
+            .and_then(|v| v.as_array())
+            .cloned()
+    } else {
+        None
+    }
+}
+
+fn open_auth_window(app: &AppHandle, service: &str, custom_url: Option<String>) -> Result<(), String> {
+    let svc = normalize_auth_service(service).to_string();
+    let default_url = if svc == "spotify" {
+        "https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F"
+    } else {
+        "https://accounts.google.com/ServiceLogin?service=youtube&uilel=3&passive=true&continue=https%3A%2F%2Fmusic.youtube.com%2F"
+    };
+    let target_str = custom_url.unwrap_or_else(|| default_url.to_string());
+    let parsed_url = tauri::Url::parse(&target_str)
+        .map_err(|e| format!("Invalid sign-in URL: {e}"))?;
+
+    if let Some(existing) = app.get_webview_window("auth-window") {
+        let _ = existing.close();
+    }
+
+    let completed = Arc::new(AtomicBool::new(false));
+    let completed_for_nav = completed.clone();
+    let completed_for_poll = completed.clone();
+    let completed_for_close = completed.clone();
+
+    let app_for_nav = app.clone();
+    let svc_for_nav = svc.clone();
+
+    let title = if svc == "spotify" {
+        "Brave Music — Spotify Sign In"
+    } else {
+        "Brave Music — Google / YouTube Sign In"
+    };
+
+    // Native WebKitGTK UA + NO window.chrome polyfill avoids blinking & Google "browser may not be secure"
+    let auth_win = tauri::WebviewWindowBuilder::new(
+        app,
+        "auth-window",
+        tauri::WebviewUrl::External(parsed_url),
+    )
+    .title(title)
+    .inner_size(520.0, 720.0)
+    .resizable(true)
+    .center()
+    .on_navigation(move |nav_url| {
+        if completed_for_nav.load(Ordering::SeqCst) {
+            return true;
+        }
+        if is_service_landing_url(&svc_for_nav, nav_url.as_str()) {
+            let app_clone = app_for_nav.clone();
+            let svc_clone = svc_for_nav.clone();
+            let flag = completed_for_nav.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(650));
+                if flag.load(Ordering::SeqCst) {
+                    return;
+                }
+                if let Some(aw) = app_clone.get_webview_window("auth-window") {
+                    if let Ok(cookies) = aw.cookies() {
+                        let has_auth = cookies.iter().any(|c| {
+                            is_service_auth_cookie(&svc_clone, c.name(), c.domain().unwrap_or(""))
+                        });
+                        if has_auth && flag.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+                            let records = cookies_to_json_values(&svc_clone, &cookies);
+                            let _ = finalize_auth_cookies(&app_clone, &svc_clone, &records, "in-app-webview", true);
+                        }
+                    }
+                }
+            });
+        }
+        true
+    })
+    .build()
+    .map_err(|e| format!("Failed opening sign-in window: {e}"))?;
+
+    let _ = auth_win.set_focus();
+
+    let app_for_close = app.clone();
+    let svc_for_close = svc.clone();
+    auth_win.on_window_event(move |event| {
+        if let tauri::WindowEvent::Destroyed = event {
+            if !completed_for_close.load(Ordering::SeqCst) {
+                emit_auth_status(&app_for_close, &svc_for_close, "cancelled", "Sign-in window closed.");
+            }
+        }
+    });
+
+    // Background completion monitor catches SPA redirects where on_navigation fires before cookie flush
+    let app_for_poll = app.clone();
+    let svc_for_poll = svc;
+    std::thread::spawn(move || {
+        for _ in 0..240 {
+            if completed_for_poll.load(Ordering::SeqCst) || AUTH_LOGIN_CANCELED.load(Ordering::SeqCst) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            let Some(aw) = app_for_poll.get_webview_window("auth-window") else {
+                break;
+            };
+            let on_landing = aw
+                .url()
+                .ok()
+                .map(|u| is_service_landing_url(&svc_for_poll, u.as_str()))
+                .unwrap_or(false);
+            if !on_landing {
+                continue;
+            }
+            if let Ok(cookies) = aw.cookies() {
+                let has_auth = cookies.iter().any(|c| {
+                    is_service_auth_cookie(&svc_for_poll, c.name(), c.domain().unwrap_or(""))
+                });
+                if has_auth
+                    && completed_for_poll
+                        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok()
+                {
+                    let records = cookies_to_json_values(&svc_for_poll, &cookies);
+                    let _ = finalize_auth_cookies(&app_for_poll, &svc_for_poll, &records, "in-app-webview", true);
+                    break;
+                }
+            }
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+fn get_auth_status(app: AppHandle) -> Value {
+    build_auth_status_payload(&app)
+}
+
+#[tauri::command]
+fn get_saved_accounts(app: AppHandle) -> Value {
+    let dir = auth_config_dir(&app);
+    Value::Object(read_accounts_map(&dir))
+}
+
+#[tauri::command]
+fn save_user_account(app: AppHandle, service: String, profile: Value) -> Result<Value, String> {
+    let dir = auth_config_dir(&app);
+    let svc = normalize_auth_service(&service);
+    let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let email = profile.get("email").and_then(|v| v.as_str()).unwrap_or("");
+    let avatar = profile.get("avatar").and_then(|v| v.as_str()).unwrap_or("");
+    let source = profile
+        .get("source")
+        .and_then(|v| v.as_str())
+        .unwrap_or("webview");
+    persist_service_account(&dir, svc, name, email, avatar, source)?;
+    Ok(serde_json::json!({ "success": true, "service": svc }))
+}
+
+#[tauri::command]
+fn logout_provider(app: AppHandle, service: String) -> Result<Value, String> {
+    let svc = normalize_auth_service(&service);
+    let dir = auth_config_dir(&app);
+
+    let mut accounts = read_accounts_map(&dir);
+    accounts.remove(svc);
+    write_private_json_atomic(&dir.join("user_accounts.json"), &Value::Object(accounts))?;
+
+    let _ = fs::remove_file(dir.join(service_session_filename(svc)));
+    let _ = fs::remove_file(dir.join(format!("imported_cookies_{svc}.json")));
+
+    let target_label = if svc == "spotify" {
+        "spotify-webview"
+    } else {
+        "yt-webview"
+    };
+    if let Some(wv) = app.get_webview(target_label) {
+        if let Ok(cookies) = wv.cookies() {
+            for c in cookies {
+                let d = c.domain().unwrap_or("");
+                if cookie_belongs_to_service(svc, d) {
+                    let _ = wv.delete_cookie(c);
+                }
+            }
+        }
+        let _ = wv.eval("window.location.reload()");
+    }
+    Ok(serde_json::json!({ "success": true, "service": svc }))
+}
+
+#[tauri::command]
+fn import_cookies_json(app: AppHandle, service: String, raw_json: String) -> Result<Value, String> {
+    let svc = normalize_auth_service(&service);
+    let records = match parse_cookie_json_payload(&raw_json) {
+        Ok(r) => r,
+        Err(err) => return Ok(serde_json::json!({ "success": false, "error": err })),
+    };
+
+    let dir = auth_config_dir(&app);
+    let _ = write_private_json_atomic(
+        &dir.join(format!("imported_cookies_{svc}.json")),
+        &Value::Array(records.clone()),
+    );
+
+    match finalize_auth_cookies(&app, svc, &records, "cookies-json", false) {
+        Ok(count) => Ok(serde_json::json!({
+            "success": true,
+            "count": count,
+            "message": format!("Imported {count} session cookies into Brave Music.")
+        })),
+        Err(err) => Ok(serde_json::json!({ "success": false, "error": err })),
+    }
+}
+
+#[tauri::command]
+async fn start_service_login(
+    app: AppHandle,
+    service: String,
+    preferred_mode: Option<String>,
+) -> Result<Value, String> {
+    let svc = normalize_auth_service(&service).to_string();
+    let mode = preferred_mode
+        .unwrap_or_else(|| "browser".to_string())
+        .to_ascii_lowercase();
+
+    AUTH_LOGIN_CANCELED.store(false, Ordering::SeqCst);
+    if let Ok(mut guard) = AUTH_ACTIVE_SERVICE.lock() {
+        *guard = Some(svc.clone());
+    }
+
+    if mode == "in-app" || mode == "inapp" || mode == "window" {
+        emit_auth_status(
+            &app,
+            &svc,
+            "loading",
+            "Complete sign-in in the Brave Music sign-in window…",
+        );
+        open_auth_window(&app, &svc, None)?;
+        return Ok(serde_json::json!({
+            "success": false,
+            "pending": true,
+            "mode": "in-app"
+        }));
+    }
+
+    // Option 1: Open OS Default Browser + sync host cookies when unconfined
+    let login_url = if svc == "spotify" {
+        "https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F"
+    } else {
+        "https://accounts.google.com/ServiceLogin?service=youtube&uilel=3&passive=true&continue=https%3A%2F%2Fmusic.youtube.com%2F"
+    };
+    if let Err(err) = app.opener().open_url(login_url, None::<&str>) {
+        return Ok(serde_json::json!({
+            "success": false,
+            "error": format!("Could not open default browser: {err}. Try 'Use Built-In Secure Sign-In Window Directly' below.")
+        }));
+    }
+
+    if is_snap_confined() {
+        let msg = "Opened your default browser. Because Snap isolates external browser data, click 'Use Built-In Secure Sign-In Window Directly' below or import Cookies (.json) to finish linking.";
+        emit_auth_status(&app, &svc, "error", msg);
+        return Ok(serde_json::json!({
+            "success": false,
+            "snapConfined": true,
+            "error": msg
+        }));
+    }
+
+    emit_auth_status(
+        &app,
+        &svc,
+        "loading",
+        "Opened your default browser. Sign in there (syncing session automatically…)",
+    );
+
+    let app_clone = app.clone();
+    let svc_clone = svc.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        // Give user 3s after browser opens, then poll host Firefox/Chromium DBs for up to 45s
+        for step in 0..22 {
+            if AUTH_LOGIN_CANCELED.load(Ordering::SeqCst) {
+                return serde_json::json!({
+                    "success": false,
+                    "canceled": true,
+                    "error": "Sign-in cancelled."
+                });
+            }
+            std::thread::sleep(std::time::Duration::from_millis(if step == 0 { 3000 } else { 2000 }));
+            if AUTH_LOGIN_CANCELED.load(Ordering::SeqCst) {
+                return serde_json::json!({
+                    "success": false,
+                    "canceled": true,
+                    "error": "Sign-in cancelled."
+                });
+            }
+            if let Some(cookies) = extract_host_browser_cookies(&svc_clone) {
+                match finalize_auth_cookies(&app_clone, &svc_clone, &cookies, "browser-sync", false) {
+                    Ok(count) => {
+                        return serde_json::json!({
+                            "success": true,
+                            "count": count,
+                            "message": format!("Synced {count} cookies from your browser into Brave Music.")
+                        });
+                    }
+                    Err(err) => {
+                        return serde_json::json!({ "success": false, "error": err });
+                    }
+                }
+            }
+        }
+        let timeout_msg = "Default browser opened, but host browser cookies are encrypted or not yet signed in. Try 'Use Built-In Secure Sign-In Window Directly' below or import Cookies (.json).";
+        emit_auth_status(&app_clone, &svc_clone, "error", timeout_msg);
+        serde_json::json!({
+            "success": false,
+            "error": timeout_msg
+        })
+    })
+    .await
+    .map_err(|e| format!("Sign-in sync task failed: {e}"))
+}
+
+#[tauri::command]
+fn cancel_service_login(app: AppHandle) -> Result<(), String> {
+    AUTH_LOGIN_CANCELED.store(true, Ordering::SeqCst);
+    if let Some(win) = app.get_webview_window("auth-window") {
+        let _ = win.close();
+    }
+    if let Ok(mut guard) = AUTH_ACTIVE_SERVICE.lock() {
+        if let Some(svc) = guard.take() {
+            emit_auth_status(&app, &svc, "cancelled", "Sign-in cancelled.");
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn get_app_version() -> &'static str {
     "1.0.19-r"
@@ -2369,13 +3272,23 @@ fn main() {
             let child_h = (logical_h - 58.0).max(100.0);
 
             let app_handle_for_yt = app.handle().clone();
+            let app_handle_for_yt_popup = app.handle().clone();
             let yt_builder = tauri::WebviewBuilder::new("yt-webview", tauri::WebviewUrl::External(yt_url))
-                .user_agent(CHROME_USER_AGENT)
                 .initialization_script(WINDOW_CHROME_POLYFILL_SCRIPT)
                 .initialization_script(GUEST_ERROR_CAPTURE_SCRIPT)
                 .initialization_script(SHIELDS_SCRIPT)
                 .on_navigation(|_url| true)
-                .on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Allow)
+                .on_new_window(move |url, _features| {
+                    if is_auth_url(url.as_str()) {
+                        let app_clone = app_handle_for_yt_popup.clone();
+                        let u = url.to_string();
+                        std::thread::spawn(move || {
+                            let _ = open_auth_window(&app_clone, "youtube", Some(u));
+                        });
+                        return tauri::webview::NewWindowResponse::Deny;
+                    }
+                    tauri::webview::NewWindowResponse::Allow
+                })
                 .on_web_resource_request(move |request, response| {
                     let uri = request.uri();
                     let path_and_query = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("");
@@ -2401,6 +3314,7 @@ fn main() {
                 });
 
             let app_handle_for_spotify = app.handle().clone();
+            let app_handle_for_spotify_popup = app.handle().clone();
             let spotify_builder = tauri::WebviewBuilder::new("spotify-webview", tauri::WebviewUrl::External(spotify_url))
                 .user_agent(CHROME_USER_AGENT)
                 .initialization_script(WINDOW_CHROME_POLYFILL_SCRIPT)
@@ -2408,7 +3322,17 @@ fn main() {
                 .initialization_script(SHIELDS_SCRIPT)
                 .initialization_script(SPOTIFY_NAVBAR_FIX_SCRIPT)
                 .on_navigation(|_url| true)
-                .on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Allow)
+                .on_new_window(move |url, _features| {
+                    if is_auth_url(url.as_str()) {
+                        let app_clone = app_handle_for_spotify_popup.clone();
+                        let u = url.to_string();
+                        std::thread::spawn(move || {
+                            let _ = open_auth_window(&app_clone, "spotify", Some(u));
+                        });
+                        return tauri::webview::NewWindowResponse::Deny;
+                    }
+                    tauri::webview::NewWindowResponse::Allow
+                })
                 .on_web_resource_request(move |request, response| {
                     let uri = request.uri();
                     let path_and_query = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("");
@@ -2433,6 +3357,7 @@ fn main() {
                     }
                 });
 
+            let auth_dir = auth_config_dir(app.handle());
             match window.add_child(
                 yt_builder,
                 tauri::LogicalPosition::new(0.0, 58.0),
@@ -2440,6 +3365,16 @@ fn main() {
             ) {
                 Ok(yt_wv) => {
                     eprintln!("[Tauri setup] yt-webview added successfully");
+                    if !webview_has_service_auth(&yt_wv, "youtube") {
+                        if let Ok(bytes) = fs::read(auth_dir.join("ytmusic_session.json")) {
+                            if let Ok(records) = serde_json::from_slice::<Vec<Value>>(&bytes) {
+                                let applied = apply_cookie_values_to_webview(&yt_wv, &records);
+                                if applied > 0 {
+                                    let _ = yt_wv.eval("window.location.reload()");
+                                }
+                            }
+                        }
+                    }
                     let _ = yt_wv.show();
                 }
                 Err(e) => {
@@ -2454,6 +3389,13 @@ fn main() {
             ) {
                 Ok(sp_wv) => {
                     eprintln!("[Tauri setup] spotify-webview added successfully");
+                    if !webview_has_service_auth(&sp_wv, "spotify") {
+                        if let Ok(bytes) = fs::read(auth_dir.join("spotify_session.json")) {
+                            if let Ok(records) = serde_json::from_slice::<Vec<Value>>(&bytes) {
+                                let _ = apply_cookie_values_to_webview(&sp_wv, &records);
+                            }
+                        }
+                    }
                     let _ = sp_wv.hide();
                 }
                 Err(e) => {
@@ -2525,7 +3467,14 @@ fn main() {
             window_maximize,
             window_close,
             get_app_version,
-            get_stream_url
+            get_stream_url,
+            get_auth_status,
+            get_saved_accounts,
+            save_user_account,
+            logout_provider,
+            import_cookies_json,
+            start_service_login,
+            cancel_service_login
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Brave Music Linux preview");
@@ -2533,7 +3482,11 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{import_library_file, provider_url, score_yt_candidate, SearchCandidate};
+    use super::{
+        import_library_file, is_auth_url, is_service_auth_cookie, is_service_landing_url,
+        parse_cookie_json_payload, persist_service_account, provider_url, read_accounts_map,
+        score_yt_candidate, SearchCandidate,
+    };
     use brave_music_core::library::LibraryDocument;
     use serde_json::json;
     use std::fs;
@@ -2619,5 +3572,46 @@ mod tests {
         let s_official = score_yt_candidate(&official, "Blinding Lights", "The Weeknd", 200, false);
         let s_bad = score_yt_candidate(&slowed_cover, "Blinding Lights", "The Weeknd", 200, false);
         assert!(s_official > s_bad + 50, "expected official ({}) >> variant ({})", s_official, s_bad);
+    }
+
+    #[test]
+    fn detects_google_and_spotify_auth_urls_without_misclassifying_player_home() {
+        assert!(is_auth_url("https://accounts.google.com/v3/signin/identifier"));
+        assert!(is_auth_url("https://accounts.youtube.com/accounts/SetSID"));
+        assert!(is_auth_url("https://accounts.spotify.com/en/login"));
+        assert!(!is_auth_url("https://music.youtube.com/"));
+        assert!(!is_auth_url("https://open.spotify.com/"));
+
+        assert!(is_service_landing_url("youtube", "https://music.youtube.com/?hl=en"));
+        assert!(!is_service_landing_url("youtube", "https://accounts.google.com/ServiceLogin"));
+        assert!(is_service_landing_url("spotify", "https://open.spotify.com/collection/playlists"));
+        assert!(!is_service_landing_url("spotify", "https://accounts.spotify.com/en/login"));
+    }
+
+    #[test]
+    fn validates_cookie_json_and_persists_account_state_atomically() {
+        let parsed = parse_cookie_json_payload(
+            r#"[{"name":"SID","value":"abc","domain":".google.com"},{"name":"","value":"skip"}]"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert!(is_service_auth_cookie("youtube", "SID", ".google.com"));
+        assert!(is_service_auth_cookie("spotify", "sp_dc", ".spotify.com"));
+        assert!(!is_service_auth_cookie("spotify", "SID", ".spotify.com"));
+
+        let dir = tempfile::tempdir().unwrap();
+        persist_service_account(
+            dir.path(),
+            "youtube",
+            "Tester",
+            "tester@example.com",
+            "",
+            "in-app-webview",
+        )
+        .unwrap();
+        let saved = read_accounts_map(dir.path());
+        assert_eq!(saved["youtube"]["authenticated"], true);
+        assert_eq!(saved["youtube"]["name"], "Tester");
+        assert_eq!(saved["youtube"]["source"], "in-app-webview");
     }
 }

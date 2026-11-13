@@ -3,19 +3,22 @@ set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$DIR/../.." && pwd)"
-VERSION=$(node -p "require('$ROOT_DIR/package.json').version" 2>/dev/null || echo "1.0.19-r")
+VERSION=$(python3 -c "import json; print(json.load(open('$ROOT_DIR/package.json'))['version'])" 2>/dev/null || echo "1.0.19-r")
 STAGE_DIR="$DIR/dist/snap-stage"
 OUTPUT_SNAP="$DIR/brave-music_${VERSION}_amd64.snap"
 
-echo "=== Building Brave Music Ubuntu Snap (.snap) Package (v${VERSION}) ==="
+echo "=== Building Brave Music Ubuntu Snap (.snap) Package (Rust + WebKitGTK v${VERSION}) ==="
+
+cargo build --release --manifest-path "$ROOT_DIR/tauri-preview/src-tauri/Cargo.toml"
 
 rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR/meta/gui"
 mkdir -p "$STAGE_DIR/bin"
-mkdir -p "$STAGE_DIR/opt/brave-music"
+mkdir -p "$STAGE_DIR/opt/brave-music/backend"
+mkdir -p "$STAGE_DIR/opt/brave-music/src"
 
 # 1. Generate meta/snap.yaml
-# Mirrors the metadata produced by the `gnome` extension in snap/snapcraft.yaml:
+# Mirrors the metadata produced by the `gnome` extension on core24 + gnome-46-2404:
 # content plugs for the GNOME runtime + themes, layouts and desktop-launch.
 cat << 'EOF' > "$STAGE_DIR/meta/snap.yaml"
 name: brave-music
@@ -23,12 +26,11 @@ version: __VERSION__
 summary: Ad-free YouTube Music, Spotify & Offline Music OTT Platform
 description: |
   Brave Music is a high-performance, open-source Linux desktop Music OTT platform
-  developed by Codemo Open Source Labs (COSL). It brings together ad-free YouTube
-  Music, Spotify Web with Widevine DRM playback, a local high-bitrate audio
-  downloader, and an integrated offline music library with native Linux MPRIS2
-  media controls.
+  developed by Codemo Open Source Labs (COSL). It runs natively on Rust, Tauri,
+  and WebKitGTK with built-in Brave Shields ad-blocking, yt-dlp/ffmpeg offline
+  downloads, and zero Electron/Chromium runtime overhead.
 license: GPL-3.0+
-base: core22
+base: core24
 grade: stable
 confinement: strict
 assumes:
@@ -38,17 +40,20 @@ architectures:
 environment:
   SNAP_DESKTOP_RUNTIME: $SNAP/gnome-platform
   GTK_USE_PORTAL: '1'
+  WEBKIT_EXEC_PATH: $SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1
 layout:
   /usr/share/libdrm:
-    bind: $SNAP/gnome-platform/usr/share/libdrm
+    bind: $SNAP/gpu-2404/libdrm
+  /usr/share/drirc.d:
+    symlink: $SNAP/gpu-2404/drirc.d
+  /usr/share/X11/XErrorDB:
+    symlink: $SNAP/gpu-2404/X11/XErrorDB
   /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1:
     bind: $SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1
   /usr/lib/x86_64-linux-gnu/libproxy:
     bind: $SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/libproxy
   /usr/share/xml/iso-codes:
     bind: $SNAP/gnome-platform/usr/share/xml/iso-codes
-  /usr/lib/x86_64-linux-gnu/webkit2gtk-4.0:
-    bind: $SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.0
 hooks:
   configure:
     command-chain:
@@ -59,6 +64,10 @@ slots:
   mpris:
     interface: mpris
 plugs:
+  gpu-2404:
+    interface: content
+    target: $SNAP/gpu-2404
+    default-provider: mesa-2404
   desktop:
     mount-host-font-cache: false
   gtk-3-themes:
@@ -73,15 +82,16 @@ plugs:
     interface: content
     target: $SNAP/data-dir/sounds
     default-provider: gtk-common-themes
-  gnome-42-2204:
+  gnome-46-2404:
     interface: content
     target: $SNAP/gnome-platform
-    default-provider: gnome-42-2204
+    default-provider: gnome-46-2404
 apps:
   brave-music:
     command: bin/brave-music-snap
     common-id: org.codemolabs.BraveMusic
     command-chain:
+      - snap/command-chain/gpu-2404-wrapper
       - snap/command-chain/desktop-launch
     slots:
       - mpris
@@ -103,9 +113,10 @@ EOF
 sed -i "s/__VERSION__/${VERSION}/" "$STAGE_DIR/meta/snap.yaml"
 
 # 1b. Install the GNOME extension command-chain shims. They forward to the
-#     desktop-launch/font helpers shipped by the gnome-42-2204 content snap.
+#     gpu-2404 and desktop-launch/font helpers shipped by mesa-2404 and gnome-46-2404.
 mkdir -p "$STAGE_DIR/snap/command-chain"
-cp "$ROOT_DIR/snap/command-chain/desktop-launch" \
+cp "$ROOT_DIR/snap/command-chain/gpu-2404-wrapper" \
+   "$ROOT_DIR/snap/command-chain/desktop-launch" \
    "$ROOT_DIR/snap/command-chain/hooks-configure-fonts" \
    "$ROOT_DIR/snap/command-chain/run" \
    "$STAGE_DIR/snap/command-chain/"
@@ -116,7 +127,7 @@ chmod 755 "$STAGE_DIR/snap/command-chain/"*
 mkdir -p "$STAGE_DIR/meta/hooks"
 cat << 'EOF' > "$STAGE_DIR/meta/hooks/configure"
 #!/bin/sh
-# Font cache is built by the gnome-42-2204 hook command-chain.
+# Font cache is built by the gnome-46-2404 hook command-chain.
 exit 0
 EOF
 chmod 755 "$STAGE_DIR/meta/hooks/configure"
@@ -140,29 +151,12 @@ Keywords=Music;YouTube;Spotify;Download;Audio;Player;
 EOF
 chmod 644 "$STAGE_DIR/meta/gui/brave-music.desktop"
 
-# 3. Copy Application Payload into opt/brave-music
-DEB_STAGE="$DIR/dist/brave-music_${VERSION}_amd64/opt/brave-music"
-if [ -d "$DEB_STAGE" ] && [ -f "$DEB_STAGE/main.js" ]; then
-  echo "Reusing staged application files from $DEB_STAGE..."
-  cp -a "$DEB_STAGE/." "$STAGE_DIR/opt/brave-music/"
-else
-  echo "Staging application files from workspace..."
-  cp "$ROOT_DIR/package.json" "$STAGE_DIR/opt/brave-music/"
-  cp "$ROOT_DIR/main.js" "$STAGE_DIR/opt/brave-music/"
-  cp "$ROOT_DIR/preload.js" "$STAGE_DIR/opt/brave-music/"
-  cp -r "$ROOT_DIR/backend" "$STAGE_DIR/opt/brave-music/"
-  cp -r "$ROOT_DIR/src" "$STAGE_DIR/opt/brave-music/"
-  cp -r "$ROOT_DIR/node_modules" "$STAGE_DIR/opt/brave-music/"
+# 3. Copy Native Binary & Backend Binaries into opt/brave-music (Zero Electron)
+cp "$ROOT_DIR/tauri-preview/src-tauri/target/release/brave-music-linux-preview" "$STAGE_DIR/opt/brave-music/brave-music-linux-preview"
+chmod +x "$STAGE_DIR/opt/brave-music/brave-music-linux-preview"
+cp -r "$ROOT_DIR/backend/bin" "$STAGE_DIR/opt/brave-music/backend/"
+cp -r "$ROOT_DIR/src/assets" "$STAGE_DIR/opt/brave-music/src/"
 
-  mkdir -p "$STAGE_DIR/opt/brave-music/WidevineCdm"
-  if [ -d "/opt/google/chrome/WidevineCdm" ]; then
-    cp -r /opt/google/chrome/WidevineCdm/* "$STAGE_DIR/opt/brave-music/WidevineCdm/" 2>/dev/null || true
-  fi
-fi
-
-chmod +x "$STAGE_DIR/opt/brave-music/node_modules/electron/dist/electron" 2>/dev/null || true
-chmod +x "$STAGE_DIR/opt/brave-music/node_modules/.bin/electron" 2>/dev/null || true
-chmod +x "$STAGE_DIR/opt/brave-music/backend/engine/musikcube/musikcubed" 2>/dev/null || true
 chmod +x "$STAGE_DIR/opt/brave-music/backend/bin/yt-dlp" \
          "$STAGE_DIR/opt/brave-music/backend/bin/node" \
          "$STAGE_DIR/opt/brave-music/backend/bin/ffmpeg" \
@@ -171,23 +165,16 @@ chmod +x "$STAGE_DIR/opt/brave-music/backend/bin/yt-dlp" \
 # 4. Create Snap Launcher Script (bin/brave-music-snap)
 cat << 'EOF' > "$STAGE_DIR/bin/brave-music-snap"
 #!/bin/bash
-unset ELECTRON_RUN_AS_NODE
-export ELECTRON_DISABLE_SECURITY_WARNINGS=true
 APP_DIR="${SNAP:-}/opt/brave-music"
 if [ ! -d "$APP_DIR" ]; then
   APP_DIR="/opt/brave-music"
 fi
 export PATH="$APP_DIR/backend/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-export LD_LIBRARY_PATH="${SNAP:+$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu:$SNAP/gnome-platform/lib/x86_64-linux-gnu:}$APP_DIR/backend/bin:$APP_DIR/backend/engine/musikcube:$APP_DIR/backend/engine/musikcube/lib:${LD_LIBRARY_PATH:-}"
-cd "$APP_DIR"
-FLAGS="--no-sandbox --no-zygote --disable-gpu-sandbox --disable-dev-shm-usage --class=brave-music --name=brave-music"
-if [ -x "$APP_DIR/node_modules/electron/dist/electron" ]; then
-  exec "$APP_DIR/node_modules/electron/dist/electron" "$APP_DIR" $FLAGS "$@"
-elif [ -x "$APP_DIR/node_modules/.bin/electron" ]; then
-  exec "$APP_DIR/node_modules/.bin/electron" . $FLAGS "$@"
-else
-  exec npx --yes electron . $FLAGS "$@"
-fi
+export LD_LIBRARY_PATH="${SNAP:+$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu:$SNAP/gnome-platform/lib/x86_64-linux-gnu:}$APP_DIR/backend/bin:${LD_LIBRARY_PATH:-}"
+export WEBKIT_EXEC_PATH="${SNAP:+$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1}"
+export WEBKIT_FORCE_COMPOSITING_MODE=1
+export WEBKIT_DISABLE_COMPOSITING_MODE=0
+exec "$APP_DIR/brave-music-linux-preview" "$@"
 EOF
 chmod +x "$STAGE_DIR/bin/brave-music-snap"
 

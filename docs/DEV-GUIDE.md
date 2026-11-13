@@ -8,86 +8,67 @@ This document provides technical instructions for setting up the local developme
 
 Ensure your development environment meets the following specifications:
 
-- **Operating System**: Linux (Ubuntu 22.04+, Debian 12+, Fedora 38+, Arch Linux)
-- **Node.js**: v18.x, v20.x, or v22.x
-- **Package Manager**: npm v9+
+- **Operating System**: Linux (Ubuntu 24.04+, Debian 12+, Fedora 39+, Arch Linux)
+- **Rust Toolchain**: `rustc` / `cargo` (stable)
+- **System GTK / WebKitGTK Dev Libraries**: `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libsoup-3.0-dev`
 - **Bundled Self-Contained Media Binaries (`backend/bin/`)**:
-  - `backend/bin/yt-dlp` (with embedded `yt_dlp_ejs` JS challenge solver)
-  - `backend/bin/node` (`ELECTRON_RUN_AS_NODE=1` shim for sandboxed JS solving)
+  - `backend/bin/yt-dlp` (with embedded `yt_dlp_ejs` JS challenge solver, `mutagen`, `certifi`, `urllib3`, `requests`, `websockets`)
   - `backend/bin/ffmpeg`, `backend/bin/ffprobe`, and bundled `libav*.so` / `libsw*.so`
-- **Packaging & Optional Cross-Platform Stack**:
-  - `dpkg-deb` / `snapcraft` for `.deb` & Ubuntu Snap packaging
-  - `cargo`, `rustc`, `libwebkit2gtk-4.1-dev`, `libgtk-3-dev` for `tauri-preview` + `crates/brave-music-core`
+  - `backend/bin/node` (system Node wrapper used only if a working host `node` binary exists; zero Electron dependency)
+- **Packaging**:
+  - `dpkg-deb` / `snapcraft` (`core24` + `gnome-46-2404` + `mesa-2404`)
 
-Install system build prerequisites on Ubuntu/Debian (no system `yt-dlp` needed):
+Install system build prerequisites on Ubuntu/Debian (no Electron required):
 ```bash
 sudo apt update
-sudo apt install -y nodejs npm curl dpkg
+sudo apt install -y cargo rustc libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev curl dpkg python3
 ```
 
 ---
 
 ## 2. Architecture Overview and Project Specifications
 
-Brave Music organizes its runtime into four synchronized tiers: the Electron desktop shell, the preload IPC security bridge, the backend service controllers, and the embedded native C++ audio engine.
+Brave Music organizes its runtime into three synchronized tiers: the Tauri v2 + WebKitGTK native desktop shell (`tauri-preview/`), the Rust core domain library (`crates/brave-music-core`), and the bundled self-contained media pipeline (`backend/bin/`).
 
 ### Project Architecture Diagram
 
 ```mermaid
 graph TD
-    subgraph UI ["Frontend Interface Layer (HTML5 / CSS / Vanilla JS)"]
+    subgraph UI ["Frontend Interface Layer (tauri-preview/ui - HTML5 / CSS / Vanilla JS)"]
         A[Brave Music Desktop Shell]
-        A1[Top Navigation Bar]
-        A2[YouTube Music Webview]
-        A3[Spotify Web Player Webview]
+        A1[Top Navigation Bar & Person Auth Modal]
+        A2[YouTube Music Child Webview - Native WebKitGTK UA]
+        A3[Spotify Web Player Child Webview]
         A4[Offline Library and Downloads View]
         A5[Brave Shields Cosmetic Filter Engine]
     end
 
-    subgraph IPC ["Electron Core Process and IPC Bridge"]
-        B[Electron Main Controller - main.js]
-        B1[Preload IPC Bridge - preload.js]
-        B2[CastLabs Chromium with Widevine CDM]
-        B3[Session and Cookie Manager persist:bravemusic]
-        B4[System Browser OAuth Fallback]
+    subgraph Runtime ["Tauri v2 Native Rust Host (tauri-preview/src-tauri/src/main.rs)"]
+        B[Tauri App & Command Handler]
+        B1[Isolated WebKitGTK Sign-In Window - auth-window]
+        B2[Default Browser Sign-In & Host Cookie Sync]
+        B3[Cookie Store & ~/.config/brave-music Session JSON]
+        B4[Local HTTP Range Audio Streaming Server]
     end
 
-    subgraph Backend ["Node.js Backend Service Layer & Self-Contained Binaries"]
-        C[Backend Server Controller - backend/index.js]
-        C1[AdBlockService and BraveShieldsRules]
-        C2[AuthSyncService and YTMDevtoolsAuthService - Dual-Mode Auth]
-        C3[DownloadService - Pathfinder/Embed/yt-dlp + ID3v2]
-        C4[LibraryService and Collection Indexer]
-        C5[StreamServer HTTP Range Proxy & MprisService]
-        C6[backend/bin - yt-dlp + node EJS + ffmpeg/ffprobe]
+    subgraph Core ["Rust Core & Media Engine"]
+        C1[crates/brave-music-core Library & Atomic Storage]
+        C2[YouTube & Spotify Playlist/Mix Resolver + Scoring]
+        C3[backend/bin - yt-dlp + ffmpeg/ffprobe]
     end
 
-    subgraph Engine ["Native Audio Engine & Rust Core"]
-        D[musikcubed Native Daemon / Stream Pipeline]
-        D1[libmusikcore.so Core Pipeline]
-        D2[crates/brave-music-core Rust Domain Library]
-        D3[Audio Output Drivers - PipeWire / PulseAudio / ALSA]
-    end
-
-    A -->|User Actions and Tab Events| B1
-    B1 -->|Secure IPC Invoke / Send| B
-    B -->|Initialize and Manage| B2
-    B -->|Manage Cookie Jar and Auth| B3
-    B -->|Default Browser OAuth Auto-Sync| B4
-    B -->|Dispatch Service Requests| C
+    A -->|Tauri invoke & Events| B
+    B -->|Option 1: Open Default Browser & Sync| B2
+    B -->|Option 2: Built-In WebKitGTK Sign-In| B1
+    B1 -->|Webview::set_cookie & Reload| A2
+    B1 -->|Webview::set_cookie & Reload| A3
+    B2 -->|Persist Session 0600 JSON| B3
+    B -->|Dispatch Downloads & Library Edits| C1
+    B -->|Resolve Track / Mix Queues| C2
+    C2 -->|Execute Sandboxed Media CLI| C3
+    B4 -->|Serve HTTP 206 Audio Streams| A4
     A5 -->|Inject Cosmetic CSS and Scripts| A2
     A5 -->|Inject Cosmetic CSS and Scripts| A3
-    C -->|Evaluate Request Blocking| C1
-    C -->|Extract Session State| C2
-    C -->|Run Sequential Mix and Playlist Jobs| C3
-    C3 -->|Execute Self-Contained Tools| C6
-    C -->|Persist Collections and Order| C4
-    C -->|Control Playback and MPRIS| D
-    C5 -->|Serve Local Audio Buffers| A4
-    D --> D1
-    D --> D2
-    D1 --> D3
-    D2 --> D3
 ```
 
 <details>

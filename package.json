@@ -2,16 +2,14 @@
   "name": "@codemolabs/brave-music",
   "productName": "brave-music",
   "version": "1.0.19-r",
-  "description": "Brave Music OTT Platform - Ad-free YouTube, Spotify and Built-in Offline Music Engine (Linux Desktop)",
-  "main": "main.js",
-  "bin": {
-    "brave-music": "./bin/brave-music.js"
-  },
+  "description": "Brave Music OTT Platform - Ad-free YouTube Music, Native Rust/WebKitGTK Runtime & Offline Audio Engine",
   "scripts": {
-    "start": "electron . --no-sandbox",
+    "start": "bash run.sh",
+    "test": "cargo test --manifest-path crates/brave-music-core/Cargo.toml && cargo test --manifest-path tauri-preview/src-tauri/Cargo.toml",
+    "build:rust": "cargo build --release --manifest-path tauri-preview/src-tauri/Cargo.toml",
     "build:snap": "bash Install/Linux/build-snap.sh",
     "build:deb": "bash Install/Linux/build-deb.sh",
-    "build:all": "bash Install/Linux/build-snap.sh && bash Install/Linux/build-deb.sh"
+    "build:all": "bash Install/Linux/build-deb.sh && bash Install/Linux/build-snap.sh"
   },
   "repository": {
     "type": "git",
@@ -21,9 +19,6 @@
     "url": "https://github.com/codemolabs/Brave-Music/issues"
   },
   "homepage": "https://github.com/codemolabs/Brave-Music#readme",
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
-  },
   "os": [
     "linux"
   ],
@@ -32,9 +27,8 @@
     "arm64"
   ],
   "files": [
-    "main.js",
-    "preload.js",
-    "bin/brave-music.js",
+    "crates/",
+    "tauri-preview/",
     "backend/",
     "src/",
     "run.sh",
@@ -42,16 +36,5 @@
     "README.md"
   ],
   "author": "Codemo Open Source Labs <cosl@codemoteams.org>",
-  "license": "GPL-3.0-or-later",
-  "dependencies": {
-    "electron": "github:castlabs/electron-releases#v42.11.18+wvcus",
-    "ws": "^8.22.0"
-  },
-  "optionalDependencies": {
-    "dbus-next": "^0.10.2",
-    "mpris-service": "^2.1.2"
-  },
-  "devDependencies": {
-    "electron": "github:castlabs/electron-releases#v42.11.18+wvcus"
-  }
+  "license": "GPL-3.0-or-later"
 }

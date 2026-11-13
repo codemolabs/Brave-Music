@@ -194,51 +194,36 @@ window.addEventListener('error', (event) => {
     },
 
     // Auth & Accounts
-    startServiceLogin: async (service) => {
-      if (service === 'youtube') {
-        await invoke('open_external', {
-          url: 'https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F'
-        });
-      } else if (service === 'spotify') {
-        await invoke('open_external', {
-          url: 'https://accounts.spotify.com/en/login?continue=https%3A%2F%2Fopen.spotify.com%2F'
-        });
-      } else {
-        await invoke('open_provider', { provider: service });
+    startServiceLogin: (service, preferredMode) =>
+      invoke('start_service_login', { service, preferredMode: preferredMode || 'browser' }),
+    cancelServiceLogin: () => invoke('cancel_service_login'),
+    getAuthStatus: () => invoke('get_auth_status'),
+    getSavedAccounts: () => invoke('get_saved_accounts'),
+    saveUserAccount: (service, profile) => invoke('save_user_account', { service, profile }),
+    logoutProvider: (service) => invoke('logout_provider', { service }),
+    importCookiesJson: (service, rawJson) => invoke('import_cookies_json', { service, rawJson }),
+    onAuthCdpStatus: (callback) => {
+      const tauriEvent = window.__TAURI__?.event;
+      if (tauriEvent && typeof tauriEvent.listen === 'function') {
+        let unlistenFn = null;
+        tauriEvent.listen('auth-cdp-status', (e) => {
+          if (callback && e && e.payload) callback(e.payload);
+        }).then(unlisten => { unlistenFn = unlisten; }).catch(() => {});
+        return () => { if (unlistenFn) unlistenFn(); };
       }
-      return {
-        success: true,
-        message: 'Sign-in complete! Default browser session synced to Brave Music.'
-      };
+      return () => {};
     },
-    cancelServiceLogin: async () => {},
-    getAuthStatus: async () => ({
-      authenticated: true,
-      service: 'browser-sync',
-      accounts: {
-        youtube: {
-          name: 'Active Google Session',
-          email: 'Synchronized via System Browser'
-        },
-        spotify: {
-          name: 'Active Spotify Session',
-          email: 'Synchronized via System Browser'
-        }
+    onAuthSyncCompleted: (callback) => {
+      const tauriEvent = window.__TAURI__?.event;
+      if (tauriEvent && typeof tauriEvent.listen === 'function') {
+        let unlistenFn = null;
+        tauriEvent.listen('auth-sync-completed', (e) => {
+          if (callback && e && e.payload) callback(e.payload);
+        }).then(unlisten => { unlistenFn = unlisten; }).catch(() => {});
+        return () => { if (unlistenFn) unlistenFn(); };
       }
-    }),
-    getSavedAccounts: async () => ({
-      youtube: {
-        name: 'Active Google Session',
-        email: 'Synchronized via System Browser'
-      },
-      spotify: {
-        name: 'Active Spotify Session',
-        email: 'Synchronized via System Browser'
-      }
-    }),
-    saveUserAccount: async () => {},
-    logoutProvider: async () => {},
-    importCookiesJson: async () => ({ success: true, message: 'Cookies imported' }),
+      return () => {};
+    },
 
     // Offline Audio Download Engine & Recommendations
     startDownload: async (params) => {

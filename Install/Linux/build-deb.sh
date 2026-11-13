@@ -3,16 +3,19 @@ set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$DIR/../.." && pwd)"
-VERSION=$(node -p "require('$ROOT_DIR/package.json').version" 2>/dev/null || echo "1.0.18")
+VERSION=$(python3 -c "import json; print(json.load(open('$ROOT_DIR/package.json'))['version'])" 2>/dev/null || echo "1.0.19-r")
 BUILD_DIR="$DIR/dist/brave-music_${VERSION}_amd64"
 OUTPUT_DEB="$DIR/brave-music_${VERSION}_amd64.deb"
 
-echo "=== Building Brave Music Debian (.deb) Package (v${VERSION}) ==="
+echo "=== Building Brave Music Debian (.deb) Package (Rust + WebKitGTK v${VERSION}) ==="
+
+cargo build --release --manifest-path "$ROOT_DIR/tauri-preview/src-tauri/Cargo.toml"
 
 # Clean previous build artifacts
 rm -rf "$DIR/dist"
 mkdir -p "$BUILD_DIR/DEBIAN"
-mkdir -p "$BUILD_DIR/opt/brave-music"
+mkdir -p "$BUILD_DIR/opt/brave-music/backend"
+mkdir -p "$BUILD_DIR/opt/brave-music/src"
 mkdir -p "$BUILD_DIR/usr/bin"
 mkdir -p "$BUILD_DIR/usr/share/applications"
 mkdir -p "$BUILD_DIR/usr/share/icons/hicolor/scalable/apps"
@@ -25,29 +28,20 @@ Section: sound
 Priority: optional
 Architecture: amd64
 Maintainer: Brave Music Team <support@bravemusic.org>
-Recommends: nodejs, yt-dlp, ffmpeg
+Depends: libwebkit2gtk-4.1-0, libgtk-3-0, libsoup-3.0-0
+Recommends: yt-dlp, ffmpeg, python3
 Description: Brave Music OTT Platform
- Ad-free YouTube Music and Spotify streaming with built-in offline music engine.
- Features native tabbed navigation, Brave Shields ad-blocking, high-bitrate offline music downloading, and local runtime player.
+ Native Rust + WebKitGTK desktop platform for ad-free YouTube Music, Spotify
+ playlist resolution, high-bitrate offline audio downloading, and local playback.
+ Zero Electron runtime dependencies.
 EOF
 
-# 2. Copy App Files into /opt/brave-music
-cp "$ROOT_DIR/package.json" "$BUILD_DIR/opt/brave-music/"
-cp "$ROOT_DIR/main.js" "$BUILD_DIR/opt/brave-music/"
-cp "$ROOT_DIR/preload.js" "$BUILD_DIR/opt/brave-music/"
-cp -r "$ROOT_DIR/backend" "$BUILD_DIR/opt/brave-music/"
-cp -r "$ROOT_DIR/src" "$BUILD_DIR/opt/brave-music/"
-cp -r "$ROOT_DIR/node_modules" "$BUILD_DIR/opt/brave-music/"
+# 2. Copy Native App Binary & Bundled Audio Engine Tools into /opt/brave-music
+cp "$ROOT_DIR/tauri-preview/src-tauri/target/release/brave-music-linux-preview" "$BUILD_DIR/opt/brave-music/brave-music-linux-preview"
+chmod +x "$BUILD_DIR/opt/brave-music/brave-music-linux-preview"
+cp -r "$ROOT_DIR/backend/bin" "$BUILD_DIR/opt/brave-music/backend/"
+cp -r "$ROOT_DIR/src/assets" "$BUILD_DIR/opt/brave-music/src/"
 
-# Seed Widevine CDM into /opt/brave-music/WidevineCdm if available
-mkdir -p "$BUILD_DIR/opt/brave-music/WidevineCdm"
-if [ -d "/opt/google/chrome/WidevineCdm" ]; then
-  cp -r /opt/google/chrome/WidevineCdm/* "$BUILD_DIR/opt/brave-music/WidevineCdm/" 2>/dev/null || true
-fi
-
-chmod +x "$BUILD_DIR/opt/brave-music/node_modules/electron/dist/electron" 2>/dev/null || true
-chmod +x "$BUILD_DIR/opt/brave-music/node_modules/.bin/electron" 2>/dev/null || true
-chmod +x "$BUILD_DIR/opt/brave-music/backend/engine/musikcube/musikcubed" 2>/dev/null || true
 chmod +x "$BUILD_DIR/opt/brave-music/backend/bin/yt-dlp" \
          "$BUILD_DIR/opt/brave-music/backend/bin/node" \
          "$BUILD_DIR/opt/brave-music/backend/bin/ffmpeg" \
@@ -56,19 +50,11 @@ chmod +x "$BUILD_DIR/opt/brave-music/backend/bin/yt-dlp" \
 # 3. Create /opt/brave-music/run.sh
 cat << 'EOF' > "$BUILD_DIR/opt/brave-music/run.sh"
 #!/bin/bash
-unset ELECTRON_RUN_AS_NODE
 export PATH="/opt/brave-music/backend/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-export LD_LIBRARY_PATH="/opt/brave-music/backend/bin:/opt/brave-music/backend/engine/musikcube:/opt/brave-music/backend/engine/musikcube/lib:${LD_LIBRARY_PATH:-}"
-export ELECTRON_DISABLE_SECURITY_WARNINGS=true
-cd /opt/brave-music
-FLAGS="--no-sandbox --no-zygote --disable-gpu-sandbox --class=brave-music --name=brave-music"
-if [ -x "/opt/brave-music/node_modules/electron/dist/electron" ]; then
-  exec /opt/brave-music/node_modules/electron/dist/electron /opt/brave-music $FLAGS "$@"
-elif [ -x "/opt/brave-music/node_modules/.bin/electron" ]; then
-  exec /opt/brave-music/node_modules/.bin/electron . $FLAGS "$@"
-else
-  exec npx --yes electron . $FLAGS "$@"
-fi
+export LD_LIBRARY_PATH="/opt/brave-music/backend/bin:${LD_LIBRARY_PATH:-}"
+export WEBKIT_FORCE_COMPOSITING_MODE=1
+export WEBKIT_DISABLE_COMPOSITING_MODE=0
+exec /opt/brave-music/brave-music-linux-preview "$@"
 EOF
 chmod +x "$BUILD_DIR/opt/brave-music/run.sh"
 

@@ -1,0 +1,24 @@
+#!/bin/bash
+
+GPU_WRAPPER="${SNAP}/gpu-2404/bin/gpu-2404-provider-wrapper"
+
+if [ -z "$1" ]; then
+    echo "Usage: gpu-2404-wrapper <command>"
+    exit 1
+fi
+
+if [ -z "${SNAP}" ]; then
+    echo "Not running inside a snap context: SNAP not declared"
+    exit 2
+fi
+
+if [ ! -f "${GPU_WRAPPER}" ]; then
+    echo "Content snap GPU wrapper '${GPU_WRAPPER}' not found: ensure slot is connected"
+    exit 3
+fi
+
+# emulate "exec $@" using "source"
+# shellcheck disable=SC2034
+BASH_ARGV0="${GPU_WRAPPER}"
+# shellcheck source=/dev/null
+source "${GPU_WRAPPER}"

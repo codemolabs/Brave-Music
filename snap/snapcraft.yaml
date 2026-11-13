@@ -1,21 +1,21 @@
 name: brave-music
-base: core22
+base: core24
 version: '1.0.19-r'
 summary: Ad-free YouTube Music, Spotify & Offline Music OTT Platform
 description: |
   Brave Music is a high-performance, open-source Linux desktop Music OTT platform
   developed by Codemo Open Source Labs (COSL). It brings together ad-free YouTube
-  Music, Spotify Web with Widevine DRM playback, a local high-bitrate audio
-  downloader, and an integrated offline music library with native Linux MPRIS2
-  media controls.
+  Music, a native Rust/Tauri + WebKitGTK desktop shell, a local high-bitrate audio
+  downloader (yt-dlp + ffmpeg), Spotify metadata/playlist queue resolution, and an
+  integrated offline music library with zero Electron/Chromium runtime overhead.
 
   Key Features:
-  - Unified Navigation: Switch seamlessly between Home, YouTube Music, Spotify,
+  - Unified Navigation: Switch seamlessly between YouTube Music, Spotify Web,
     Downloads, and Offline Library.
   - Brave Shields Integration: Built-in network-level ad-blocking and cosmetic
     scriptlet filtering for uninterrupted streaming.
-  - Hardware-Accelerated 60fps UI: Smooth GPU-composited scrolling and native
-    desktop window management.
+  - Native Rust + WebKitGTK Runtime: Fast startup, low memory footprint, and
+    built-in secure sign-in without deprecated Electron wrappers.
   - 100% Local & Privacy-First: Zero telemetry, zero analytics, and no cloud
     tracking.
 license: GPL-3.0+
@@ -28,12 +28,16 @@ grade: stable
 confinement: strict
 compression: lzo
 
-architectures:
-  - build-on: amd64
+platforms:
+  amd64:
 
 slots:
   mpris:
     interface: mpris
+
+layout:
+  /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1:
+    bind: $SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1
 
 apps:
   brave-music:
@@ -62,12 +66,16 @@ parts:
     plugin: dump
     source: .
     override-build: |
-      mkdir -p $CRAFT_PART_INSTALL/opt/brave-music
+      mkdir -p $CRAFT_PART_INSTALL/opt/brave-music/backend/bin
       mkdir -p $CRAFT_PART_INSTALL/bin
       mkdir -p $CRAFT_PART_INSTALL/usr/share/applications
       mkdir -p $CRAFT_PART_INSTALL/usr/share/icons/hicolor/512x512/apps
 
-      cp -r package.json main.js preload.js backend src node_modules $CRAFT_PART_INSTALL/opt/brave-music/
+      cargo build --release --manifest-path tauri-preview/src-tauri/Cargo.toml
+      cp tauri-preview/src-tauri/target/release/brave-music-linux-preview $CRAFT_PART_INSTALL/opt/brave-music/brave-music-linux-preview
+      chmod +x $CRAFT_PART_INSTALL/opt/brave-music/brave-music-linux-preview
+
+      cp -r backend/bin $CRAFT_PART_INSTALL/opt/brave-music/backend/
       cp src/assets/app-icon.png $CRAFT_PART_INSTALL/usr/share/icons/hicolor/512x512/apps/brave-music.png
       chmod +x $CRAFT_PART_INSTALL/opt/brave-music/backend/bin/yt-dlp \
                $CRAFT_PART_INSTALL/opt/brave-music/backend/bin/node \
@@ -76,14 +84,11 @@ parts:
 
       cat << 'EOF' > $CRAFT_PART_INSTALL/bin/brave-music-snap
       #!/bin/bash
-      unset ELECTRON_RUN_AS_NODE
-      export ELECTRON_DISABLE_SECURITY_WARNINGS=true
       APP_DIR="${SNAP}/opt/brave-music"
       export PATH="$APP_DIR/backend/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-      export LD_LIBRARY_PATH="${SNAP:+$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu:$SNAP/gnome-platform/lib/x86_64-linux-gnu:}$APP_DIR/backend/bin:$APP_DIR/backend/engine/musikcube:$APP_DIR/backend/engine/musikcube/lib:${LD_LIBRARY_PATH:-}"
-      cd "$APP_DIR"
-      FLAGS="--no-sandbox --no-zygote --disable-gpu-sandbox --disable-dev-shm-usage --class=brave-music --name=brave-music"
-      exec "$APP_DIR/node_modules/electron/dist/electron" "$APP_DIR" $FLAGS "$@"
+      export LD_LIBRARY_PATH="${SNAP:+$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu:$SNAP/gnome-platform/lib/x86_64-linux-gnu:}$APP_DIR/backend/bin:${LD_LIBRARY_PATH:-}"
+      export WEBKIT_EXEC_PATH="${SNAP}/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1"
+      exec "$APP_DIR/brave-music-linux-preview" "$@"
       EOF
       chmod +x $CRAFT_PART_INSTALL/bin/brave-music-snap
 
@@ -101,20 +106,6 @@ parts:
       Keywords=Music;YouTube;Spotify;Download;Audio;Player;
       EOF
     stage-packages:
-      - libnss3
-      - libnspr4
-      - libasound2
-      - libatk1.0-0
-      - libatk-bridge2.0-0
-      - libcups2
-      - libdrm2
-      - libgbm1
-      - libgtk-3-0
-      - libxcomposite1
-      - libxdamage1
-      - libxfixes3
-      - libxkbcommon0
-      - libxrandr2
       - python3
       - curl
       - ca-certificates

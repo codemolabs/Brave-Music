@@ -174,11 +174,11 @@ When installed via package, Brave Music adheres to Linux Filesystem Hierarchy St
 
 If you are developing or testing without system installation:
 
-### Step 1: Install Node.js
-Ensure Node.js v18+ or v20+ is active:
+### Step 1: Install Rust & WebKitGTK Build Dependencies
+Ensure `cargo`, `rustc`, and system WebKitGTK 4.1 development headers are installed:
 ```bash
-node -v
-npm -v
+sudo apt update
+sudo apt install -y cargo rustc libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev python3
 ```
 
 ### Step 2: Clone Repository
@@ -187,31 +187,25 @@ git clone git@github.com:codemolabs/Brave-Music.git
 cd Brave-Music
 ```
 
-### Step 3: Install Dependencies
-```bash
-npm install
-```
-
-### Step 4: Start Desktop Client
-```bash
-npm start
-```
-Or execute the local launcher:
+### Step 3: Build & Start Native Desktop Client
 ```bash
 ./run.sh
+```
+Or build directly with Cargo:
+```bash
+cargo build --release --manifest-path tauri-preview/src-tauri/Cargo.toml
 ```
 
 ---
 
-## 5. Command-Line Options and Execution Flags
+## 5. Runtime Environment Options
 
-The `brave-music` launcher accepts Chromium and Electron runtime flags:
+Brave Music now runs natively on Rust, Tauri v2, and Linux WebKitGTK 4.1 (`brave-music-linux-preview`) with zero Electron or Chromium runtime overhead:
 
-| Flag | Purpose | Usage Example |
+| Environment Variable | Purpose | Usage Example |
 | :--- | :--- | :--- |
-| `--no-sandbox` | Disables Chromium sandbox (required in unprivileged Docker/LXC/WSL2) | `brave-music --no-sandbox` |
-| `--in-process-gpu` | Runs GPU process in main process thread for low-end graphics cards | `brave-music --in-process-gpu` |
-| `--disable-gpu` | Disables hardware acceleration if encountering visual tearing | `brave-music --disable-gpu` |
+| `WEBKIT_FORCE_COMPOSITING_MODE=1` | Enables hardware-accelerated WebKitGTK compositing | `WEBKIT_FORCE_COMPOSITING_MODE=1 brave-music` |
+| `WEBKIT_DISABLE_DMABUF_RENDERER=1` | Fallback software compositing on older GPUs | `WEBKIT_DISABLE_DMABUF_RENDERER=1 brave-music` |
 
 ---
 
@@ -262,11 +256,10 @@ rm -rf ~/.config/musikcube
 
 ## 8. Troubleshooting Matrix
 
-| Issue | Root Cause | Resolution |
+| **Issue** | **Root Cause** | **Resolution** |
 | :--- | :--- | :--- |
-| **Spotify displays "Enable Protected Content"** | Widevine CDM is uninitialized or missing | Run `node test-widevine-ready.js`. CastLabs Electron provisions Widevine automatically (or links `/opt/google/chrome/WidevineCdm` when present). |
-| **Google blocks in-app login ("browser or app may not be secure")** | Google restricts embedded Chromium webview OAuth flows or Snap confinement blocks host browser cookie sync | Click the **Profile Sign-In button** (or **Use Built-In Secure Sign-In Window Directly**). Brave Music opens a hardened Sign-In Window with Firefox/Client Hints identity on `accounts.google.com` and automatically persists & refreshes `persist:bravemusic` tabs (or use **Emergency Fallback: Import Cookies (`.json`)**). |
-| **Personalized Spotify Mix fails to extract tracks** | Private/personalized Mix (`Daily Mix`, `Blend`, `Daylist`) requires Spotify session auth | Sign in to Spotify via the Profile modal or Inside App Spotify tab so `sp_dc` session memory authenticates Spotify Pathfinder resolution. |
-| **Offline download fails or stops cleanly** | Temporary CDN/YouTube client block or low disk space | Brave Music bundles self-contained `yt-dlp`, `node` EJS solver, and `ffmpeg` under `backend/bin/` (no system `yt-dlp` needed). Retry or update Brave Music (`sudo snap refresh brave-music`). |
+| **Spotify Web Player prompts for Widevine / external playback** | Linux WebKitGTK 4.1 does not bundle Google Widevine CDM by default | Use the top-right **Open in Browser** action or paste any Spotify track/mix/playlist URL into **Downloads** — Brave Music resolves full tracks sequentially in 320kbps MP3/FLAC/M4A. |
+| **Google blocks in-app login or host browser cookies are isolated in Snap** | Strict Ubuntu Snap confinement isolates `~/.mozilla` and Chrome profiles | Click the **Person Sign-In icon** at top right: use **Option 1 (Sign in via Default Browser)** on `.deb`/unconfined installs, **Option 2 (Use Built-In Secure Sign-In Window Directly)** (`auth-window` native WebKitGTK UA with zero polyfill spoofing), or **Import Cookies (`.json`)**. |
+| **Personalized Spotify Mix fails to extract tracks** | Private/personalized Mix (`Daily Mix`, `Blend`, `Daylist`) requires Spotify session auth | Sign in to Spotify via the Person icon modal or import `cookies.json` so `sp_dc` authenticates Spotify Pathfinder resolution. |
+| **Offline download fails or stops cleanly** | Temporary CDN/YouTube client block or low disk space | Brave Music bundles self-contained `yt-dlp` and `ffmpeg` under `backend/bin/` (no Electron/system `yt-dlp` needed). Retry or update Brave Music (`sudo snap refresh brave-music`). |
 | **No audio output from offline player** | Sound daemon sink muted or inactive | Verify sound server: `wpctl status` (PipeWire) or `pactl info` (PulseAudio). Ensure volume is above 0 in `alsamixer`. |
-| **Application fails to open in container** | SUID sandbox restriction | Launch with `brave-music --no-sandbox`. |

@@ -5,8 +5,21 @@ SNAP_ROOT="${SNAP:-$(cd "$ROOT_DIR/../.." 2>/dev/null && pwd)}"
 if [ -d "$SNAP_ROOT/gnome-platform/usr/lib/x86_64-linux-gnu" ]; then
   export LD_LIBRARY_PATH="$SNAP_ROOT/gnome-platform/usr/lib/x86_64-linux-gnu:$SNAP_ROOT/gnome-platform/lib/x86_64-linux-gnu:$SCRIPT_DIR:${LD_LIBRARY_PATH:-}"
 fi
-if [ -x "$ROOT_DIR/node_modules/electron/dist/electron" ]; then
-  ELECTRON_RUN_AS_NODE=1 exec "$ROOT_DIR/node_modules/electron/dist/electron" "$@"
-elif [ -x "/usr/bin/node" ]; then
-  exec /usr/bin/node "$@"
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v node >/dev/null 2>&1; then
+  self="$(readlink -f "$0")"
+  while IFS= read -r candidate; do
+    resolved="$(readlink -f "$candidate" 2>/dev/null || true)"
+    if [[ -n "$resolved" && "$resolved" != "$self" && -x "$candidate" ]]; then
+      exec "$candidate" "$@"
+    fi
+  done < <(which -a node 2>/dev/null || true)
 fi
+
+if [[ -x "/usr/bin/nodejs" ]]; then
+  exec /usr/bin/nodejs "$@"
+fi
+
+exit 127

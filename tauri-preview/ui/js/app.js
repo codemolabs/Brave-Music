@@ -712,11 +712,9 @@ document.addEventListener('DOMContentLoaded', () => {
         btnAuthSync.title = isAnyAuth ? 'Sign In & Account (Connected)' : 'Sign In & Account';
       }
 
-      // Hide secondary button when host browser sync isn't available (e.g. strict Ubuntu Snap uses secure in-app window automatically)
-      const caps = status.capabilities || {};
-      const showSecondary = Boolean(caps.hostSyncAvailable);
-      if (btnYtmInAppSignin) btnYtmInAppSignin.style.display = showSecondary ? 'block' : 'none';
-      if (btnSpotifyInAppSignin) btnSpotifyInAppSignin.style.display = showSecondary ? 'block' : 'none';
+      // Always show both Default Browser sign-in and Built-In Secure Sign-In Window options
+      if (btnYtmInAppSignin) btnYtmInAppSignin.style.display = 'block';
+      if (btnSpotifyInAppSignin) btnSpotifyInAppSignin.style.display = 'block';
     } catch (e) {
       console.warn('[Auth] Error querying auth status:', e);
     }
@@ -910,7 +908,7 @@ document.addEventListener('DOMContentLoaded', () => {
       isSpotify,
       serviceKey,
       displayName: isSpotify ? 'Spotify' : 'YouTube Music',
-      defaultBtnText: isSpotify ? 'Sign in to Spotify' : 'Sign in to YouTube Music',
+      defaultBtnText: 'Sign in via Default Browser',
       btn: isSpotify ? btnStartSpotifyLogin : btnStartYtmCdp,
       secondaryBtn: isSpotify ? btnSpotifyInAppSignin : btnYtmInAppSignin,
       btnLabel: isSpotify ? btnSpotifyLoginLabel : btnYtmCdpLabel,
@@ -1010,7 +1008,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {}
   }
 
-  btnStartYtmCdp?.addEventListener('click', () => startServiceSignInFlow('youtube', 'auto'));
+  btnStartYtmCdp?.addEventListener('click', () => startServiceSignInFlow('youtube', 'browser'));
   btnYtmInAppSignin?.addEventListener('click', () => startServiceSignInFlow('youtube', 'in-app'));
   btnCancelYtmCdp?.addEventListener('click', () => cancelServiceSignInFlow('youtube'));
 
@@ -1089,7 +1087,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 2. SPOTIFY SIGN-IN & JSON COOKIE FILE IMPORT
   // =========================================================================
 
-  btnStartSpotifyLogin?.addEventListener('click', () => startServiceSignInFlow('spotify', 'auto'));
+  btnStartSpotifyLogin?.addEventListener('click', () => startServiceSignInFlow('spotify', 'browser'));
   btnSpotifyInAppSignin?.addEventListener('click', () => startServiceSignInFlow('spotify', 'in-app'));
   btnCancelSpotifyLogin?.addEventListener('click', () => cancelServiceSignInFlow('spotify'));
 

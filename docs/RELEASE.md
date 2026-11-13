@@ -5,6 +5,8 @@ This document tracks official version releases, changelogs, binary checksums, an
 ### Release v1.0.19-r (Cross-Platform Architecture, Official Branding & Desktop Integration)
 
 - **Release Tag**: `v1.0.19-r`
+- **Native Rust + Tauri + WebKitGTK Architecture (Zero Electron)**:
+  - Migrated both Ubuntu Snap (`core24` + `gnome-46-2404` + `mesa-2404`) and Debian `.deb` packages cleanly to the native Rust/Tauri (`brave-music-linux-preview`) + WebKitGTK 4.1 runtime (`crates/brave-music-core` + `tauri-preview`), eliminating Electron/Chromium runtime bloat, cutting package sizes from ~150 MB down to 20 MB, and resolving Chromium-based security concerns.
 - **Official Mascot App Icon**:
   - Replaced legacy organizational network nodes logo with the authentic official Brave Music brand icon (vibrant orange lion wearing headphones).
   - Built multi-resolution icons: Windows/Linux `.ico` (`src/assets/app-icon.ico`) with 7 crisp mipmaps (16x16 to 256x256), master 512x512 transparent PNG (`src/assets/app-icon.png`), and clean scalable vector SVG (`src/assets/app-icon.svg`).
@@ -39,9 +41,11 @@ This document tracks official version releases, changelogs, binary checksums, an
 - **Self-Contained Media Download & Spotify/YouTube Engine (`backend/bin/`)**:
   - Bundled standalone `yt-dlp` (with embedded `yt_dlp_ejs` JS challenge solver, `mutagen`, `certifi`, `urllib3`, `requests`, and `websockets`), `node` JS runtime shim (`ELECTRON_RUN_AS_NODE=1`), and `glibc 2.31`-compatible `ffmpeg` + `ffprobe` + `libav*.so`/`libsw*.so` directly inside `backend/bin/`.
   - Guarantees zero-dependency, out-of-the-box YouTube Music & Spotify track/playlist downloading and 320kbps MP3/M4A/FLAC conversion inside the strict Ubuntu Snap (`core22`) sandbox as well as Debian `.deb` and Cross-Platform Preview runtimes.
-- **Smart Dual-Mode Authentication & Built-In Secure Sign-In Window (`persist:bravemusic`)**:
-  - **Built-In Hardened Sign-In Window (`src/js/auth-preload.js` + `main.js`)**: Automatically activates inside strict Ubuntu Snap confinement (where host browser cookie databases are isolated) or via the **Use Built-In Secure Sign-In Window Directly** button and embedded OAuth intercepts. Uses consistent Firefox identity + stripped `sec-ch-ua*` Client Hints on `accounts.google.*` to prevent Google `"This browser or app may not be secure"` blocks while keeping modern Chrome headers on music player hosts, waits specifically for YouTube (`LOGIN_INFO` / `__Secure-3PAPISID`) or Spotify (`sp_dc`) session cookies instead of stalling on `"Waiting for Default Browser..."`, and broadcasts `auth-sync-completed` to cleanly reload both music tabs.
-  - **Unconfined Default Browser Auto-Sync + Emergency JSON Fallback**: Unconfined `.deb`/dev installs continue to support host browser sync alongside Emergency `.json` cookie import and MPRIS AppArmor error safety inside Snap (`MprisService.js`).
+- **Dual-Mode Authentication & Built-In WebKitGTK Sign-In Window (No Blinking / No Google Rejection)**:
+  - Restored top-right Person-icon (`#btn-auth-sync`) modal offering both **Option 1: Sign in via Default Browser** (opens OS default browser with non-blocking host Firefox/Chromium cookie extraction on unconfined `.deb`/desktop builds, or immediate clear guidance inside Snap strict confinement) AND **Option 2: Use Built-In Secure Sign-In Window Directly** (`auth-window` `WebviewWindow` running WebKitGTK's native UA with `window.chrome` polyfills skipped on Google/Spotify auth origins, preventing input clearing/glitches and `"This browser or app may not be secure"` blocks).
+  - Real Rust IPC persistence (`~/.config/brave-music/user_accounts.json`, `ytmusic_session.json`, `spotify_session.json`), Tauri native `Webview::set_cookie` cookie injection/logout cleanup, `Import Cookies (.json)` support, and automatic `auth-sync-completed` tab reloads.
+- **Zero-Runtime `yt-dlp` Fallback Guard**:
+  - Updated `start_download` in `tauri-preview` and `backend/bin/node` so `--js-runtimes` only enables `node` when a working host Node binary responds to `--version`, preventing broken Node/Electron shims from blocking `yt-dlp` extraction.
 - **Recommendation Engine, Smart Shuffle & Candidate-Scored Matching (`DownloadService.js`)**:
   - **Scored Spotify-to-YouTube Matching (`scoreSearchCandidate` / `resolveBestYouTubeMatch`)**: Evaluates `ytsearch5:` candidates preferring `- Topic` & official audio channels with matching track duration while penalizing slowed/reverb/cover/live/Shorts variants (`-45`).
   - **Personalized "Recommended For You" Shelf & Smart Shuffle (`get-recommendations`)**: Seeds fresh YouTube recommendations from the user's downloaded library & playing track (with curated starter picks offline), leaves `/youtubei/v1/next` unblocked in `webview-shields.js` for native YouTube Music Up Next mixes, and replaces pure random shuffle with artist/genre affinity + recency weighting (`pickSmartNextTrackIndex`).
@@ -50,11 +54,11 @@ This document tracks official version releases, changelogs, binary checksums, an
   - Preserved seed video parameters for YouTube / YouTube Music Radio Mixes (`?v=...&list=RD...`) and enforced sequential `1..N` ordering across backend metadata, `LibraryService.syncPlaylistSequence`, `Play All` playback, and Rust preview (`brave-music-linux-preview`).
   - Upgraded MP3 downloads to target 320kbps CBR/V0 with clean ID3v2.3 metadata tagging (`title`, `artist`, `album`, `track=N/Total`) written directly via bundled `ffmpeg`, relaxed YouTube Music search fallbacks, and updated `web_embedded,web,default` extraction flags.
   - Upgraded the Offline Library & Collections UI with Bento collection cards (2x2 album art collages, Spotify/YouTube source pills, duration & format summaries), crisp format pills (`MP3`, `FLAC`, `M4A`, `VIDEO`), clickable collection links, and auto-switching to Full Playlist mode on pasted collection URLs.
-- **Official Linux Packages & Checksums (SHA-256)** (`v1.0.19-r10`):
-  - **Ubuntu Snap Package (`.snap` — Official Recommended)**: `Install/Linux/brave-music_1.0.19-r_amd64.snap`
-    - SHA-256: `984ac7d1fb9967e578fca25f88d83b79a94df4066d6d89f390aeb3909f133340`
-  - **Debian Package (`.deb`)**: `Install/Linux/brave-music_1.0.19-r_amd64.deb`
-    - SHA-256: `4477a055f1977e9f90ea9a8dbfdaae4dc14fce68b37088c408be604b4fee2ed6`
+- **Official Linux Packages & Checksums (SHA-256)** (`v1.0.19-r11`):
+  - **Ubuntu Snap Package (`.snap` — Official Recommended, `core24` Rust/WebKitGTK)**: `Install/Linux/brave-music_1.0.19-r_amd64.snap`
+    - SHA-256: `f56db6569c34917c94ab8b911a6e8ed3b4b7f3447f5c72ebf48e2b1c62b417ad`
+  - **Debian Package (`.deb`, Rust/WebKitGTK)**: `Install/Linux/brave-music_1.0.19-r_amd64.deb`
+    - SHA-256: `b91958a10264d8fe7bc943e9ec34111913380a89016ac3183a1a10d09dbdf2ea`
 
 ### Release v1.0.18
 

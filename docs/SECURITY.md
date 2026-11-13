@@ -35,22 +35,15 @@ Do not open public GitHub issues for undisclosed security vulnerabilities. We wi
 
 Brave Music enforces strict security boundaries:
 
-### Electron Sandboxing and Isolation
-- The application runs with `contextIsolation: true` and `nodeIntegration: false`.
-- Renderer scripts cannot access the Node.js runtime directly. All inter-process communication occurs over strictly validated channels defined in `preload.js`.
+### Native Rust / Tauri & WebKitGTK Isolation (Zero Electron)
+- Brave Music runs purely on a compiled Rust backend (`tauri-preview` + `crates/brave-music-core`) and system WebKitGTK 4.1 (`libwebkit2gtk-4.1-0`), completely free of deprecated Electron / Chromium runtime dependencies.
+- UI and webview communication uses explicit, typed Tauri IPC commands governed by capability ACLs (`tauri-preview/src-tauri/capabilities/main.json`).
+- Network-level and cosmetic ad/tracker filtering in `src/js/webview-shields.js` runs strictly inside player webviews with no arbitrary remote code loading.
 
-### Widevine Content Decryption Module (CDM)
-- Brave Music utilizes CastLabs Electron releases for legal Widevine DRM negotiation.
-- Proprietary DRM components are verified via CastLabs authenticated release channels. No modified or unauthorized binary blobs are shipped by this repository.
-
-### Shields Filtering and Script Injection
-- Injected cosmetic styles and network block rules in `src/js/webview-shields.js` are strictly scoped to ad and tracker patterns.
-- No dynamic code evaluation (`eval()` or external script injection) is permitted inside webview partitions.
-
-### Authentication & Persistent Browser Memory (`persist:bravemusic`)
-- Brave Music stores web player sessions locally in the isolated `persist:bravemusic` session partition (`~/.config/brave-music/`).
-- Under unconfined desktop installs, Default Browser Sign-In Auto-Sync reads strictly session cookies without storing plaintext account passwords; inside Ubuntu Snap strict confinement (where host browser profiles are unreadable) or when selected directly, Brave Music uses its isolated **Built-In Secure Sign-In Window** on `persist:bravemusic` (`src/js/auth-preload.js`) and supports Emergency Fallback `.json` cookie import.
-- All bundled download binaries (`backend/bin/yt-dlp`, `node`, `ffmpeg`, `ffprobe`) execute purely locally inside the app / Snap `core22` sandbox with zero third-party telemetry.
+### Authentication & Cookie Storage
+- Brave Music persists local session metadata (`user_accounts.json`) and imported/session cookies (`ytmusic_session.json`, `spotify_session.json`) in `~/.config/brave-music/` with strict private POSIX permissions (`0700` directory, `0600` files) and atomic writes.
+- Under unconfined `.deb`/desktop installs, **Default Browser Sign-In** reads session cookies strictly locally (preferring plaintext Firefox SQLite without storing passwords); inside strict Ubuntu Snap confinement (`core24`), or whenever selected directly, Brave Music provides the isolated **Built-In Secure Sign-In Window** (`auth-window` on native WebKitGTK UA without polyfills) plus Emergency `.json` cookie import.
+- All bundled download binaries (`backend/bin/yt-dlp`, `ffmpeg`, `ffprobe`, and optional `node` shim) execute locally inside the app / Snap `core24` sandbox with zero third-party telemetry.
 
 ### Dependency Auditing
-- Continuous automated vulnerability scanning is enforced on all npm packages and native engine shared libraries.
+- Continuous automated cargo & dependency auditing is enforced on all Rust crates and native runtime shared libraries.
