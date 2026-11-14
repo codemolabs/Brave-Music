@@ -475,8 +475,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnAboutOk = document.getElementById('btn-about-ok');
 
   // Centralized Modal Layout & View State Manager
+  let browserSettingsOpen = false;
+  let activePermissionPrompt = null;
+
+  function isAnyOverlaySurfaceOpen() {
+    const aboutOpen = Boolean(aboutModal && aboutModal.style.display === 'flex');
+    const authOpen = Boolean(authSyncModal && authSyncModal.style.display === 'flex');
+    const delModal = document.getElementById('delete-playlist-modal');
+    const delOpen = Boolean(delModal && delModal.style.display === 'flex');
+    return aboutOpen || authOpen || delOpen || browserSettingsOpen || Boolean(activePermissionPrompt);
+  }
+
   function setModalOpenState(isOpen) {
-    if (isOpen) {
+    const effectiveOpen = Boolean(isOpen || isAnyOverlaySurfaceOpen());
+    if (effectiveOpen) {
       document.body.classList.add('modal-open');
       if (window.braveApi?.setModalState) {
         window.braveApi.setModalState(true, state.currentTab);
@@ -3137,6 +3149,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Pause Spotify webview
   function pauseSpotify() {
+    if (state.player.currentTrack?.isSpotifyBridge && state.player.isPlaying) {
+      pauseLocalAudio();
+    }
     if (!spotifyWebview) return;
     try {
       spotifyWebview.executeJavaScript(`
@@ -4476,8 +4491,321 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast('Smart Mix started — queuing similar artists & playlists');
   });
 
+  // ==========================================================================
+  // BROWSER SETTINGS, PERMISSIONS & DRIVERS POPOVER
+  // ==========================================================================
+  const DEFAULT_BROWSER_SETTINGS = {
+    zoomLevel: 1.0,
+    audioOutput: 'allow',
+    videoPlayback: true,
+    autoplay: true,
+    inlineMedia: true,
+    fullscreenEnabled: true,
+    microphone: 'allow',
+    camera: 'ask',
+    location: 'ask',
+    notifications: 'allow',
+    clipboard: true,
+    popups: true,
+    cookiesPolicy: 'all',
+    trackingProtection: false,
+    localStorage: true,
+    webgl: true,
+    webrtc: true,
+    encryptedMedia: true,
+    smoothScrolling: true,
+    hardwareAcceleration: 'on_demand'
+  };
+
+  let currentBrowserSettings = { ...DEFAULT_BROWSER_SETTINGS };
+
+  const btnBrowserSettings = document.getElementById('btn-browser-settings');
+  const browserZoomBadge = document.getElementById('browser-zoom-badge');
+  const bsBackdrop = document.getElementById('browser-settings-backdrop');
+  const bsTabPill = document.getElementById('browser-settings-tab-pill');
+  const btnCloseBs = document.getElementById('btn-close-browser-settings');
+  const btnResetBs = document.getElementById('btn-bs-reset');
+
+  const bsZoomOut = document.getElementById('bs-zoom-out');
+  const bsZoomIn = document.getElementById('bs-zoom-in');
+  const bsZoomReset = document.getElementById('bs-zoom-reset');
+  const bsZoomSlider = document.getElementById('bs-zoom-slider');
+  const bsZoomValue = document.getElementById('bs-zoom-value');
+
+  const bsHwAccel = document.getElementById('bs-hw-accel');
+  const bsSmoothScroll = document.getElementById('bs-smooth-scroll');
+  const bsAudioOutput = document.getElementById('bs-audio-output');
+  const bsVideoPlayback = document.getElementById('bs-video-playback');
+  const bsAutoplay = document.getElementById('bs-autoplay');
+  const bsFullscreen = document.getElementById('bs-fullscreen');
+  const bsMicrophone = document.getElementById('bs-microphone');
+  const bsCamera = document.getElementById('bs-camera');
+  const bsLocation = document.getElementById('bs-location');
+  const bsNotifications = document.getElementById('bs-notifications');
+  const bsClipboard = document.getElementById('bs-clipboard');
+  const bsPopups = document.getElementById('bs-popups');
+  const bsCookiesPolicy = document.getElementById('bs-cookies-policy');
+  const bsItp = document.getElementById('bs-itp');
+  const bsLocalStorage = document.getElementById('bs-local-storage');
+  const bsWebgl = document.getElementById('bs-webgl');
+  const bsWebrtc = document.getElementById('bs-webrtc');
+  const bsEncryptedMedia = document.getElementById('bs-encrypted-media');
+  const btnBsClearCache = document.getElementById('btn-bs-clear-cache');
+  const btnBsClearCookies = document.getElementById('btn-bs-clear-cookies');
+  const btnBsSpotifyLogin = document.getElementById('btn-bs-spotify-login');
+  const btnBsOpenWidevine = document.getElementById('btn-bs-open-widevine');
+
+  const bsEngineBadge = document.getElementById('bs-engine-badge');
+  const bsYtDriverDot = document.getElementById('bs-yt-driver-dot');
+  const bsYtDriverText = document.getElementById('bs-yt-driver-text');
+  const bsSpDriverDot = document.getElementById('bs-sp-driver-dot');
+  const bsSpDriverText = document.getElementById('bs-sp-driver-text');
+
+  const permPromptModal = document.getElementById('permission-prompt-modal');
+  const permPromptOrigin = document.getElementById('perm-prompt-origin');
+  const permPromptTitle = document.getElementById('perm-prompt-title');
+  const permPromptDesc = document.getElementById('perm-prompt-desc');
+  const btnPermDeny = document.getElementById('btn-perm-deny');
+  const btnPermAllowOnce = document.getElementById('btn-perm-allow-once');
+  const btnPermAllowAlways = document.getElementById('btn-perm-allow-always');
+
+  function syncBrowserSettingsControls(s) {
+    currentBrowserSettings = { ...DEFAULT_BROWSER_SETTINGS, ...(s || {}) };
+    const pct = Math.round((Number(currentBrowserSettings.zoomLevel) || 1.0) * 100);
+    if (bsZoomSlider) bsZoomSlider.value = String(pct);
+    if (bsZoomValue) bsZoomValue.textContent = `${pct}%`;
+    if (browserZoomBadge) {
+      if (pct !== 100) {
+        browserZoomBadge.textContent = `${pct}%`;
+        browserZoomBadge.style.display = 'inline-block';
+      } else {
+        browserZoomBadge.style.display = 'none';
+      }
+    }
+    if (bsHwAccel) bsHwAccel.value = currentBrowserSettings.hardwareAcceleration || 'on_demand';
+    if (bsSmoothScroll) bsSmoothScroll.checked = Boolean(currentBrowserSettings.smoothScrolling);
+    if (bsAudioOutput) bsAudioOutput.value = currentBrowserSettings.audioOutput || 'allow';
+    if (bsVideoPlayback) bsVideoPlayback.checked = Boolean(currentBrowserSettings.videoPlayback);
+    if (bsAutoplay) bsAutoplay.checked = Boolean(currentBrowserSettings.autoplay);
+    if (bsFullscreen) bsFullscreen.checked = Boolean(currentBrowserSettings.fullscreenEnabled);
+    if (bsMicrophone) bsMicrophone.value = currentBrowserSettings.microphone || 'allow';
+    if (bsCamera) bsCamera.value = currentBrowserSettings.camera || 'ask';
+    if (bsLocation) bsLocation.value = currentBrowserSettings.location || 'ask';
+    if (bsNotifications) bsNotifications.value = currentBrowserSettings.notifications || 'allow';
+    if (bsClipboard) bsClipboard.checked = Boolean(currentBrowserSettings.clipboard);
+    if (bsPopups) bsPopups.checked = Boolean(currentBrowserSettings.popups);
+    if (bsCookiesPolicy) bsCookiesPolicy.value = currentBrowserSettings.cookiesPolicy || 'all';
+    if (bsItp) bsItp.checked = Boolean(currentBrowserSettings.trackingProtection);
+    if (bsLocalStorage) bsLocalStorage.checked = Boolean(currentBrowserSettings.localStorage);
+    if (bsWebgl) bsWebgl.checked = Boolean(currentBrowserSettings.webgl);
+    if (bsWebrtc) bsWebrtc.checked = Boolean(currentBrowserSettings.webrtc);
+    if (bsEncryptedMedia) bsEncryptedMedia.checked = Boolean(currentBrowserSettings.encryptedMedia);
+  }
+
+  async function saveBrowserSettingsPatch(patch, toastMsg = '') {
+    const next = { ...currentBrowserSettings, ...patch };
+    syncBrowserSettingsControls(next);
+    try {
+      if (window.braveApi?.updateBrowserSettings) {
+        const saved = await window.braveApi.updateBrowserSettings(next);
+        syncBrowserSettingsControls(saved);
+      }
+      if (toastMsg) showToast(toastMsg);
+    } catch (e) {
+      showToast('Failed updating browser setting: ' + (e?.message || e));
+    }
+  }
+
+  async function refreshDriverDiagnostics() {
+    if (!window.braveApi?.getBrowserDriverStatus) return;
+    try {
+      const diag = await window.braveApi.getBrowserDriverStatus();
+      if (bsEngineBadge && diag?.engine) {
+        bsEngineBadge.textContent = diag.engine;
+      }
+      if (diag?.youtubeVideo) {
+        const yv = diag.youtubeVideo;
+        bsYtDriverDot?.classList.toggle('ok', Boolean(yv.ready));
+        bsYtDriverDot?.classList.toggle('warn', !yv.ready);
+        if (bsYtDriverText) {
+          bsYtDriverText.textContent = `MSE: ${yv.mseEnabled ? 'On' : 'Off'} • WebGL: ${yv.webglEnabled ? 'On' : 'Off'} • Fullscreen: ${yv.fullscreenEnabled ? 'On' : 'Off'} • GStreamer libav: ${yv.gstLibavDetected ? 'Ready' : 'Standard'}`;
+        }
+      }
+      if (diag?.spotifyDrm) {
+        const sd = diag.spotifyDrm;
+        bsSpDriverDot?.classList.toggle('ok', Boolean(sd.nativeWidevinePresent));
+        bsSpDriverDot?.classList.toggle('warn', !sd.nativeWidevinePresent);
+        if (bsSpDriverText) {
+          bsSpDriverText.textContent = sd.summary || 'EME Shim + Rust Audio Bridge active';
+        }
+        if (btnBsOpenWidevine && (sd.externalWidevineBrowserLabel || sd.externalWidevineBrowser)) {
+          btnBsOpenWidevine.textContent = `Open in ${sd.externalWidevineBrowserLabel || sd.externalWidevineBrowser}`;
+        }
+      }
+    } catch (_) {}
+  }
+
+  function updateBrowserSettingsTabLabel() {
+    if (!bsTabPill) return;
+    if (state.currentTab === 'spotify-view') {
+      bsTabPill.textContent = 'Spotify Web Player • WebKitGTK';
+    } else if (state.currentTab === 'yt-view') {
+      bsTabPill.textContent = 'YouTube Music • WebKitGTK';
+    } else {
+      bsTabPill.textContent = 'Brave Music • Built-In Browser';
+    }
+  }
+
+  async function openBrowserSettingsPopover() {
+    if (!bsBackdrop) return;
+    browserSettingsOpen = true;
+    updateBrowserSettingsTabLabel();
+    btnBrowserSettings?.classList.add('active');
+    btnBrowserSettings?.setAttribute('aria-expanded', 'true');
+    setModalOpenState(true);
+    bsBackdrop.style.display = 'block';
+    try {
+      if (window.braveApi?.getBrowserSettings) {
+        const loaded = await window.braveApi.getBrowserSettings();
+        syncBrowserSettingsControls(loaded);
+      }
+    } catch (_) {}
+    refreshDriverDiagnostics();
+  }
+
+  function closeBrowserSettingsPopover() {
+    if (!bsBackdrop) return;
+    browserSettingsOpen = false;
+    bsBackdrop.style.display = 'none';
+    btnBrowserSettings?.classList.remove('active');
+    btnBrowserSettings?.setAttribute('aria-expanded', 'false');
+    setModalOpenState(false);
+  }
+
+  btnBrowserSettings?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (browserSettingsOpen) {
+      closeBrowserSettingsPopover();
+    } else {
+      openBrowserSettingsPopover();
+    }
+  });
+  btnCloseBs?.addEventListener('click', closeBrowserSettingsPopover);
+  bsBackdrop?.addEventListener('click', (e) => {
+    if (e.target === bsBackdrop) closeBrowserSettingsPopover();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && browserSettingsOpen) {
+      closeBrowserSettingsPopover();
+    }
+  });
+
+  btnResetBs?.addEventListener('click', () => {
+    saveBrowserSettingsPatch(DEFAULT_BROWSER_SETTINGS, 'Browser settings restored to defaults');
+  });
+
+  const adjustZoomBy = (delta) => {
+    const nextZoom = Math.min(2.0, Math.max(0.5, Math.round(((currentBrowserSettings.zoomLevel || 1.0) + delta) * 100) / 100));
+    saveBrowserSettingsPatch({ zoomLevel: nextZoom });
+  };
+  bsZoomOut?.addEventListener('click', () => adjustZoomBy(-0.1));
+  bsZoomIn?.addEventListener('click', () => adjustZoomBy(0.1));
+  bsZoomReset?.addEventListener('click', () => saveBrowserSettingsPatch({ zoomLevel: 1.0 }));
+  bsZoomSlider?.addEventListener('change', (e) => {
+    const pct = Number(e.target.value) || 100;
+    saveBrowserSettingsPatch({ zoomLevel: Math.round(pct) / 100 });
+  });
+  bsZoomSlider?.addEventListener('input', (e) => {
+    if (bsZoomValue) bsZoomValue.textContent = `${e.target.value}%`;
+  });
+
+  bsHwAccel?.addEventListener('change', (e) => saveBrowserSettingsPatch({ hardwareAcceleration: e.target.value }));
+  bsSmoothScroll?.addEventListener('change', (e) => saveBrowserSettingsPatch({ smoothScrolling: e.target.checked }));
+  bsAudioOutput?.addEventListener('change', (e) => saveBrowserSettingsPatch({ audioOutput: e.target.value }, e.target.value === 'block' ? 'Web tabs muted' : 'Web tab audio enabled'));
+  bsVideoPlayback?.addEventListener('change', (e) => saveBrowserSettingsPatch({ videoPlayback: e.target.checked }));
+  bsAutoplay?.addEventListener('change', (e) => saveBrowserSettingsPatch({ autoplay: e.target.checked }));
+  bsFullscreen?.addEventListener('change', (e) => saveBrowserSettingsPatch({ fullscreenEnabled: e.target.checked }));
+  bsMicrophone?.addEventListener('change', (e) => saveBrowserSettingsPatch({ microphone: e.target.value }));
+  bsCamera?.addEventListener('change', (e) => saveBrowserSettingsPatch({ camera: e.target.value }));
+  bsLocation?.addEventListener('change', (e) => saveBrowserSettingsPatch({ location: e.target.value }));
+  bsNotifications?.addEventListener('change', (e) => saveBrowserSettingsPatch({ notifications: e.target.value }));
+  bsClipboard?.addEventListener('change', (e) => saveBrowserSettingsPatch({ clipboard: e.target.checked }));
+  bsPopups?.addEventListener('change', (e) => saveBrowserSettingsPatch({ popups: e.target.checked }));
+  bsCookiesPolicy?.addEventListener('change', (e) => saveBrowserSettingsPatch({ cookiesPolicy: e.target.value }, 'Cookies policy updated'));
+  bsItp?.addEventListener('change', (e) => saveBrowserSettingsPatch({ trackingProtection: e.target.checked }));
+  bsLocalStorage?.addEventListener('change', (e) => saveBrowserSettingsPatch({ localStorage: e.target.checked }));
+  bsWebgl?.addEventListener('change', (e) => saveBrowserSettingsPatch({ webgl: e.target.checked }));
+  bsWebrtc?.addEventListener('change', (e) => saveBrowserSettingsPatch({ webrtc: e.target.checked }));
+  bsEncryptedMedia?.addEventListener('change', (e) => saveBrowserSettingsPatch({ encryptedMedia: e.target.checked }));
+
+  btnBsClearCache?.addEventListener('click', async () => {
+    try {
+      await window.braveApi?.clearBrowserData?.('cache');
+      showToast('Browser cache cleared (logins preserved)');
+    } catch (e) {
+      showToast('Failed clearing cache: ' + (e?.message || e));
+    }
+  });
+
+  btnBsClearCookies?.addEventListener('click', async () => {
+    try {
+      await window.braveApi?.clearBrowserData?.('cookies');
+      refreshAuthStatusUI?.();
+      showToast('Site cookies & storage cleared');
+    } catch (e) {
+      showToast('Failed clearing cookies: ' + (e?.message || e));
+    }
+  });
+
+  btnBsSpotifyLogin?.addEventListener('click', () => {
+    closeBrowserSettingsPopover();
+    document.getElementById('btn-auth-sync')?.click();
+    const spTabBtn = document.querySelector('.login-tab-pill[data-login-tab="spotify"]');
+    spTabBtn?.click();
+  });
+
+  btnBsOpenWidevine?.addEventListener('click', () => {
+    closeBrowserSettingsPopover();
+    window.braveApi?.openSpotifyWidevineBrowser?.('');
+    showToast('Launching external Widevine-capable browser…');
+  });
+
+  function resolveActivePermissionPrompt(allow, remember = false) {
+    if (!activePermissionPrompt) return;
+    const { id, permission } = activePermissionPrompt;
+    activePermissionPrompt = null;
+    if (permPromptModal) permPromptModal.style.display = 'none';
+    setModalOpenState(false);
+    window.braveApi?.respondPermissionPrompt?.(id, allow, remember ? permission : null);
+    if (remember) {
+      window.braveApi?.getBrowserSettings?.().then(syncBrowserSettingsControls).catch(() => {});
+    }
+  }
+
+  btnPermDeny?.addEventListener('click', () => resolveActivePermissionPrompt(false, true));
+  btnPermAllowOnce?.addEventListener('click', () => resolveActivePermissionPrompt(true, false));
+  btnPermAllowAlways?.addEventListener('click', () => resolveActivePermissionPrompt(true, true));
+
+  if (window.braveApi?.onPermissionPrompt) {
+    window.braveApi.onPermissionPrompt((payload) => {
+      if (!payload || !payload.id) return;
+      activePermissionPrompt = payload;
+      if (permPromptOrigin) permPromptOrigin.textContent = payload.origin || 'Website';
+      if (permPromptTitle) permPromptTitle.textContent = `${payload.label || 'Site Permission'} Requested`;
+      if (permPromptDesc) {
+        permPromptDesc.textContent = `${payload.origin || 'This site'} is requesting ${String(payload.label || 'permission').toLowerCase()} access.`;
+      }
+      if (permPromptModal) {
+        setModalOpenState(true);
+        permPromptModal.style.display = 'flex';
+      }
+    });
+  }
+
   // Initial setup & data load
   setupCustomDropdowns();
   loadLibrary();
   refreshAuthStatusUI();
+  window.braveApi?.getBrowserSettings?.().then(syncBrowserSettingsControls).catch(() => {});
 });

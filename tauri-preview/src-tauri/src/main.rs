@@ -22,6 +22,7 @@ static SPOTIFY_BLOCKED_COUNT: AtomicU64 = AtomicU64::new(14);
 static STREAM_SERVER_PORT: AtomicU16 = AtomicU16::new(0);
 static AUTH_LOGIN_CANCELED: AtomicBool = AtomicBool::new(false);
 static APP_SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+static GUEST_HTML5_FULLSCREEN: AtomicBool = AtomicBool::new(false);
 static SPOTIFY_WEBVIEW_CREATING: AtomicBool = AtomicBool::new(false);
 static YT_AUTH_COOKIE_HINT: AtomicBool = AtomicBool::new(false);
 static SP_AUTH_COOKIE_HINT: AtomicBool = AtomicBool::new(false);
@@ -207,19 +208,255 @@ const GUEST_ERROR_CAPTURE_SCRIPT: &str = r#"
 
 const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
 (() => {
-  if (window.top !== window.self) return;
   try {
     const h = (window.location && window.location.hostname || '').toLowerCase();
     const p = (window.location && window.location.pathname || '').toLowerCase();
     // Never touch Spotify authentication, CAPTCHA, or challenge flows
-    if (h !== 'open.spotify.com' || p.includes('/login') || p.includes('/signup') || p.includes('/authorize') || p.includes('/challenge')) {
+    if (!h.endsWith('spotify.com') || p.includes('/login') || p.includes('/signup') || p.includes('/authorize') || p.includes('/challenge')) {
       return;
     }
   } catch (_) {
     return;
   }
+
+  // Install Widevine EME & MediaCapabilities shim across ALL open.spotify.com frames
+  // (including player subframes where Spotify Web Playback SDK checks EME support).
+  try {
+    const createMockMediaKeySession = () => {
+      const listeners = new Map();
+      const emit = (type, evt) => {
+        const set = listeners.get(type);
+        if (!set) return;
+        for (const fn of set) {
+          try { fn.call(session, evt || { type }); } catch (_) {}
+        }
+      };
+      const session = {
+        sessionId: 'brave-eme-' + Math.random().toString(36).slice(2, 10),
+        expiration: NaN,
+        closed: new Promise(() => {}),
+        keyStatuses: new Map(),
+        onkeystatuseschange: null,
+        onmessage: null,
+        addEventListener(type, fn) {
+          if (typeof fn !== 'function') return;
+          if (!listeners.has(type)) listeners.set(type, new Set());
+          listeners.get(type).add(fn);
+        },
+        removeEventListener(type, fn) {
+          listeners.get(type)?.delete(fn);
+        },
+        dispatchEvent(evt) {
+          if (evt?.type) emit(evt.type, evt);
+          return true;
+        },
+        generateRequest() {
+          return Promise.resolve();
+        },
+        load() {
+          return Promise.resolve(false);
+        },
+        update() {
+          return Promise.resolve();
+        },
+        close() {
+          return Promise.resolve();
+        },
+        remove() {
+          return Promise.resolve();
+        },
+      };
+      return session;
+    };
+
+    const createMockMediaKeys = () => ({
+      __braveMockMediaKeys: true,
+      setServerCertificate() {
+        return Promise.resolve(true);
+      },
+      createSession() {
+        return createMockMediaKeySession();
+      },
+    });
+
+    const createMockKeySystemAccess = (keySystem, configs) => {
+      const first = (Array.isArray(configs) && configs[0]) || {};
+      const resolvedConfig = {
+        label: first.label || '',
+        initDataTypes: Array.isArray(first.initDataTypes) && first.initDataTypes.length ? first.initDataTypes : ['cenc'],
+        audioCapabilities: Array.isArray(first.audioCapabilities) && first.audioCapabilities.length
+          ? first.audioCapabilities
+          : [{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }],
+        videoCapabilities: Array.isArray(first.videoCapabilities) ? first.videoCapabilities : [],
+        distinctiveIdentifier: first.distinctiveIdentifier === 'required' ? 'optional' : (first.distinctiveIdentifier || 'optional'),
+        persistentState: first.persistentState === 'required' ? 'optional' : (first.persistentState || 'optional'),
+        sessionTypes: ['temporary'],
+      };
+      return {
+        keySystem: String(keySystem || 'com.widevine.alpha'),
+        getConfiguration() {
+          return resolvedConfig;
+        },
+        createMediaKeys() {
+          return Promise.resolve(createMockMediaKeys());
+        },
+      };
+    };
+
+    if (typeof HTMLMediaElement !== 'undefined' && HTMLMediaElement.prototype && !HTMLMediaElement.prototype.__braveSetMediaKeysWrapped) {
+      const origSetMediaKeys = HTMLMediaElement.prototype.setMediaKeys;
+      HTMLMediaElement.prototype.__braveSetMediaKeysWrapped = true;
+      HTMLMediaElement.prototype.setMediaKeys = function (mediaKeys) {
+        if (mediaKeys && mediaKeys.__braveMockMediaKeys) {
+          try { this.__braveAttachedMediaKeys = mediaKeys; } catch (_) {}
+          return Promise.resolve();
+        }
+        return typeof origSetMediaKeys === 'function' ? origSetMediaKeys.call(this, mediaKeys) : Promise.resolve();
+      };
+    }
+
+    const defineNavigatorMethod = (name, fn) => {
+      try {
+        if (typeof Navigator !== 'undefined' && Navigator.prototype) {
+          Object.defineProperty(Navigator.prototype, name, {
+            configurable: true,
+            writable: true,
+            value: fn,
+          });
+        }
+      } catch (_) {}
+      try {
+        if (navigator) {
+          Object.defineProperty(navigator, name, {
+            configurable: true,
+            writable: true,
+            value: fn,
+          });
+        }
+      } catch (_) {
+        try { navigator[name] = fn; } catch (_) {}
+      }
+    };
+
+    if (navigator && !navigator.__braveEmeWrapped) {
+      const origRMKSA = typeof navigator.requestMediaKeySystemAccess === 'function'
+        ? navigator.requestMediaKeySystemAccess.bind(navigator)
+        : null;
+      navigator.__braveEmeWrapped = true;
+      const wrappedRMKSA = function (keySystem, supportedConfigurations) {
+        const ks = String(keySystem || '').toLowerCase();
+        if (!origRMKSA) {
+          window.__braveSpotifyDrmBlocked = true;
+          if (ks.includes('widevine') || ks.includes('clearkey')) {
+            return Promise.resolve(createMockKeySystemAccess(keySystem, supportedConfigurations));
+          }
+          return Promise.reject(new DOMException('Unsupported keySystem', 'NotSupportedError'));
+        }
+        return origRMKSA(keySystem, supportedConfigurations).catch((err) => {
+          if (ks.includes('widevine')) {
+            window.__braveSpotifyDrmBlocked = true;
+            return Promise.resolve(createMockKeySystemAccess(keySystem, supportedConfigurations));
+          }
+          return Promise.reject(err);
+        });
+      };
+      defineNavigatorMethod('requestMediaKeySystemAccess', wrappedRMKSA);
+
+      if (!origRMKSA) {
+        window.__braveSpotifyDrmBlocked = true;
+      } else {
+        try {
+          origRMKSA('com.widevine.alpha', [{
+            initDataTypes: ['cenc'],
+            audioCapabilities: [{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }],
+          }]).then(() => {
+            window.__braveSpotifyHasNativeWidevine = true;
+          }).catch(() => {
+            window.__braveSpotifyDrmBlocked = true;
+          });
+        } catch (_) {
+          window.__braveSpotifyDrmBlocked = true;
+        }
+      }
+
+      if (navigator.mediaCapabilities?.decodingInfo && !navigator.mediaCapabilities.__braveMcWrapped) {
+        const origDecodingInfo = navigator.mediaCapabilities.decodingInfo.bind(navigator.mediaCapabilities);
+        navigator.mediaCapabilities.__braveMcWrapped = true;
+        const wrappedDecodingInfo = function (config) {
+          const ks = String(config?.keySystemConfiguration?.keySystem || '').toLowerCase();
+          return origDecodingInfo(config)
+            .then((res) => {
+              if (ks.includes('widevine') && (!res || !res.supported)) {
+                window.__braveSpotifyDrmBlocked = true;
+                return {
+                  supported: true,
+                  smooth: true,
+                  powerEfficient: true,
+                  keySystemAccess: createMockKeySystemAccess(
+                    config.keySystemConfiguration.keySystem,
+                    [config.keySystemConfiguration]
+                  ),
+                };
+              }
+              return res;
+            })
+            .catch((err) => {
+              if (ks.includes('widevine')) {
+                window.__braveSpotifyDrmBlocked = true;
+                return {
+                  supported: true,
+                  smooth: true,
+                  powerEfficient: true,
+                  keySystemAccess: createMockKeySystemAccess(
+                    config.keySystemConfiguration.keySystem,
+                    [config.keySystemConfiguration]
+                  ),
+                };
+              }
+              return Promise.reject(err);
+            });
+        };
+        try {
+          Object.defineProperty(navigator.mediaCapabilities, 'decodingInfo', {
+            configurable: true,
+            writable: true,
+            value: wrappedDecodingInfo,
+          });
+        } catch (_) {
+          navigator.mediaCapabilities.decodingInfo = wrappedDecodingInfo;
+        }
+      }
+    }
+  } catch (_) {
+    window.__braveSpotifyDrmBlocked = true;
+  }
+
+  if (window.top !== window.self) return;
+  try {
+    const h = (window.location && window.location.hostname || '').toLowerCase();
+    if (h !== 'open.spotify.com') return;
+  } catch (_) {
+    return;
+  }
   if (window.__braveSpotifyCleanUiBootstrapped) return;
   window.__braveSpotifyCleanUiBootstrapped = true;
+  window.__braveSpotifyBridgeState = window.__braveSpotifyBridgeState || { active: false };
+  window.__braveSpotifyBridgeSync = (st) => {
+    try {
+      window.__braveSpotifyBridgeState = Object.assign({ active: false }, st || {});
+    } catch (_) {}
+  };
+
+  const postGuestMessage = (payload) => {
+    try {
+      const h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.braveGuest;
+      if (h && typeof h.postMessage === 'function') {
+        h.postMessage(JSON.stringify(payload));
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  };
 
   const ensureStyle = () => {
     try {
@@ -239,6 +476,7 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
         [data-testid="welcome-back-banner"] {
           display: none !important;
           visibility: hidden !important;
+          opacity: 0 !important;
           height: 0 !important;
           margin: 0 !important;
           padding: 0 !important;
@@ -251,12 +489,13 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
 
   const isDismissablePlayerWidgetText = (raw) => {
     const txt = (raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
-    if (!txt || txt.length > 480) return false;
+    if (!txt || txt.length > 640) return false;
     if (
       txt.includes('protected content is not enabled') ||
       txt.includes('playback of protected content') ||
       txt.includes('enable playback in your browser') ||
-      (txt.includes('spotify support') && txt.includes('playback'))
+      txt.includes('protected content settings') ||
+      (txt.includes('spotify support') && (txt.includes('playback') || txt.includes('browser') || txt.includes('protected')))
     ) {
       return true;
     }
@@ -270,14 +509,44 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
   };
 
   const hideBannerNode = (node) => {
-    if (!node) return;
+    if (!node || node.tagName === 'BODY' || node.tagName === 'HTML' || node.tagName === 'MAIN') return;
+    if (node.id === 'main' || node.classList?.contains('Root__top-container') || node.classList?.contains('main-view-container')) return;
     if (node.getAttribute('data-brave-hidden') !== '1') {
       node.setAttribute('data-brave-hidden', '1');
       node.style.setProperty('display', 'none', 'important');
+      node.style.setProperty('visibility', 'hidden', 'important');
+      node.style.setProperty('opacity', '0', 'important');
       node.style.setProperty('height', '0', 'important');
+      node.style.setProperty('min-height', '0', 'important');
       node.style.setProperty('margin', '0', 'important');
       node.style.setProperty('padding', '0', 'important');
+      node.style.setProperty('pointer-events', 'none', 'important');
     }
+  };
+
+  const findBannerContainer = (startNode) => {
+    let cur = startNode && startNode.nodeType === 3 ? startNode.parentElement : startNode;
+    let best = null;
+    for (let depth = 0; depth < 9 && cur && cur.parentElement; depth++) {
+      const tag = cur.tagName;
+      if (tag === 'BODY' || tag === 'MAIN' || tag === 'HTML' || tag === 'NAV') break;
+      if (
+        cur.id === 'main' ||
+        cur.classList?.contains('Root__top-container') ||
+        cur.classList?.contains('main-view-container') ||
+        cur.getAttribute('data-testid') === 'root'
+      ) {
+        break;
+      }
+      const rect = cur.getBoundingClientRect();
+      if (rect.height <= 360 && isDismissablePlayerWidgetText(cur.textContent)) {
+        best = cur;
+      } else if (best && rect.height > 360) {
+        break;
+      }
+      cur = cur.parentElement;
+    }
+    return best;
   };
 
   let spotifyDomCheckedAt = 0;
@@ -290,7 +559,7 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
       if (legacy) legacy.remove();
 
       const candidates = document.querySelectorAll(
-        '[data-testid="message-bar"], [role="alert"], [role="status"], [data-testid="protected-content-banner"], [data-encore-id="banner"], [data-testid="nudge"], [role="dialog"]'
+        '[data-testid="message-bar"], [role="alert"], [role="status"], [data-testid="protected-content-banner"], [data-encore-id="banner"], [data-encore-id="snackbar"], [data-testid="nudge"], [role="dialog"]'
       );
       for (const el of candidates) {
         if (isDismissablePlayerWidgetText(el.textContent)) {
@@ -299,22 +568,39 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
       }
       const supportLinks = document.querySelectorAll('a[href*="support.spotify.com"]');
       for (const link of supportLinks) {
-        let cur = link;
-        let target = null;
-        for (let depth = 0; depth < 6 && cur && cur.parentElement; depth++) {
-          cur = cur.parentElement;
-          const tag = cur.tagName;
-          if (tag === 'BODY' || tag === 'MAIN' || tag === 'HTML') break;
-          if (cur.id === 'main' || cur.classList?.contains('Root__top-container') || cur.classList?.contains('main-view-container')) break;
-          const rect = cur.getBoundingClientRect();
-          if (rect.height > 0 && rect.height <= 180 && isDismissablePlayerWidgetText(cur.textContent)) {
-            target = cur;
-          }
-        }
-        if (target) {
-          hideBannerNode(target);
+        const container = findBannerContainer(link);
+        if (container) {
+          hideBannerNode(container);
         } else if (isDismissablePlayerWidgetText(link.parentElement?.textContent)) {
           hideBannerNode(link.parentElement);
+        }
+      }
+
+      if (document.body) {
+        const bodySample = (document.body.textContent || '').toLowerCase();
+        if (
+          bodySample.includes('protected content') ||
+          bodySample.includes('enable playback in your browser') ||
+          bodySample.includes('welcome back')
+        ) {
+          const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          const toHide = [];
+          let tNode;
+          while ((tNode = walker.nextNode())) {
+            const val = (tNode.nodeValue || '').toLowerCase();
+            if (
+              val.includes('protected content') ||
+              val.includes('enable playback in your browser') ||
+              val.includes('visit spotify support') ||
+              val.includes('welcome back')
+            ) {
+              const container = findBannerContainer(tNode);
+              if (container) toHide.push(container);
+            }
+          }
+          for (const node of toHide) {
+            hideBannerNode(node);
+          }
         }
       }
     } catch (_) {}
@@ -324,7 +610,7 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
     if (document.hidden || window.__BRAVE_TAB_SUSPENDED__) return;
     if (spotifyBannerTimer) return;
     const elapsed = Date.now() - spotifyDomCheckedAt;
-    const waitMs = elapsed >= 650 ? 90 : (650 - elapsed);
+    const waitMs = elapsed >= 450 ? 45 : (450 - elapsed);
     spotifyBannerTimer = setTimeout(() => {
       spotifyBannerTimer = null;
       if (document.hidden || window.__BRAVE_TAB_SUSPENDED__) return;
@@ -333,8 +619,187 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
     }, waitMs);
   };
 
+  const scheduleBurstSuppression = () => {
+    suppressUnwantedPlayerWidgets();
+    for (const delay of [50, 220, 600, 1400]) {
+      setTimeout(() => {
+        if (!document.hidden && !window.__BRAVE_TAB_SUSPENDED__) {
+          suppressUnwantedPlayerWidgets();
+        }
+      }, delay);
+    }
+  };
+
+  if (window.__braveSpotifyDrmBlocked) {
+    scheduleBurstSuppression();
+  }
+
+  const parsePlayAriaLabel = (btn) => {
+    const raw = (btn?.getAttribute?.('aria-label') || '').trim();
+    if (!raw || !/^play\s+\S/i.test(raw)) return { title: '', artist: '' };
+    const rest = raw.replace(/^play\s+/i, '').trim();
+    if (/^(track|song|video|episode|album|playlist|now)$/i.test(rest)) {
+      return { title: '', artist: '' };
+    }
+    const byMatch = rest.match(/^(.+?)\s+by\s+(.+)$/i);
+    if (byMatch) {
+      return { title: byMatch[1].trim(), artist: byMatch[2].trim() };
+    }
+    return { title: rest, artist: '' };
+  };
+
+  const extractTrackFromElement = (target, playBtn) => {
+    const container = target?.closest?.(
+      '[data-testid="tracklist-row"], [role="row"], [data-testid="track-row"], [data-testid="card"], [data-encore-id="card"], [data-testid="now-playing-widget"], article'
+    );
+    let trackUrl = '';
+    let title = '';
+    let artist = '';
+    let art = '';
+
+    if (container) {
+      const entityLink = container.querySelector('a[href*="/track/"], a[href*="/album/"], a[href*="/playlist/"], a[href*="/episode/"]');
+      if (entityLink) {
+        trackUrl = entityLink.href || '';
+        const text = (entityLink.textContent || '').trim();
+        if (text) title = text;
+      }
+      if (!title) {
+        const tEl = container.querySelector('[data-testid="internal-track-link"] div, [data-testid="card-title"], [dir="auto"]');
+        title = (tEl?.textContent || '').trim();
+      }
+      const artistLinks = Array.from(container.querySelectorAll('a[href*="/artist/"]'))
+        .map((a) => (a.textContent || '').trim())
+        .filter(Boolean);
+      if (artistLinks.length > 0) artist = [...new Set(artistLinks)].join(', ');
+      const img = container.querySelector('img');
+      if (img && img.src) art = img.src;
+    }
+
+    if (playBtn) {
+      const parsed = parsePlayAriaLabel(playBtn);
+      if (parsed.title && (!title || title.length < 2)) title = parsed.title;
+      if (parsed.artist && !artist) artist = parsed.artist;
+    }
+
+    if (!trackUrl) {
+      const href = String(window.location.href || '');
+      const hiMatch = href.match(/highlight=spotify%3Atrack%3A([A-Za-z0-9]+)|highlight=spotify:track:([A-Za-z0-9]+)/i);
+      if (hiMatch) {
+        trackUrl = `https://open.spotify.com/track/${hiMatch[1] || hiMatch[2]}`;
+      } else if (/open\.spotify\.com\/(?:intl-[a-z-]+\/)?(track|album|playlist|artist|episode)\//i.test(href)) {
+        trackUrl = href;
+      } else {
+        const pageTrack = document.querySelector('main a[href*="/track/"], main a[href*="/playlist/"], main a[href*="/album/"]');
+        if (pageTrack?.href) trackUrl = pageTrack.href;
+      }
+    }
+    if (!title) {
+      const h1 = document.querySelector('main h1, [data-testid="entityTitle"]');
+      title = (h1?.textContent || '').trim();
+    }
+    if (!artist) {
+      const pageArtists = Array.from(document.querySelectorAll('main [data-testid="creator-link"], main a[href*="/artist/"]'))
+        .map((a) => (a.textContent || '').trim())
+        .filter(Boolean);
+      if (pageArtists.length > 0) artist = [...new Set(pageArtists)].slice(0, 3).join(', ');
+    }
+    if (!art) {
+      const heroImg = document.querySelector('main img[src*="i.scdn.co"], main img');
+      if (heroImg?.src) art = heroImg.src;
+    }
+    return { url: trackUrl || window.location.href, title, artist, art };
+  };
+
+  let lastBridgeClickAt = 0;
+  const triggerBridgePlay = (ctx) => {
+    const now = Date.now();
+    if (now - lastBridgeClickAt < 450) return;
+    lastBridgeClickAt = now;
+    scheduleBurstSuppression();
+    postGuestMessage({
+      type: 'spotify_play',
+      url: ctx?.url || window.location.href,
+      title: ctx?.title || '',
+      artist: ctx?.artist || '',
+      art: ctx?.art || '',
+    });
+  };
+
+  const wirePlaybackBridge = () => {
+    if (window.__braveSpotifyBridgeEventsWired) return;
+    window.__braveSpotifyBridgeEventsWired = true;
+
+    document.addEventListener('click', (ev) => {
+      try {
+        const btn = ev.target?.closest?.(
+          'button[data-testid="play-button"], [data-testid="action-bar-row"] button[data-testid="play-button"], [data-testid="tracklist-row"] button, [role="row"] button, button[data-testid="control-button-playpause"], button[data-testid="control-button-skip-forward"], button[data-testid="control-button-skip-back"], button[aria-label^="Play"]'
+        );
+        if (!btn) return;
+        const testId = btn.getAttribute('data-testid') || '';
+        const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+
+        if (window.__braveSpotifyBridgeState?.active) {
+          if (testId === 'control-button-playpause') {
+            ev.preventDefault();
+            ev.stopPropagation();
+            postGuestMessage({ type: 'spotify_control', action: 'toggle' });
+            return;
+          }
+          if (testId === 'control-button-skip-forward') {
+            ev.preventDefault();
+            ev.stopPropagation();
+            postGuestMessage({ type: 'spotify_control', action: 'next' });
+            return;
+          }
+          if (testId === 'control-button-skip-back') {
+            ev.preventDefault();
+            ev.stopPropagation();
+            postGuestMessage({ type: 'spotify_control', action: 'prev' });
+            return;
+          }
+        }
+
+        if (
+          btn.closest('[data-testid="tracklist-row"], [role="row"]') &&
+          aria &&
+          !aria.startsWith('play') &&
+          !aria.startsWith('pause') &&
+          testId !== 'play-button'
+        ) {
+          return;
+        }
+
+        const ctx = extractTrackFromElement(btn, btn);
+        if (!ctx.url && !ctx.title) return;
+        scheduleBurstSuppression();
+        if (window.__braveSpotifyDrmBlocked) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          triggerBridgePlay(ctx);
+        }
+      } catch (_) {}
+    }, true);
+
+    document.addEventListener('dblclick', (ev) => {
+      try {
+        const row = ev.target?.closest?.('[data-testid="tracklist-row"], [role="row"]');
+        if (!row) return;
+        const ctx = extractTrackFromElement(row, row.querySelector('button[data-testid="play-button"], button[aria-label^="Play"]'));
+        if (!ctx.url && !ctx.title) return;
+        scheduleBurstSuppression();
+        if (window.__braveSpotifyDrmBlocked) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          triggerBridgePlay(ctx);
+        }
+      } catch (_) {}
+    }, true);
+  };
+
   const boot = () => {
     suppressUnwantedPlayerWidgets();
+    wirePlaybackBridge();
     const obs = new MutationObserver(() => {
       scheduleMaintenance();
     });
@@ -356,55 +821,498 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
 })();
 "#;
 
+#[derive(Debug, PartialEq, Eq)]
+enum GuestBridgeCommand {
+    ShieldBlocked(u64),
+    UrlSync(String),
+    LogError(String),
+    SpotifyPlay {
+        url: String,
+        title: String,
+        artist: String,
+        art: String,
+    },
+    SpotifyControl(String),
+    SpotifyDownload(String),
+}
+
+fn parse_brave_guest_command(raw: &str) -> Option<GuestBridgeCommand> {
+    let parsed = serde_json::from_str::<Value>(raw).ok()?;
+    let msg_type = parsed.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    match msg_type {
+        "shield_blocked" => {
+            let inc = parsed
+                .get("count")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1)
+                .clamp(1, 50);
+            Some(GuestBridgeCommand::ShieldBlocked(inc))
+        }
+        "url_sync" => parsed
+            .get("u")
+            .and_then(|v| v.as_str())
+            .map(|u| GuestBridgeCommand::UrlSync(u.to_string())),
+        "log_error" => parsed
+            .get("msg")
+            .and_then(|v| v.as_str())
+            .map(|m| GuestBridgeCommand::LogError(m.to_string())),
+        "spotify_play" => Some(GuestBridgeCommand::SpotifyPlay {
+            url: parsed
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string(),
+            title: parsed
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string(),
+            artist: parsed
+                .get("artist")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string(),
+            art: parsed
+                .get("art")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string(),
+        }),
+        "spotify_control" => parsed
+            .get("action")
+            .and_then(|v| v.as_str())
+            .map(|a| GuestBridgeCommand::SpotifyControl(a.trim().to_string())),
+        "spotify_download" => Some(GuestBridgeCommand::SpotifyDownload(
+            parsed
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string(),
+        )),
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn handle_brave_guest_command(app: &AppHandle, label: &str, cmd: GuestBridgeCommand) {
+    match cmd {
+        GuestBridgeCommand::ShieldBlocked(inc) => {
+            let total = BLOCKED_ADS_COUNT.fetch_add(inc, Ordering::SeqCst) + inc;
+            if label == "spotify-webview" {
+                SPOTIFY_BLOCKED_COUNT.fetch_add(inc, Ordering::Relaxed);
+            } else {
+                YTM_BLOCKED_COUNT.fetch_add(inc, Ordering::Relaxed);
+            }
+            let _ = app.emit("shield-update", serde_json::json!({ "count": total }));
+        }
+        GuestBridgeCommand::UrlSync(u) => {
+            record_webview_url(app, label, &u);
+        }
+        GuestBridgeCommand::LogError(msg) => {
+            eprintln!("[{label} Report] {msg}");
+        }
+        GuestBridgeCommand::SpotifyPlay {
+            url,
+            title,
+            artist,
+            art,
+        } => {
+            let track_url = if url.is_empty() {
+                get_webview_url("spotify-webview".to_string())
+            } else {
+                url
+            };
+            spawn_spotify_bridge_play(app.clone(), track_url, title, artist, art);
+        }
+        GuestBridgeCommand::SpotifyControl(action) => {
+            if !action.is_empty() {
+                let _ = app.emit("spotify-bridge-control", serde_json::json!({ "action": action }));
+            }
+        }
+        GuestBridgeCommand::SpotifyDownload(url) => {
+            let dl_url = if url.is_empty() {
+                get_webview_url("spotify-webview".to_string())
+            } else {
+                url
+            };
+            let _ = app.emit("spotify-bridge-download", serde_json::json!({ "url": dl_url }));
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+struct BrowserSettings {
+    zoom_level: f64,
+    audio_output: String,
+    video_playback: bool,
+    autoplay: bool,
+    inline_media: bool,
+    fullscreen_enabled: bool,
+    microphone: String,
+    camera: String,
+    location: String,
+    notifications: String,
+    clipboard: bool,
+    popups: bool,
+    cookies_policy: String,
+    tracking_protection: bool,
+    local_storage: bool,
+    webgl: bool,
+    webrtc: bool,
+    encrypted_media: bool,
+    smooth_scrolling: bool,
+    hardware_acceleration: String,
+}
+
+impl Default for BrowserSettings {
+    fn default() -> Self {
+        Self {
+            zoom_level: 1.0,
+            audio_output: "allow".to_string(),
+            video_playback: true,
+            autoplay: true,
+            inline_media: true,
+            fullscreen_enabled: true,
+            microphone: "allow".to_string(),
+            camera: "ask".to_string(),
+            location: "ask".to_string(),
+            notifications: "allow".to_string(),
+            clipboard: true,
+            popups: true,
+            cookies_policy: "all".to_string(),
+            tracking_protection: false,
+            local_storage: true,
+            webgl: true,
+            webrtc: true,
+            encrypted_media: true,
+            smooth_scrolling: true,
+            hardware_acceleration: "on_demand".to_string(),
+        }
+    }
+}
+
+fn normalize_tri_permission(val: &str, default_val: &str) -> String {
+    match val.trim().to_ascii_lowercase().as_str() {
+        "allow" | "allowed" | "true" => "allow".to_string(),
+        "block" | "deny" | "denied" | "false" => "block".to_string(),
+        "ask" | "prompt" => "ask".to_string(),
+        _ => default_val.to_string(),
+    }
+}
+
+fn normalize_cookies_policy(val: &str) -> String {
+    match val.trim().to_ascii_lowercase().as_str() {
+        "no_third_party" | "no-third-party" | "block_third_party" => "no_third_party".to_string(),
+        "none" | "block" | "block_all" => "none".to_string(),
+        _ => "all".to_string(),
+    }
+}
+
+fn normalize_hw_accel(val: &str) -> String {
+    match val.trim().to_ascii_lowercase().as_str() {
+        "always" | "on" => "always".to_string(),
+        "never" | "off" | "disabled" => "never".to_string(),
+        _ => "on_demand".to_string(),
+    }
+}
+
+fn normalize_browser_settings(mut s: BrowserSettings) -> BrowserSettings {
+    s.zoom_level = if s.zoom_level.is_finite() {
+        (s.zoom_level.clamp(0.5, 2.0) * 100.0).round() / 100.0
+    } else {
+        1.0
+    };
+    s.audio_output = if s.audio_output.trim().eq_ignore_ascii_case("block")
+        || s.audio_output.trim().eq_ignore_ascii_case("mute")
+    {
+        "block".to_string()
+    } else {
+        "allow".to_string()
+    };
+    s.microphone = normalize_tri_permission(&s.microphone, "allow");
+    s.camera = normalize_tri_permission(&s.camera, "ask");
+    s.location = normalize_tri_permission(&s.location, "ask");
+    s.notifications = normalize_tri_permission(&s.notifications, "allow");
+    s.cookies_policy = normalize_cookies_policy(&s.cookies_policy);
+    s.hardware_acceleration = normalize_hw_accel(&s.hardware_acceleration);
+    s
+}
+
+static BROWSER_SETTINGS: LazyLock<Mutex<BrowserSettings>> =
+    LazyLock::new(|| Mutex::new(BrowserSettings::default()));
+static PERMISSION_PROMPT_SEQ: AtomicU64 = AtomicU64::new(1);
+
+fn load_browser_settings_from_disk(app: &AppHandle) -> BrowserSettings {
+    let path = auth_config_dir(app).join("browser_settings.json");
+    if let Ok(bytes) = fs::read(&path) {
+        if let Ok(parsed) = serde_json::from_slice::<BrowserSettings>(&bytes) {
+            return normalize_browser_settings(parsed);
+        }
+    }
+    BrowserSettings::default()
+}
+
+fn persist_browser_settings_to_disk(app: &AppHandle, settings: &BrowserSettings) -> Result<(), String> {
+    let path = auth_config_dir(app).join("browser_settings.json");
+    let val = serde_json::to_value(settings).map_err(|e| e.to_string())?;
+    write_private_json_atomic(&path, &val)
+}
+
+fn current_browser_settings(app: Option<&AppHandle>) -> BrowserSettings {
+    let guard = BROWSER_SETTINGS.lock().unwrap_or_else(|p| p.into_inner());
+    let current = guard.clone();
+    drop(guard);
+    if current == BrowserSettings::default() {
+        if let Some(app_handle) = app {
+            let loaded = load_browser_settings_from_disk(app_handle);
+            let mut g = BROWSER_SETTINGS.lock().unwrap_or_else(|p| p.into_inner());
+            *g = loaded.clone();
+            return loaded;
+        }
+    }
+    current
+}
+
+fn detect_widevine_cdm_paths() -> Vec<String> {
+    // Only count CDM / OpenCDM modules actually inside WebKitGTK / GStreamer runtime paths,
+    // NOT external Chrome/Brave binaries (which WebKitGTK 4.1 cannot load directly).
+    let candidates = [
+        "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/injected-bundle/libwidevinecdm.so",
+        "/usr/lib/x86_64-linux-gnu/libopencdm.so",
+        "/usr/lib/x86_64-linux-gnu/libopencdm.so.0",
+        "/usr/lib/x86_64-linux-gnu/gstreamer-1.0/libgstopencdm.so",
+    ];
+    candidates
+        .iter()
+        .filter(|p| std::path::Path::new(p).exists())
+        .map(|p| (*p).to_string())
+        .collect()
+}
+
+#[cfg(target_os = "linux")]
+thread_local! {
+    static PENDING_PERMISSION_PROMPTS: std::cell::RefCell<HashMap<u64, webkit2gtk::PermissionRequest>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+#[cfg(target_os = "linux")]
+fn apply_browser_settings_to_inner_webview(
+    inner: &webkit2gtk::WebView,
+    s: &BrowserSettings,
+    allow_popups_override: Option<bool>,
+) {
+    use webkit2gtk::{
+        CacheModel, CookieAcceptPolicy, CookieManagerExt, HardwareAccelerationPolicy, SettingsExt,
+        WebContextExt, WebViewExt, WebsiteDataManagerExt,
+    };
+
+    if let Some(ctx) = WebViewExt::context(inner) {
+        ctx.set_cache_model(CacheModel::WebBrowser);
+        let cookie_policy = match s.cookies_policy.as_str() {
+            "no_third_party" => CookieAcceptPolicy::NoThirdParty,
+            "none" => CookieAcceptPolicy::Never,
+            _ => CookieAcceptPolicy::Always,
+        };
+        if let Some(wdm) = WebContextExt::website_data_manager(&ctx) {
+            wdm.set_itp_enabled(s.tracking_protection);
+            if let Some(cm) = wdm.cookie_manager() {
+                cm.set_accept_policy(cookie_policy);
+            }
+        }
+        if let Some(cm) = WebContextExt::cookie_manager(&ctx) {
+            cm.set_accept_policy(cookie_policy);
+        }
+    }
+
+    if let Some(settings) = WebViewExt::settings(inner) {
+        settings.set_enable_javascript(true);
+        settings.set_enable_webgl(s.webgl);
+        settings.set_enable_webaudio(true);
+        settings.set_enable_mediasource(s.video_playback);
+        settings.set_enable_media(s.video_playback);
+        settings.set_enable_media_capabilities(true);
+        settings.set_enable_media_stream(s.microphone != "block" || s.camera != "block");
+        settings.set_enable_encrypted_media(s.encrypted_media);
+        settings.set_enable_fullscreen(s.fullscreen_enabled);
+        settings.set_enable_webrtc(s.webrtc);
+        settings.set_media_playback_allows_inline(s.inline_media);
+        settings.set_media_content_types_requiring_hardware_support(None);
+        settings.set_enable_html5_database(s.local_storage);
+        settings.set_enable_html5_local_storage(s.local_storage);
+        settings.set_enable_page_cache(true);
+        settings.set_enable_smooth_scrolling(s.smooth_scrolling);
+        settings.set_enable_site_specific_quirks(true);
+        settings.set_enable_back_forward_navigation_gestures(true);
+        let hw = match s.hardware_acceleration.as_str() {
+            "always" => HardwareAccelerationPolicy::Always,
+            "never" => HardwareAccelerationPolicy::Never,
+            _ => HardwareAccelerationPolicy::OnDemand,
+        };
+        settings.set_hardware_acceleration_policy(hw);
+        settings.set_media_playback_requires_user_gesture(!s.autoplay);
+        settings.set_allow_modal_dialogs(true);
+        settings.set_javascript_can_access_clipboard(s.clipboard);
+        settings.set_javascript_can_open_windows_automatically(allow_popups_override.unwrap_or(s.popups));
+        settings.set_enable_write_console_messages_to_stdout(false);
+    }
+
+    inner.set_zoom_level(s.zoom_level);
+    inner.set_is_muted(s.audio_output == "block");
+}
+
+#[cfg(target_os = "linux")]
+fn classify_permission_policy<'a>(
+    request: &webkit2gtk::PermissionRequest,
+    s: &'a BrowserSettings,
+) -> (&'static str, &'static str, &'a str) {
+    use gtk::prelude::Cast;
+    use webkit2gtk::{
+        DeviceInfoPermissionRequest, GeolocationPermissionRequest, MediaKeySystemPermissionRequest,
+        NotificationPermissionRequest, PointerLockPermissionRequest, UserMediaPermissionRequest,
+        UserMediaPermissionRequestExt, WebsiteDataAccessPermissionRequest,
+    };
+
+    if let Some(um) = request.downcast_ref::<UserMediaPermissionRequest>() {
+        let for_audio = um.is_for_audio_device();
+        let for_video = um.is_for_video_device();
+        if for_audio && for_video {
+            let policy = if s.camera == "block" || s.microphone == "block" {
+                "block"
+            } else if s.camera == "ask" || s.microphone == "ask" {
+                "ask"
+            } else {
+                "allow"
+            };
+            return ("camera_mic", "Camera & Microphone", policy);
+        } else if for_video {
+            return ("camera", "Camera", s.camera.as_str());
+        } else if for_audio {
+            return ("microphone", "Microphone", s.microphone.as_str());
+        }
+        return ("microphone", "Media Devices", s.microphone.as_str());
+    }
+    if request.is::<GeolocationPermissionRequest>() {
+        return ("location", "Location", s.location.as_str());
+    }
+    if request.is::<NotificationPermissionRequest>() {
+        return ("notifications", "Notifications", s.notifications.as_str());
+    }
+    if request.is::<MediaKeySystemPermissionRequest>() {
+        return (
+            "encrypted_media",
+            "Protected Content (DRM)",
+            if s.encrypted_media { "allow" } else { "block" },
+        );
+    }
+    if request.is::<WebsiteDataAccessPermissionRequest>() {
+        return (
+            "cookies",
+            "Cross-Site Cookies & Storage",
+            if s.cookies_policy == "none" { "block" } else { "allow" },
+        );
+    }
+    if request.is::<DeviceInfoPermissionRequest>() {
+        return ("webrtc", "Media Device Enumeration", if s.webrtc { "allow" } else { "block" });
+    }
+    if request.is::<PointerLockPermissionRequest>() {
+        return ("media", "Pointer Lock", "allow");
+    }
+    ("general", "Site Permission", "allow")
+}
+
 #[cfg(target_os = "linux")]
 fn apply_webkit_platform_settings(
     platform_wv: tauri::webview::PlatformWebview,
     allow_popups: bool,
     guest_bridge: Option<(AppHandle, &'static str)>,
 ) {
-    use webkit2gtk::{
-        CacheModel, CookieAcceptPolicy, CookieManagerExt, HardwareAccelerationPolicy,
-        PermissionRequestExt, SettingsExt, UserContentManagerExt, WebContextExt, WebViewExt,
-        WebsiteDataManagerExt,
-    };
+    use webkit2gtk::{PermissionRequestExt, UserContentManagerExt, WebViewExt};
     let inner = platform_wv.inner();
-    if let Some(ctx) = WebViewExt::context(&inner) {
-        // Full browser cache + standard cross-site cookies/storage so Google, Spotify, Cloudflare & CAPTCHAs work natively
-        ctx.set_cache_model(CacheModel::WebBrowser);
-        if let Some(wdm) = WebContextExt::website_data_manager(&ctx) {
-            wdm.set_itp_enabled(false);
-            if let Some(cm) = wdm.cookie_manager() {
-                cm.set_accept_policy(CookieAcceptPolicy::Always);
+    let app_for_init = guest_bridge.as_ref().map(|(a, _)| a);
+    let initial_settings = current_browser_settings(app_for_init);
+    apply_browser_settings_to_inner_webview(&inner, &initial_settings, Some(allow_popups));
+
+    let guest_info = guest_bridge.clone();
+    inner.connect_permission_request(move |wv, request| {
+        let app_opt = guest_info.as_ref().map(|(a, _)| a);
+        let settings = current_browser_settings(app_opt);
+        let (perm_key, perm_label, policy) = classify_permission_policy(request, &settings);
+        match policy {
+            "block" => {
+                request.deny();
+                true
+            }
+            "ask" => {
+                if let Some((ref app_handle, label)) = guest_info {
+                    let req_id = PERMISSION_PROMPT_SEQ.fetch_add(1, Ordering::Relaxed);
+                    let req_clone = request.clone();
+                    PENDING_PERMISSION_PROMPTS.with(|cell| {
+                        cell.borrow_mut().insert(req_id, req_clone);
+                    });
+                    let origin = wv
+                        .uri()
+                        .map(|u| {
+                            tauri::Url::parse(u.as_str())
+                                .ok()
+                                .and_then(|p| p.host_str().map(str::to_string))
+                                .unwrap_or_else(|| u.to_string())
+                        })
+                        .unwrap_or_else(|| "this site".to_string());
+                    let _ = app_handle.emit(
+                        "browser-permission-prompt",
+                        serde_json::json!({
+                            "id": req_id,
+                            "webview": label,
+                            "origin": origin,
+                            "permission": perm_key,
+                            "label": perm_label,
+                        }),
+                    );
+                    true
+                } else {
+                    request.allow();
+                    true
+                }
+            }
+            _ => {
+                request.allow();
+                true
             }
         }
-        if let Some(cm) = WebContextExt::cookie_manager(&ctx) {
-            cm.set_accept_policy(CookieAcceptPolicy::Always);
-        }
-    }
-    if let Some(settings) = WebViewExt::settings(&inner) {
-        settings.set_enable_javascript(true);
-        settings.set_enable_webgl(true);
-        settings.set_enable_webaudio(true);
-        settings.set_enable_mediasource(true);
-        settings.set_enable_media(true);
-        settings.set_enable_media_capabilities(true);
-        settings.set_enable_media_stream(true);
-        settings.set_enable_encrypted_media(true);
-        settings.set_enable_page_cache(true);
-        settings.set_enable_smooth_scrolling(true);
-        settings.set_enable_site_specific_quirks(true);
-        settings.set_enable_back_forward_navigation_gestures(true);
-        settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::OnDemand);
-        settings.set_media_playback_requires_user_gesture(false);
-        settings.set_javascript_can_open_windows_automatically(allow_popups);
-        settings.set_enable_write_console_messages_to_stdout(false);
-    }
-    // Behave like a full desktop browser: grant requested web permissions cleanly (storage access, EME, media, notifications, etc.)
-    inner.connect_permission_request(|_wv, request| {
-        request.allow();
-        true
     });
-    if guest_bridge.is_some() {
+    if let Some((ref app_fs, _)) = guest_bridge {
+        let app_fs_enter = app_fs.clone();
+        inner.connect_enter_fullscreen(move |wv| {
+            GUEST_HTML5_FULLSCREEN.store(true, Ordering::SeqCst);
+            wv.set_margin_top(0);
+            wv.set_margin_start(0);
+            wv.set_margin_end(0);
+            wv.set_margin_bottom(0);
+            if let Some(win) = app_fs_enter.get_window("main") {
+                if let Ok(gtk_win) = win.gtk_window() {
+                    gtk_win.fullscreen();
+                }
+                sync_linux_overlay_margins(&win);
+            }
+            false
+        });
+        let app_fs_leave = app_fs.clone();
+        inner.connect_leave_fullscreen(move |_wv| {
+            GUEST_HTML5_FULLSCREEN.store(false, Ordering::SeqCst);
+            if let Some(win) = app_fs_leave.get_window("main") {
+                if let Ok(gtk_win) = win.gtk_window() {
+                    gtk_win.unfullscreen();
+                }
+                sync_linux_overlay_margins(&win);
+            }
+            false
+        });
         inner.set_background_color(&gtk::gdk::RGBA::new(7.0 / 255.0, 8.0 / 255.0, 12.0 / 255.0, 1.0));
     }
     if let Some((_app_for_err, label)) = &guest_bridge {
@@ -425,36 +1333,8 @@ fn apply_webkit_platform_settings(
                 let Some(val) = js_res.js_value() else {
                     return;
                 };
-                let raw = val.to_string();
-                let Ok(parsed) = serde_json::from_str::<Value>(&raw) else {
-                    return;
-                };
-                match parsed.get("type").and_then(|v| v.as_str()).unwrap_or("") {
-                    "shield_blocked" => {
-                        let inc = parsed
-                            .get("count")
-                            .and_then(|v| v.as_u64())
-                            .unwrap_or(1)
-                            .clamp(1, 50);
-                        let total = BLOCKED_ADS_COUNT.fetch_add(inc, Ordering::SeqCst) + inc;
-                        if label == "spotify-webview" {
-                            SPOTIFY_BLOCKED_COUNT.fetch_add(inc, Ordering::Relaxed);
-                        } else {
-                            YTM_BLOCKED_COUNT.fetch_add(inc, Ordering::Relaxed);
-                        }
-                        let _ = app.emit("shield-update", serde_json::json!({ "count": total }));
-                    }
-                    "url_sync" => {
-                        if let Some(u) = parsed.get("u").and_then(|v| v.as_str()) {
-                            record_webview_url(&app, label, u);
-                        }
-                    }
-                    "log_error" => {
-                        if let Some(msg) = parsed.get("msg").and_then(|v| v.as_str()) {
-                            eprintln!("[{label} Report] {msg}");
-                        }
-                    }
-                    _ => {}
+                if let Some(cmd) = parse_brave_guest_command(&val.to_string()) {
+                    handle_brave_guest_command(&app, label, cmd);
                 }
             });
         }
@@ -491,6 +1371,266 @@ fn configure_webkit_guest_webview(
 
 #[cfg(not(target_os = "linux"))]
 fn configure_webkit_window_settings(_win: &tauri::WebviewWindow, _allow_popups: bool) {}
+
+fn sync_webview_session_if_landed(app: &AppHandle, service: &'static str, webview_label: &'static str, nav_url: &str) {
+    if !is_service_landing_url(service, nav_url) {
+        return;
+    }
+    let already_hinted = if service == "spotify" {
+        SP_AUTH_COOKIE_HINT.load(Ordering::Relaxed)
+    } else {
+        YT_AUTH_COOKIE_HINT.load(Ordering::Relaxed)
+    };
+    if already_hinted {
+        return;
+    }
+    let app_clone = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(850));
+        let Some(wv) = app_clone.get_webview(webview_label) else {
+            return;
+        };
+        if let Ok(cookies) = wv.cookies() {
+            let has_auth = cookies
+                .iter()
+                .any(|c| is_service_auth_cookie(service, c.name(), c.domain().unwrap_or("")));
+            if has_auth {
+                let dir = auth_config_dir(&app_clone);
+                let records = cookies_to_json_values(service, &cookies);
+                let _ = write_private_json_atomic(
+                    &dir.join(service_session_filename(service)),
+                    &Value::Array(records),
+                );
+                if service == "spotify" {
+                    SP_AUTH_COOKIE_HINT.store(true, Ordering::Relaxed);
+                } else {
+                    YT_AUTH_COOKIE_HINT.store(true, Ordering::Relaxed);
+                }
+                let _ = persist_service_account(&dir, service, "", "", "", "webview");
+                let _ = app_clone.emit(
+                    "auth-sync-completed",
+                    serde_json::json!({ "service": service, "reloaded": false }),
+                );
+            }
+        }
+    });
+}
+
+fn apply_live_browser_settings_to_all(app: &AppHandle, settings: &BrowserSettings) {
+    #[cfg(target_os = "linux")]
+    {
+        for (label, allow_popups) in [
+            ("yt-webview", settings.popups),
+            ("spotify-webview", settings.popups),
+        ] {
+            if let Some(wv) = app.get_webview(label) {
+                let s_clone = settings.clone();
+                let _ = wv.with_webview(move |platform_wv| {
+                    apply_browser_settings_to_inner_webview(
+                        &platform_wv.inner(),
+                        &s_clone,
+                        Some(allow_popups),
+                    );
+                });
+            }
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = (app, settings);
+}
+
+#[tauri::command]
+fn get_browser_settings(app: AppHandle) -> BrowserSettings {
+    current_browser_settings(Some(&app))
+}
+
+#[tauri::command]
+fn update_browser_settings(app: AppHandle, settings: BrowserSettings) -> Result<BrowserSettings, String> {
+    let normalized = normalize_browser_settings(settings);
+    {
+        let mut guard = BROWSER_SETTINGS.lock().unwrap_or_else(|p| p.into_inner());
+        *guard = normalized.clone();
+    }
+    persist_browser_settings_to_disk(&app, &normalized)?;
+    let app_clone = app.clone();
+    let norm_clone = normalized.clone();
+    let _ = app.run_on_main_thread(move || {
+        apply_live_browser_settings_to_all(&app_clone, &norm_clone);
+    });
+    Ok(normalized)
+}
+
+#[tauri::command]
+fn respond_permission_prompt(
+    app: AppHandle,
+    id: u64,
+    allow: bool,
+    remember_key: Option<String>,
+) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        use webkit2gtk::PermissionRequestExt;
+        let _ = app.run_on_main_thread(move || {
+            PENDING_PERMISSION_PROMPTS.with(|cell| {
+                if let Some(req) = cell.borrow_mut().remove(&id) {
+                    if allow {
+                        req.allow();
+                    } else {
+                        req.deny();
+                    }
+                }
+            });
+        });
+    }
+    if let Some(key) = remember_key {
+        let val = if allow { "allow" } else { "block" }.to_string();
+        let mut current = current_browser_settings(Some(&app));
+        match key.as_str() {
+            "microphone" => current.microphone = val,
+            "camera" => current.camera = val,
+            "camera_mic" => {
+                current.camera = val.clone();
+                current.microphone = val;
+            }
+            "location" => current.location = val,
+            "notifications" => current.notifications = val,
+            _ => {}
+        }
+        let _ = update_browser_settings(app, current);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_browser_data(app: AppHandle, scope: String) -> Result<Value, String> {
+    let scope_norm = scope.trim().to_ascii_lowercase();
+    if scope_norm == "cookies" || scope_norm == "all" {
+        SP_AUTH_COOKIE_HINT.store(false, Ordering::Relaxed);
+        YT_AUTH_COOKIE_HINT.store(false, Ordering::Relaxed);
+        let dir = auth_config_dir(&app);
+        let _ = fs::remove_file(dir.join("spotify_session.json"));
+        let _ = fs::remove_file(dir.join("ytmusic_session.json"));
+        let _ = fs::remove_file(dir.join("user_accounts.json"));
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use webkit2gtk::{WebContextExt, WebViewExt, WebsiteDataManagerExtManual, WebsiteDataTypes};
+        let types = match scope_norm.as_str() {
+            "cache" => {
+                WebsiteDataTypes::DISK_CACHE
+                    | WebsiteDataTypes::MEMORY_CACHE
+                    | WebsiteDataTypes::DOM_CACHE
+                    | WebsiteDataTypes::OFFLINE_APPLICATION_CACHE
+            }
+            "cookies" => {
+                WebsiteDataTypes::COOKIES
+                    | WebsiteDataTypes::LOCAL_STORAGE
+                    | WebsiteDataTypes::SESSION_STORAGE
+                    | WebsiteDataTypes::INDEXEDDB_DATABASES
+                    | WebsiteDataTypes::SERVICE_WORKER_REGISTRATIONS
+            }
+            _ => WebsiteDataTypes::ALL,
+        };
+        let app_clone = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            for label in ["yt-webview", "spotify-webview"] {
+                if let Some(wv) = app_clone.get_webview(label) {
+                    let _ = wv.with_webview(move |platform_wv| {
+                        let inner = platform_wv.inner();
+                        if let Some(ctx) = WebViewExt::context(&inner) {
+                            if let Some(wdm) = WebContextExt::website_data_manager(&ctx) {
+                                wdm.clear(types, webkit2gtk::glib::TimeSpan::from_seconds(0), None::<&webkit2gtk::gio::Cancellable>, |_| {});
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    if scope_norm == "cookies" || scope_norm == "all" {
+        let _ = app.emit(
+            "auth-sync-completed",
+            serde_json::json!({ "service": "all", "cleared": true }),
+        );
+    }
+
+    Ok(serde_json::json!({
+        "success": true,
+        "scope": scope_norm
+    }))
+}
+
+fn find_binary_on_path(bin: &str) -> Option<PathBuf> {
+    let path_var = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join(bin);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+#[tauri::command]
+fn get_browser_driver_status(app: AppHandle) -> Value {
+    let settings = current_browser_settings(Some(&app));
+    let widevine_paths = detect_widevine_cdm_paths();
+    let has_native_widevine = !widevine_paths.is_empty();
+    let has_gst_libav = find_binary_on_path("gst-inspect-1.0")
+        .map(|bin| {
+            std::process::Command::new(bin)
+                .args(["libav"])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        })
+        .unwrap_or(false);
+    let widevine_browser = [
+        "google-chrome",
+        "google-chrome-stable",
+        "brave-browser",
+        "chromium",
+        "chromium-browser",
+        "microsoft-edge",
+    ]
+    .into_iter()
+    .find(|bin| find_binary_on_path(bin).is_some())
+    .unwrap_or("");
+
+    let widevine_browser_label = match widevine_browser {
+        "google-chrome" | "google-chrome-stable" => "Chrome",
+        "brave-browser" => "Brave",
+        "chromium" | "chromium-browser" => "Chromium",
+        "microsoft-edge" => "Edge",
+        _ => "",
+    };
+
+    serde_json::json!({
+        "engine": "WebKitGTK 4.1 (Linux)",
+        "youtubeVideo": {
+            "ready": settings.video_playback && settings.webgl,
+            "mseEnabled": settings.video_playback,
+            "webglEnabled": settings.webgl,
+            "fullscreenEnabled": settings.fullscreen_enabled,
+            "gstLibavDetected": has_gst_libav,
+        },
+        "spotifyDrm": {
+            "nativeWidevinePresent": has_native_widevine,
+            "widevinePaths": widevine_paths,
+            "bridgeActive": true,
+            "emeCompatibilityShim": true,
+            "externalWidevineBrowser": if widevine_browser.is_empty() { Value::Null } else { Value::String(widevine_browser.to_string()) },
+            "externalWidevineBrowserLabel": if widevine_browser_label.is_empty() { Value::Null } else { Value::String(widevine_browser_label.to_string()) },
+            "summary": if has_native_widevine {
+                "Native WebKitGTK Widevine/OpenCDM module detected"
+            } else {
+                "Linux WebKitGTK 4.1 has no Widevine CDM — EME Shim + Rust Audio Bridge Active"
+            }
+        }
+    })
+}
 
 #[derive(Serialize)]
 struct RuntimeInfo {
@@ -979,6 +2119,7 @@ fn ensure_spotify_webview_on_main_thread(app: &AppHandle) {
         .initialization_script(SPOTIFY_NAVBAR_FIX_SCRIPT)
         .on_navigation(move |nav_url| {
             record_webview_url(&app_handle_for_spotify_nav, "spotify-webview", nav_url.as_str());
+            sync_webview_session_if_landed(&app_handle_for_spotify_nav, "spotify", "spotify-webview", nav_url.as_str());
             true
         })
         .on_new_window(move |url, _features| {
@@ -1048,6 +2189,13 @@ fn linux_overlay_edge_inset(window: &Window) -> i32 {
 
 #[cfg(target_os = "linux")]
 fn apply_linux_overlay_child_margins(widget: &gtk::Widget, edge: i32) {
+    if GUEST_HTML5_FULLSCREEN.load(Ordering::SeqCst) {
+        widget.set_margin_top(0);
+        widget.set_margin_start(0);
+        widget.set_margin_end(0);
+        widget.set_margin_bottom(0);
+        return;
+    }
     widget.set_margin_top(58);
     widget.set_margin_start(edge);
     widget.set_margin_end(edge);
@@ -3418,19 +4566,26 @@ fn is_auth_url(raw_url: &str) -> bool {
 }
 
 fn is_service_landing_url(service: &str, raw_url: &str) -> bool {
-    if is_auth_url(raw_url) {
-        return false;
-    }
     let Ok(parsed) = tauri::Url::parse(raw_url) else {
         return false;
     };
     let Some(host) = parsed.host_str().map(|h| h.to_ascii_lowercase()) else {
         return false;
     };
+    let path_lower = parsed.path().to_ascii_lowercase();
     if normalize_auth_service(service) == "spotify" {
+        if host == "accounts.spotify.com" && (path_lower == "/status" || path_lower.ends_with("/status")) {
+            return true;
+        }
+        if is_auth_url(raw_url) {
+            return false;
+        }
         (host == "open.spotify.com" || host == "www.spotify.com")
-            && !parsed.path().to_ascii_lowercase().contains("/login")
+            && !path_lower.contains("/login")
     } else {
+        if is_auth_url(raw_url) {
+            return false;
+        }
         host == "music.youtube.com"
     }
 }
@@ -3824,7 +4979,17 @@ fn finalize_auth_cookies(
     let mut did_reload = false;
     if let Some(wv) = app.get_webview(target_label) {
         applied = apply_cookie_values_to_webview(&wv, records);
-        let _ = wv.eval("window.location.reload()");
+        let landing_url = if svc == "spotify" {
+            "https://open.spotify.com/"
+        } else {
+            "https://music.youtube.com/"
+        };
+        let cur_url = get_webview_url(target_label.to_string());
+        if is_auth_url(&cur_url) {
+            let _ = wv.eval(&format!("window.location.replace('{landing_url}')"));
+        } else {
+            let _ = wv.eval("window.location.reload()");
+        }
         did_reload = true;
     }
     persist_service_account(&dir, svc, "", "", "", source)?;
@@ -4056,11 +5221,12 @@ fn open_auth_window(app: &AppHandle, service: &str, custom_url: Option<String>) 
             let Some(aw) = app_for_poll.get_webview_window("auth-window") else {
                 break;
             };
-            let on_landing = aw
-                .url()
-                .ok()
-                .map(|u| is_service_landing_url(&svc_for_poll, u.as_str()))
-                .unwrap_or(false);
+            let cur_url_str = aw.url().ok().map(|u| u.to_string()).unwrap_or_default();
+            let on_landing = is_service_landing_url(&svc_for_poll, &cur_url_str)
+                || (svc_for_poll == "spotify"
+                    && !cur_url_str.is_empty()
+                    && !cur_url_str.to_ascii_lowercase().contains("/en/login")
+                    && !cur_url_str.to_ascii_lowercase().contains("/login"));
             if !on_landing {
                 continue;
             }
@@ -4725,6 +5891,8 @@ fn spawn_spotify_bridge_play(
         *guard = (key, now_ms);
     }
 
+    eprintln!("[SpotifyBridge] trigger url={track_url} title={title} artist={artist}");
+
     let _ = app.emit(
         "spotify-bridge-status",
         serde_json::json!({
@@ -4739,9 +5907,14 @@ fn spawn_spotify_bridge_play(
     std::thread::spawn(move || {
         match resolve_spotify_playable_stream(&app, &track_url, &title, &artist, &artwork) {
             Ok(payload) => {
+                eprintln!(
+                    "[SpotifyBridge] ready streamUrl={}",
+                    payload.get("streamUrl").and_then(|v| v.as_str()).unwrap_or("")
+                );
                 let _ = app.emit("spotify-bridge-ready", payload);
             }
             Err(err) => {
+                eprintln!("[SpotifyBridge] error={err}");
                 let _ = app.emit(
                     "spotify-bridge-status",
                     serde_json::json!({
@@ -5013,6 +6186,7 @@ fn main() {
                 .initialization_script(SHIELDS_SCRIPT)
                 .on_navigation(move |nav_url| {
                     record_webview_url(&app_handle_for_yt_nav, "yt-webview", nav_url.as_str());
+                    sync_webview_session_if_landed(&app_handle_for_yt_nav, "youtube", "yt-webview", nav_url.as_str());
                     true
                 })
                 .on_new_window(move |url, _features| {
@@ -5165,7 +6339,12 @@ fn main() {
             logout_provider,
             import_cookies_json,
             start_service_login,
-            cancel_service_login
+            cancel_service_login,
+            get_browser_settings,
+            update_browser_settings,
+            clear_browser_data,
+            respond_permission_prompt,
+            get_browser_driver_status
         ])
         .build(tauri::generate_context!())
         .expect("failed to build Brave Music Linux preview")
@@ -5182,10 +6361,11 @@ mod tests {
     use super::{
         apply_shield_ok_response, create_ytdlp_base_command, import_library_file,
         is_ad_or_tracker_request, is_auth_url, is_service_auth_cookie, is_service_landing_url,
-        is_webkit_native_audio_ext, parse_cookie_json_payload, parse_query_params,
-        parse_resize_direction, persist_service_account, provider_url, prune_spotify_bridge_cache,
-        read_accounts_map, register_child_pid, score_yt_candidate, stable_hash_hex,
-        unregister_child_pid, SearchCandidate, ACTIVE_CHILD_PIDS,
+        is_webkit_native_audio_ext, parse_brave_guest_command, parse_cookie_json_payload,
+        parse_query_params, parse_resize_direction, persist_service_account, provider_url,
+        prune_spotify_bridge_cache, read_accounts_map, register_child_pid, score_yt_candidate,
+        stable_hash_hex, unregister_child_pid, GuestBridgeCommand, SearchCandidate,
+        ACTIVE_CHILD_PIDS,
     };
     use brave_music_core::library::LibraryDocument;
     use serde_json::json;
@@ -5441,5 +6621,67 @@ mod tests {
             let uri: tauri::http::Uri = blocked.parse().unwrap();
             assert!(is_ad_or_tracker_request(&uri), "expected {blocked} to be blocked");
         }
+    }
+
+    #[test]
+    fn parses_brave_guest_bridge_messages() {
+        assert_eq!(
+            parse_brave_guest_command(r#"{"type":"shield_blocked","count":3}"#),
+            Some(GuestBridgeCommand::ShieldBlocked(3))
+        );
+        assert_eq!(
+            parse_brave_guest_command(r#"{"type":"url_sync","u":"https://open.spotify.com/"}"#),
+            Some(GuestBridgeCommand::UrlSync("https://open.spotify.com/".to_string()))
+        );
+        assert_eq!(
+            parse_brave_guest_command(
+                r#"{"type":"spotify_play","url":"https://open.spotify.com/track/123","title":"Blinding Lights","artist":"The Weeknd","art":"https://i.scdn.co/img.jpg"}"#
+            ),
+            Some(GuestBridgeCommand::SpotifyPlay {
+                url: "https://open.spotify.com/track/123".to_string(),
+                title: "Blinding Lights".to_string(),
+                artist: "The Weeknd".to_string(),
+                art: "https://i.scdn.co/img.jpg".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_brave_guest_command(r#"{"type":"spotify_control","action":"toggle"}"#),
+            Some(GuestBridgeCommand::SpotifyControl("toggle".to_string()))
+        );
+        assert_eq!(
+            parse_brave_guest_command(r#"{"type":"spotify_download","url":"https://open.spotify.com/track/123"}"#),
+            Some(GuestBridgeCommand::SpotifyDownload("https://open.spotify.com/track/123".to_string()))
+        );
+        assert_eq!(parse_brave_guest_command("not json"), None);
+    }
+
+    #[test]
+    fn normalizes_browser_settings_bounds_and_policies() {
+        let mut raw = super::BrowserSettings::default();
+        raw.zoom_level = 3.5;
+        raw.audio_output = "mute".to_string();
+        raw.microphone = "DENIED".to_string();
+        raw.camera = "invalid".to_string();
+        raw.location = "ALLOWED".to_string();
+        raw.cookies_policy = "block_third_party".to_string();
+        raw.hardware_acceleration = "OFF".to_string();
+
+        let norm = super::normalize_browser_settings(raw);
+        assert_eq!(norm.zoom_level, 2.0);
+        assert_eq!(norm.audio_output, "block");
+        assert_eq!(norm.microphone, "block");
+        assert_eq!(norm.camera, "ask");
+        assert_eq!(norm.location, "allow");
+        assert_eq!(norm.cookies_policy, "no_third_party");
+        assert_eq!(norm.hardware_acceleration, "never");
+    }
+
+    #[test]
+    fn recognizes_spotify_status_and_landing_urls() {
+        assert!(is_service_landing_url("spotify", "https://open.spotify.com/"));
+        assert!(is_service_landing_url("spotify", "https://accounts.spotify.com/en/status"));
+        assert!(!is_service_landing_url("spotify", "https://accounts.spotify.com/en/login"));
+        assert!(is_service_landing_url("youtube", "https://music.youtube.com/"));
+        assert!(!is_service_landing_url("youtube", "https://accounts.google.com/v3/signin/identifier"));
     }
 }

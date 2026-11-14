@@ -257,6 +257,15 @@ window.addEventListener('error', (event) => {
     onSpotifyBridgeControl: (callback) => listenTauriEvent('spotify-bridge-control', callback),
     onSpotifyBridgeDownload: (callback) => listenTauriEvent('spotify-bridge-download', callback),
 
+    // Browser Settings, Permissions & Driver Diagnostics
+    getBrowserSettings: () => invoke('get_browser_settings'),
+    updateBrowserSettings: (settings) => invoke('update_browser_settings', { settings }),
+    clearBrowserData: (scope) => invoke('clear_browser_data', { scope }),
+    respondPermissionPrompt: (id, allow, rememberKey = null) =>
+      invoke('respond_permission_prompt', { id, allow, rememberKey }),
+    getBrowserDriverStatus: () => invoke('get_browser_driver_status'),
+    onPermissionPrompt: (callback) => listenTauriEvent('browser-permission-prompt', callback),
+
     // Musikcube Backend Status Stub
     getMusikcubeStatus: async () => ({ active: true, connected: true }),
     selectDownloadFolder: () => invoke('select_download_folder'),

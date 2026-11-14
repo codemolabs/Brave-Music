@@ -122,6 +122,24 @@
         </svg>
       </button>
 
+      <button class="icon-action-btn btn-browser-settings" id="btn-browser-settings"
+        title="Browser Settings, Permissions &amp; Drivers" aria-label="Browser Settings and Permissions"
+        aria-haspopup="true" aria-expanded="false" aria-controls="browser-settings-popover">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="4" y1="21" x2="4" y2="14"></line>
+          <line x1="4" y1="10" x2="4" y2="3"></line>
+          <line x1="12" y1="21" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12" y2="3"></line>
+          <line x1="20" y1="21" x2="20" y2="16"></line>
+          <line x1="20" y1="12" x2="20" y2="3"></line>
+          <line x1="1" y1="14" x2="7" y2="14"></line>
+          <line x1="9" y1="8" x2="15" y2="8"></line>
+          <line x1="17" y1="16" x2="23" y2="16"></line>
+        </svg>
+        <span class="browser-zoom-badge" id="browser-zoom-badge" style="display: none;">100%</span>
+      </button>
+
       <div class="window-controls">
         <button class="win-btn win-menu" id="win-menu" title="Window Options (Ubuntu Menu)" aria-label="Window Options">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1293,6 +1311,271 @@
       <!-- Modal Footer -->
       <div class="login-modal-footer">
         <button class="btn-login-done" id="btn-cancel-auth-sync">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Browser Settings, Permissions & Drivers Dropdown (Anchored Top-Right near Minimize) -->
+  <div class="browser-settings-backdrop" id="browser-settings-backdrop" style="display: none;">
+    <section class="browser-settings-popover" id="browser-settings-popover" role="dialog"
+      aria-label="Browser Settings &amp; Permissions" aria-modal="true">
+      <div class="bs-header">
+        <div class="bs-title-group">
+          <span class="bs-title-icon">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
+          </span>
+          <div>
+            <h3>Browser Settings</h3>
+            <p class="bs-subtitle" id="browser-settings-tab-pill">Built-In WebKitGTK Engine</p>
+          </div>
+        </div>
+        <div class="bs-header-actions">
+          <button type="button" class="bs-mini-btn" id="btn-bs-reset" title="Restore defaults">Reset</button>
+          <button type="button" class="bs-close-btn" id="btn-close-browser-settings" aria-label="Close Browser Settings">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="bs-scroll-body">
+        <!-- Zoom & Display -->
+        <div class="bs-section">
+          <div class="bs-section-head">
+            <span>Zoom &amp; Display</span>
+            <span class="bs-pill" id="bs-zoom-value">100%</span>
+          </div>
+          <div class="bs-zoom-bar">
+            <button type="button" class="bs-zoom-step" id="bs-zoom-out" aria-label="Zoom Out">&minus;</button>
+            <input type="range" class="bs-zoom-slider" id="bs-zoom-slider" min="50" max="200" step="5" value="100"
+              aria-label="Page Zoom Percentage">
+            <button type="button" class="bs-zoom-step" id="bs-zoom-in" aria-label="Zoom In">+</button>
+            <button type="button" class="bs-mini-btn" id="bs-zoom-reset">100%</button>
+          </div>
+          <div class="bs-row">
+            <div class="bs-row-label">
+              <span>Hardware Acceleration</span>
+              <small>GPU compositing &amp; WebGL</small>
+            </div>
+            <select class="bs-select" id="bs-hw-accel" aria-label="Hardware Acceleration">
+              <option value="on_demand">On Demand</option>
+              <option value="always">Always On</option>
+              <option value="never">Software Only</option>
+            </select>
+          </div>
+          <label class="bs-toggle-row">
+            <div class="bs-row-label">
+              <span>Smooth Scrolling</span>
+              <small>Fluid wheel &amp; trackpad physics</small>
+            </div>
+            <input type="checkbox" class="bs-switch" id="bs-smooth-scroll" checked>
+          </label>
+        </div>
+
+        <!-- Site Permissions -->
+        <div class="bs-section">
+          <div class="bs-section-head">
+            <span>Site Permissions</span>
+            <span class="bs-pill">Live</span>
+          </div>
+          <div class="bs-row">
+            <div class="bs-row-label">
+              <span>Audio Output (Tab Sound)</span>
+              <small>Allow or mute web player sound</small>
+            </div>
+            <select class="bs-select" id="bs-audio-output" aria-label="Audio Output">
+              <option value="allow">Allow Audio</option>
+              <option value="block">Mute Tabs</option>
+            </select>
+          </div>
+          <label class="bs-toggle-row">
+            <div class="bs-row-label">
+              <span>Video &amp; MSE Playback</span>
+              <small>HTML5 video, MSE &amp; codecs</small>
+            </div>
+            <input type="checkbox" class="bs-switch" id="bs-video-playback" checked>
+          </label>
+          <label class="bs-toggle-row">
+            <div class="bs-row-label">
+              <span>Autoplay Media</span>
+              <small>Play tracks &amp; videos without extra click</small>
+            </div>
+            <input type="checkbox" class="bs-switch" id="bs-autoplay" checked>
+          </label>
+          <label class="bs-toggle-row">
+            <div class="bs-row-label">
+              <span>HTML5 Fullscreen</span>
+              <small>Allow fullscreen player expansion</small>
+            </div>
+            <input type="checkbox" class="bs-switch" id="bs-fullscreen" checked>
+          </label>
+          <div class="bs-row">
+            <div class="bs-row-label">
+              <span>Microphone (Audio Input)</span>
+              <small>Voice search &amp; media streams</small>
+            </div>
+            <select class="bs-select" id="bs-microphone" aria-label="Microphone Permission">
+              <option value="allow">Allow</option>
+              <option value="ask">Ask</option>
+              <option value="block">Block</option>
+            </select>
+          </div>
+          <div class="bs-row">
+            <div class="bs-row-label">
+              <span>Camera (Video Input)</span>
+              <small>Webcam access for sites</small>
+            </div>
+            <select class="bs-select" id="bs-camera" aria-label="Camera Permission">
+              <option value="ask">Ask</option>
+              <option value="allow">Allow</option>
+              <option value="block">Block</option>
+            </select>
+          </div>
+          <div class="bs-row">
+            <div class="bs-row-label">
+              <span>Location (Geolocation)</span>
+              <small>Share approximate region when requested</small>
+            </div>
+            <select class="bs-select" id="bs-location" aria-label="Location Permission">
+              <option value="ask">Ask</option>
+              <option value="allow">Allow</option>
+              <option value="block">Block</option>
+            </select>
+          </div>
+          <div class="bs-row">
+            <div class="bs-row-label">
+              <span>Notifications</span>
+              <small>Track alerts &amp; site banners</small>
+            </div>
+            <select class="bs-select" id="bs-notifications" aria-label="Notifications Permission">
+              <option value="allow">Allow</option>
+              <option value="ask">Ask</option>
+              <option value="block">Block</option>
+            </select>
+          </div>
+          <label class="bs-toggle-row">
+            <div class="bs-row-label">
+              <span>Clipboard Access</span>
+              <small>Copy links &amp; share URLs</small>
+            </div>
+            <input type="checkbox" class="bs-switch" id="bs-clipboard" checked>
+          </label>
+          <label class="bs-toggle-row">
+            <div class="bs-row-label">
+              <span>Popups &amp; Sign-In Redirects</span>
+              <small>Required for OAuth &amp; CAPTCHAs</small>
+            </div>
+            <input type="checkbox" class="bs-switch" id="bs-popups" checked>
+          </label>
+        </div>
+
+        <!-- Cookies, Privacy & Storage -->
+        <div class="bs-section">
+          <div class="bs-section-head">
+            <span>Cookies &amp; Privacy</span>
+          </div>
+          <div class="bs-row">
+            <div class="bs-row-label">
+              <span>Cookies Policy</span>
+              <small>Session persistence across restarts</small>
+            </div>
+            <select class="bs-select" id="bs-cookies-policy" aria-label="Cookies Policy">
+              <option value="all">Allow All Cookies</option>
+              <option value="no_third_party">Block 3rd-Party</option>
+              <option value="none">Block All Cookies</option>
+            </select>
+          </div>
+          <label class="bs-toggle-row">
+            <div class="bs-row-label">
+              <span>Tracking Prevention (ITP)</span>
+              <small>May require re-login on strict sites</small>
+            </div>
+            <input type="checkbox" class="bs-switch" id="bs-itp">
+          </label>
+          <label class="bs-toggle-row">
+            <div class="bs-row-label">
+              <span>Local Storage &amp; IndexedDB</span>
+              <small>Needed for queues &amp; offline caches</small>
+            </div>
+            <input type="checkbox" class="bs-switch" id="bs-local-storage" checked>
+          </label>
+          <label class="bs-toggle-row">
+            <div class="bs-row-label">
+              <span>WebGL &amp; Hardware Canvas</span>
+              <small>Smooth animations &amp; visualizers</small>
+            </div>
+            <input type="checkbox" class="bs-switch" id="bs-webgl" checked>
+          </label>
+          <label class="bs-toggle-row">
+            <div class="bs-row-label">
+              <span>WebRTC Media Stack</span>
+              <small>Real-time audio/video transport</small>
+            </div>
+            <input type="checkbox" class="bs-switch" id="bs-webrtc" checked>
+          </label>
+          <label class="bs-toggle-row">
+            <div class="bs-row-label">
+              <span>Protected Content (EME / DRM)</span>
+              <small>Enable EME negotiation &amp; bridge</small>
+            </div>
+            <input type="checkbox" class="bs-switch" id="bs-encrypted-media" checked>
+          </label>
+          <div class="bs-actions-pair">
+            <button type="button" class="bs-action-btn" id="btn-bs-clear-cache">Clear Cache</button>
+            <button type="button" class="bs-action-btn danger" id="btn-bs-clear-cookies">Clear Cookies</button>
+          </div>
+        </div>
+
+        <!-- Drivers & Compatibility Diagnostics -->
+        <div class="bs-section">
+          <div class="bs-section-head">
+            <span>Media Drivers &amp; DRM</span>
+            <span class="bs-pill" id="bs-engine-badge">WebKitGTK</span>
+          </div>
+          <div class="bs-drivers-card" id="bs-drivers-panel">
+            <div class="bs-driver-item">
+              <span class="bs-driver-dot ok" id="bs-yt-driver-dot"></span>
+              <div class="bs-driver-text">
+                <strong>YouTube Music Video Driver</strong>
+                <small id="bs-yt-driver-text">MSE + WebGL + GStreamer checking…</small>
+              </div>
+            </div>
+            <div class="bs-driver-item">
+              <span class="bs-driver-dot warn" id="bs-sp-driver-dot"></span>
+              <div class="bs-driver-text">
+                <strong>Spotify Widevine CDM Driver</strong>
+                <small id="bs-sp-driver-text">Checking Widevine availability…</small>
+              </div>
+            </div>
+            <div class="bs-actions-pair">
+              <button type="button" class="bs-action-btn" id="btn-bs-spotify-login">Spotify Sign-In</button>
+              <button type="button" class="bs-action-btn primary" id="btn-bs-open-widevine">Open Widevine Browser</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Site Permission Prompt Modal (for 'Ask' permissions) -->
+  <div class="modal-backdrop" id="permission-prompt-modal" style="display: none;">
+    <div class="modal-card perm-prompt-card" role="dialog" aria-modal="true" aria-labelledby="perm-prompt-title">
+      <div class="perm-prompt-header">
+        <span class="perm-prompt-badge" id="perm-prompt-origin">music.youtube.com</span>
+        <h3 id="perm-prompt-title">Permission Requested</h3>
+        <p id="perm-prompt-desc">This site wants access to your device capability.</p>
+      </div>
+      <div class="perm-prompt-actions">
+        <button type="button" class="bs-action-btn" id="btn-perm-deny">Block</button>
+        <button type="button" class="bs-action-btn" id="btn-perm-allow-once">Allow Once</button>
+        <button type="button" class="bs-action-btn primary" id="btn-perm-allow-always">Always Allow</button>
       </div>
     </div>
   </div>
