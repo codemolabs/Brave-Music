@@ -353,17 +353,53 @@ body {
    HEADER RIGHT (Shields Label, Refresh Button, Window Controls)
    ========================================================================== */
 
-/* Ads blocked label */
+/* Ads blocked label + active block indicator */
 .ads-blocked-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: inherit;
   font-size: 0.72rem;
-  font-weight: 500;
+  font-weight: 600;
+  line-height: 1;
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  padding: 5px 11px;
-  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  padding: 6px 11px;
+  border-radius: 999px;
   letter-spacing: 0.01em;
   white-space: nowrap;
+}
+
+.ads-blocked-label.is-active {
+  border-color: rgba(255, 94, 72, 0.28);
+  background: rgba(255, 94, 72, 0.08);
+  color: #f3f4f6;
+}
+
+.shield-live-dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff6b3d;
+  box-shadow: 0 0 8px rgba(255, 107, 61, 0.75);
+  flex-shrink: 0;
+}
+
+.ads-blocked-label.is-active .shield-live-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 107, 61, 0.7);
+  animation: shieldBeaconPing 2.1s cubic-bezier(0.2, 0.7, 0.3, 1) infinite;
+}
+
+@keyframes shieldBeaconPing {
+  0% { transform: scale(0.85); opacity: 0.9; }
+  70% { transform: scale(1.9); opacity: 0; }
+  100% { transform: scale(1.9); opacity: 0; }
 }
 
 /* Reload Icon Button with Spin Animation */
@@ -1838,7 +1874,7 @@ webview {
 /* Navbar Shield Count Pulse Animation */
 .ads-blocked-label {
   cursor: pointer;
-  transition: transform 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
 .ads-blocked-label:hover {
@@ -1847,13 +1883,13 @@ webview {
 }
 
 .ads-blocked-label.pulse-counter {
-  animation: counterPulse 450ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: counterPulse 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes counterPulse {
   0% { transform: scale(1) translateZ(0); }
-  25% { transform: scale(1.08) translateZ(0); color: #ff5e48; border-color: rgba(255, 94, 72, 0.65); box-shadow: 0 0 10px rgba(255, 94, 72, 0.4); }
-  60% { transform: scale(0.98) translateZ(0); }
+  28% { transform: scale(1.07) translateZ(0); color: #ffffff; background: rgba(255, 94, 72, 0.24); border-color: rgba(255, 112, 82, 0.85); box-shadow: 0 0 14px rgba(255, 94, 72, 0.48); }
+  65% { transform: scale(0.985) translateZ(0); }
   100% { transform: scale(1) translateZ(0); }
 }
 
@@ -4837,151 +4873,10 @@ webview {
   cursor: not-allowed;
 }
 
-.recommendations-shelf {
-  margin-top: 22px;
-  padding: 16px 18px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid var(--border-subtle);
-}
-
-.rec-shelf-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
-  flex-wrap: wrap;
-}
-
-.rec-shelf-titles {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.rec-shelf-heading {
-  font-size: 0.96rem;
-  font-weight: 700;
-  color: #ffffff;
-  margin: 0;
-}
-
-.rec-shelf-subtitle {
-  font-size: 0.76rem;
-  color: var(--text-muted);
-}
-
-.rec-shelf-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.rec-action-btn {
-  height: 30px;
-  padding: 0 11px;
-  font-size: 0.75rem;
-}
-
-.rec-cards-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(235px, 1fr));
-  gap: 10px;
-}
-
-.rec-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
-  min-width: 0;
-}
-
-.rec-card:hover {
-  background: rgba(255, 255, 255, 0.065);
-  border-color: rgba(251, 84, 43, 0.35);
-  transform: translateY(-1px);
-}
-
-.rec-card-thumb {
-  width: 44px;
-  height: 44px;
-  border-radius: 7px;
-  object-fit: cover;
-  flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.rec-card-meta {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.rec-card-title {
-  font-size: 0.81rem;
-  font-weight: 600;
-  color: #ffffff;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.rec-card-artist {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.rec-card-reason {
-  font-size: 0.67rem;
-  color: rgba(251, 146, 60, 0.9);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.rec-card-dl-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  border: 1px solid rgba(251, 84, 43, 0.35);
-  background: rgba(251, 84, 43, 0.14);
-  color: #ff8a65;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  cursor: pointer;
-  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
-}
-
-.rec-card-dl-btn:hover {
-  background: rgba(251, 84, 43, 0.3);
-  border-color: rgba(251, 84, 43, 0.65);
-  color: #ffffff;
-}
-
-.rec-card-dl-btn:focus-visible,
-.btn-secondary-login:focus-visible {
+.btn-secondary-login:focus-visible,
+.ads-blocked-label:focus-visible {
   outline: 2px solid var(--accent-brave);
   outline-offset: 2px;
-}
-
-.rec-empty-msg {
-  grid-column: 1 / -1;
-  padding: 12px 4px;
-  font-size: 0.78rem;
-  color: var(--text-muted);
 }
 
 /* ==========================================================================

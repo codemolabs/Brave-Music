@@ -38,8 +38,6 @@ static LAST_SPOTIFY_BRIDGE_TRIGGER: LazyLock<Mutex<(String, u64)>> = LazyLock::n
 static ACTIVE_CHILD_PIDS: LazyLock<Mutex<HashSet<u32>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 static CACHED_JS_RUNTIME: OnceLock<Option<String>> = OnceLock::new();
 static CACHED_FFMPEG_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
-static RECOMMENDATIONS_CACHE: LazyLock<Mutex<Option<(String, std::time::Instant, Value)>>> =
-    LazyLock::new(|| Mutex::new(None));
 
 struct ActiveDownloadProcess {
     pid: u32,
@@ -112,66 +110,59 @@ const CHROME_USER_AGENT: &str =
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const SHIELDS_SCRIPT: &str = include_str!("../../../src/js/webview-shields.js");
 
-const WINDOW_CHROME_POLYFILL_SCRIPT: &str = r#"
-(() => {
-  try {
-    const h = (window.location && window.location.hostname || '').toLowerCase();
-    const p = (window.location && window.location.pathname || '').toLowerCase();
-    if (
-      h.includes('accounts.google.') ||
-      h.includes('accounts.youtube.') ||
-      h.includes('myaccount.google.') ||
-      h.includes('consent.google.') ||
-      h === 'accounts.spotify.com' ||
-      p.includes('/servicelogin') ||
-      p.includes('/v3/signin')
-    ) {
-      return;
-    }
-  } catch (_) {}
-  if (!window.chrome) {
-    window.chrome = {
-      app: {
-        isInstalled: false,
-        InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
-        RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' }
-      },
-      runtime: {
-        id: '',
-        OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
-        connect: function() { return { onDisconnect: { addListener: function() {} }, onMessage: { addListener: function() {} }, postMessage: function() {} }; },
-        sendMessage: function() {}
-      }
-    };
-  }
-})();
-"#;
-
 const GUEST_ERROR_CAPTURE_SCRIPT: &str = r#"
 (() => {
-  window.addEventListener('error', (e) => {
-    try {
-      var msg = encodeURIComponent('[Guest Page Error: ' + (e.message || '') + ' at ' + (e.filename || '') + ':' + (e.lineno || 0) + ']');
-      fetch('/__brave_shield_blocked__?log_error=1&msg=' + msg).catch(() => {});
-    } catch(_) {}
-  }, true);
+  if (window.top !== window.self) return;
 
-  window.addEventListener('unhandledrejection', (e) => {
+  const isAuthOrChallenge = () => {
     try {
-      var reason = e.reason ? (e.reason.stack || e.reason.message || String(e.reason)) : 'unknown';
-      var msg = encodeURIComponent('[Guest Page Unhandled Rejection: ' + reason + ']');
-      fetch('/__brave_shield_blocked__?log_error=1&msg=' + msg).catch(() => {});
-    } catch(_) {}
-  }, true);
+      const h = (window.location && window.location.hostname || '').toLowerCase();
+      const u = (window.location && window.location.href || '').toLowerCase();
+      return (
+        h.includes('accounts.google.') ||
+        h.includes('accounts.youtube.') ||
+        h.includes('accounts.spotify.') ||
+        h.includes('challenge.spotify.') ||
+        h.includes('challenges.cloudflare.') ||
+        h.includes('recaptcha') ||
+        h.includes('hcaptcha.') ||
+        h.includes('arkoselabs.') ||
+        u.includes('/signin') ||
+        u.includes('/servicelogin') ||
+        u.includes('/challenge') ||
+        u.includes('/captcha')
+      );
+    } catch (_) {
+      return false;
+    }
+  };
+
+  if (isAuthOrChallenge()) return;
+
+  const sendGuestBridge = (payload) => {
+    try {
+      const mh = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.braveGuest;
+      if (mh && typeof mh.postMessage === 'function') {
+        mh.postMessage(JSON.stringify(payload));
+        return;
+      }
+      if (payload.type === 'url_sync' && payload.u) {
+        fetch('/__brave_shield_blocked__?url_sync=1&u=' + encodeURIComponent(payload.u)).catch(() => {});
+      } else if (payload.type === 'log_error' && payload.msg) {
+        fetch('/__brave_shield_blocked__?log_error=1&msg=' + encodeURIComponent(payload.msg)).catch(() => {});
+      }
+    } catch (_) {}
+  };
 
   // Sync SPA navigation URLs to host so header Download & Open Browser always know the active track/playlist
   let lastReportedHref = '';
   const reportHref = () => {
     try {
+      if (isAuthOrChallenge()) return;
       const href = String(window.location && window.location.href || '');
       if (!href || href === lastReportedHref || href.startsWith('about:')) return;
       lastReportedHref = href;
-      fetch('/__brave_shield_blocked__?url_sync=1&u=' + encodeURIComponent(href)).catch(() => {});
+      sendGuestBridge({ type: 'url_sync', u: href });
     } catch (_) {}
   };
   try {
@@ -180,53 +171,55 @@ const GUEST_ERROR_CAPTURE_SCRIPT: &str = r#"
     if (typeof origPush === 'function') {
       history.pushState = function() {
         const res = origPush.apply(this, arguments);
-        setTimeout(reportHref, 20);
+        setTimeout(reportHref, 30);
         return res;
       };
     }
     if (typeof origReplace === 'function') {
       history.replaceState = function() {
         const res = origReplace.apply(this, arguments);
-        setTimeout(reportHref, 20);
+        setTimeout(reportHref, 30);
         return res;
       };
     }
-    window.addEventListener('popstate', () => setTimeout(reportHref, 20));
+    window.addEventListener('popstate', () => setTimeout(reportHref, 30));
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', reportHref, { once: true });
     } else {
       reportHref();
     }
+    window.addEventListener('error', (ev) => {
+      try {
+        const msg = ev && ev.message ? `${ev.message} @ ${ev.filename || ''}:${ev.lineno || 0}` : 'Unknown error';
+        sendGuestBridge({ type: 'log_error', msg: `JS Error: ${msg}` });
+      } catch (_) {}
+    });
+    window.addEventListener('unhandledrejection', (ev) => {
+      try {
+        const r = ev && ev.reason;
+        const msg = r ? (r.message || String(r)) : 'Unknown rejection';
+        sendGuestBridge({ type: 'log_error', msg: `Promise Rejection: ${msg}` });
+      } catch (_) {}
+    });
   } catch (_) {}
 })();
 "#;
 
 const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
 (() => {
-  if (window.__braveSpotifyBridgeBootstrapped) return;
-  window.__braveSpotifyBridgeBootstrapped = true;
-
-  // Detect Widevine unavailability automatically without waiting for UI banners
+  if (window.top !== window.self) return;
   try {
-    if (navigator.requestMediaKeySystemAccess && !navigator.__braveEmeHooked) {
-      navigator.__braveEmeHooked = true;
-      const origEme = navigator.requestMediaKeySystemAccess.bind(navigator);
-      navigator.requestMediaKeySystemAccess = function() {
-        return origEme.apply(navigator, arguments).catch((err) => {
-          window.__braveSpotifyDrmBlocked = true;
-          scheduleSpotifyMaintenance();
-          throw err;
-        });
-      };
+    const h = (window.location && window.location.hostname || '').toLowerCase();
+    const p = (window.location && window.location.pathname || '').toLowerCase();
+    // Never touch Spotify authentication, CAPTCHA, or challenge flows
+    if (h !== 'open.spotify.com' || p.includes('/login') || p.includes('/signup') || p.includes('/authorize') || p.includes('/challenge')) {
+      return;
     }
-    if ('serviceWorker' in navigator && typeof navigator.serviceWorker.getRegistrations === 'function') {
-      navigator.serviceWorker.getRegistrations().then((regs) => {
-        for (const r of regs) {
-          r.unregister().catch(() => {});
-        }
-      }).catch(() => {});
-    }
-  } catch (_) {}
+  } catch (_) {
+    return;
+  }
+  if (window.__braveSpotifyCleanUiBootstrapped) return;
+  window.__braveSpotifyCleanUiBootstrapped = true;
 
   const ensureStyle = () => {
     try {
@@ -238,216 +231,48 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
           display: flex !important;
           visibility: visible !important;
         }
-        [data-testid="protected-content-banner"] {
+        #brave-spotify-bridge-bar,
+        [data-testid="protected-content-banner"],
+        [data-testid="upgrade-modal"],
+        [data-testid="get-app-modal"],
+        [data-testid="download-cta"],
+        [data-testid="welcome-back-banner"] {
           display: none !important;
           visibility: hidden !important;
           height: 0 !important;
           margin: 0 !important;
           padding: 0 !important;
-        }
-        #brave-spotify-bridge-bar {
-          position: fixed;
-          right: 16px;
-          bottom: 16px;
-          z-index: 2147483640;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          max-width: min(560px, calc(100vw - 32px));
-          padding: 9px 13px;
-          border-radius: 14px;
-          background: rgba(15, 17, 26, 0.94);
-          border: 1px solid rgba(255, 85, 0, 0.42);
-          box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
-          color: #f8fafc;
-          font-family: Inter, system-ui, -apple-system, sans-serif;
-          font-size: 13px;
-          backdrop-filter: blur(12px);
-        }
-        #brave-spotify-bridge-bar.minimized {
-          padding: 7px 11px;
-          gap: 8px;
-        }
-        #brave-spotify-bridge-bar .bsb-meta {
-          display: flex;
-          flex-direction: column;
-          min-width: 120px;
-          max-width: 230px;
-          overflow: hidden;
-        }
-        #brave-spotify-bridge-bar.minimized .bsb-meta,
-        #brave-spotify-bridge-bar.minimized .bsb-secondary {
-          display: none;
-        }
-        #brave-spotify-bridge-bar .bsb-title {
-          font-weight: 600;
-          color: #ffffff;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          font-size: 12.5px;
-        }
-        #brave-spotify-bridge-bar .bsb-sub {
-          color: #94a3b8;
-          font-size: 11px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        #brave-spotify-bridge-bar .bsb-badge {
-          width: 8px;
-          height: 8px;
-          border-radius: 999px;
-          background: #1db954;
-          flex-shrink: 0;
-        }
-        #brave-spotify-bridge-bar .bsb-badge.resolving {
-          background: #f59e0b;
-        }
-        #brave-spotify-bridge-bar .bsb-badge.error {
-          background: #ef4444;
-        }
-        #brave-spotify-bridge-bar button {
-          border: none;
-          border-radius: 8px;
-          padding: 6px 10px;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          white-space: nowrap;
-          transition: opacity 0.15s ease, transform 0.1s ease;
-        }
-        #brave-spotify-bridge-bar button:hover {
-          opacity: 0.92;
-        }
-        #brave-spotify-bridge-bar .bsb-primary {
-          background: linear-gradient(135deg, #ff5500, #ff7a1a);
-          color: #fff;
-        }
-        #brave-spotify-bridge-bar .bsb-secondary {
-          background: rgba(255, 255, 255, 0.1);
-          color: #e2e8f0;
-        }
-        #brave-spotify-bridge-bar .bsb-icon {
-          background: transparent;
-          color: #94a3b8;
-          padding: 4px 6px;
+          pointer-events: none !important;
         }
       `;
       (document.head || document.documentElement).appendChild(style);
     } catch (_) {}
   };
 
-  window.__braveSpotifyBridgeState = {
-    status: 'ready',
-    title: 'Spotify Player Ready',
-    artist: 'Click any track or Play button',
-    isPlaying: false
-  };
-
-  const renderBridgeBar = () => {
-    try {
-      ensureStyle();
-      if (!document.body) return;
-      let bar = document.getElementById('brave-spotify-bridge-bar');
-      if (!bar) {
-        bar = document.createElement('div');
-        bar.id = 'brave-spotify-bridge-bar';
-        bar.innerHTML = `
-          <span class="bsb-badge" id="bsb-dot"></span>
-          <div class="bsb-meta">
-            <span class="bsb-title" id="bsb-title">Spotify Player Ready</span>
-            <span class="bsb-sub" id="bsb-sub">Click any track or Play button</span>
-          </div>
-          <button type="button" class="bsb-primary" id="bsb-play-btn">Play</button>
-          <button type="button" class="bsb-secondary" id="bsb-next-btn" title="Next track in queue" style="display:none;">Next</button>
-          <button type="button" class="bsb-secondary" id="bsb-dl-btn" title="Download current Spotify track or playlist">Download</button>
-          <button type="button" class="bsb-icon" id="bsb-min-btn" title="Minimize / Expand">_</button>
-        `;
-        document.body.appendChild(bar);
-
-        document.getElementById('bsb-play-btn')?.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          const st = window.__braveSpotifyBridgeState || {};
-          if (st.active && (st.status === 'playing' || st.status === 'paused')) {
-            fetch('/__brave_shield_blocked__?spotify_control=toggle', { cache: 'no-store' }).catch(() => {});
-            return;
-          }
-          const ctx = extractPageContext();
-          triggerBridgePlay(ctx);
-        });
-
-        document.getElementById('bsb-next-btn')?.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          fetch('/__brave_shield_blocked__?spotify_control=next', { cache: 'no-store' }).catch(() => {});
-        });
-
-        document.getElementById('bsb-dl-btn')?.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          const activeUrl = (window.__braveSpotifyBridgeState?.trackUrl) || window.location.href;
-          fetch('/__brave_shield_blocked__?spotify_download=1&url=' + encodeURIComponent(activeUrl), { cache: 'no-store' }).catch(() => {});
-        });
-
-        document.getElementById('bsb-min-btn')?.addEventListener('click', (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          bar.classList.toggle('minimized');
-        });
-      }
-
-      const st = window.__braveSpotifyBridgeState || {};
-      const dot = document.getElementById('bsb-dot');
-      const titleEl = document.getElementById('bsb-title');
-      const subEl = document.getElementById('bsb-sub');
-      const playBtn = document.getElementById('bsb-play-btn');
-      const nextBtn = document.getElementById('bsb-next-btn');
-      if (dot) {
-        dot.className = 'bsb-badge'
-          + (st.status === 'resolving' ? ' resolving' : (st.status === 'error' ? ' error' : ''));
-      }
-      if (titleEl) titleEl.textContent = st.title || 'Spotify Player Ready';
-      if (subEl) subEl.textContent = st.artist || 'Click any track or Play button';
-      if (playBtn) {
-        if (st.status === 'resolving') playBtn.textContent = 'Loading...';
-        else if (st.status === 'playing') playBtn.textContent = 'Pause';
-        else if (st.status === 'paused') playBtn.textContent = 'Resume';
-        else playBtn.textContent = 'Play';
-      }
-      if (nextBtn) {
-        nextBtn.style.display = st.active ? 'inline-block' : 'none';
-      }
-    } catch (_) {}
-  };
-
-  window.__braveSpotifyBridgeSync = (next) => {
-    try {
-      window.__braveSpotifyBridgeState = Object.assign({}, window.__braveSpotifyBridgeState || {}, next || {});
-      renderBridgeBar();
-    } catch (_) {}
-  };
-
-  let spotifyDomCheckedAt = 0;
-  let spotifyBannerTimer = null;
-
-  const isDrmWarningText = (raw) => {
-    const txt = (raw || '').toLowerCase();
+  const isDismissablePlayerWidgetText = (raw) => {
+    const txt = (raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
     if (!txt || txt.length > 480) return false;
-    return (
+    if (
       txt.includes('protected content is not enabled') ||
       txt.includes('playback of protected content') ||
       txt.includes('enable playback in your browser') ||
       (txt.includes('spotify support') && txt.includes('playback'))
-    );
+    ) {
+      return true;
+    }
+    if (
+      txt.includes('welcome back') &&
+      (txt.includes('web player') || txt.includes('get the free app') || txt.includes('enjoy') || txt.includes('premium') || txt.includes('continue listening') || txt.includes('download'))
+    ) {
+      return true;
+    }
+    return false;
   };
 
   const hideBannerNode = (node) => {
-    if (!node || node.id === 'brave-spotify-bridge-bar' || node.closest('#brave-spotify-bridge-bar')) return;
-    window.__braveSpotifyDrmBlocked = true;
-    if (node.getAttribute('data-brave-drm-hidden') !== '1') {
-      node.setAttribute('data-brave-drm-hidden', '1');
+    if (!node) return;
+    if (node.getAttribute('data-brave-hidden') !== '1') {
+      node.setAttribute('data-brave-hidden', '1');
       node.style.setProperty('display', 'none', 'important');
       node.style.setProperty('height', '0', 'important');
       node.style.setProperty('margin', '0', 'important');
@@ -455,13 +280,20 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
     }
   };
 
-  const suppressProtectedContentBanners = () => {
+  let spotifyDomCheckedAt = 0;
+  let spotifyBannerTimer = null;
+
+  const suppressUnwantedPlayerWidgets = () => {
     try {
+      ensureStyle();
+      const legacy = document.getElementById('brave-spotify-bridge-bar');
+      if (legacy) legacy.remove();
+
       const candidates = document.querySelectorAll(
-        '[data-testid="message-bar"], [role="alert"], [role="status"], [data-testid="protected-content-banner"], [data-encore-id="banner"], [role="dialog"]'
+        '[data-testid="message-bar"], [role="alert"], [role="status"], [data-testid="protected-content-banner"], [data-encore-id="banner"], [data-testid="nudge"], [role="dialog"]'
       );
       for (const el of candidates) {
-        if (isDrmWarningText(el.textContent)) {
+        if (isDismissablePlayerWidgetText(el.textContent)) {
           hideBannerNode(el);
         }
       }
@@ -475,216 +307,79 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
           if (tag === 'BODY' || tag === 'MAIN' || tag === 'HTML') break;
           if (cur.id === 'main' || cur.classList?.contains('Root__top-container') || cur.classList?.contains('main-view-container')) break;
           const rect = cur.getBoundingClientRect();
-          if (rect.height > 0 && rect.height <= 180 && isDrmWarningText(cur.textContent)) {
+          if (rect.height > 0 && rect.height <= 180 && isDismissablePlayerWidgetText(cur.textContent)) {
             target = cur;
           }
         }
         if (target) {
           hideBannerNode(target);
-        } else if (isDrmWarningText(link.parentElement?.textContent)) {
+        } else if (isDismissablePlayerWidgetText(link.parentElement?.textContent)) {
           hideBannerNode(link.parentElement);
         }
       }
     } catch (_) {}
   };
 
-  const scheduleSpotifyMaintenance = () => {
+  const scheduleMaintenance = () => {
     if (document.hidden || window.__BRAVE_TAB_SUSPENDED__) return;
     if (spotifyBannerTimer) return;
     const elapsed = Date.now() - spotifyDomCheckedAt;
-    const waitMs = elapsed >= 450 ? 60 : (450 - elapsed);
+    const waitMs = elapsed >= 650 ? 90 : (650 - elapsed);
     spotifyBannerTimer = setTimeout(() => {
       spotifyBannerTimer = null;
       if (document.hidden || window.__BRAVE_TAB_SUSPENDED__) return;
       spotifyDomCheckedAt = Date.now();
-      suppressProtectedContentBanners();
-      if (!document.getElementById('brave-spotify-bridge-bar')) renderBridgeBar();
+      suppressUnwantedPlayerWidgets();
     }, waitMs);
   };
 
-  const parsePlayAriaLabel = (btn) => {
-    const raw = (btn?.getAttribute?.('aria-label') || '').trim();
-    if (!raw || !/^play\b/i.test(raw)) return { title: '', artist: '' };
-    const rest = raw.replace(/^play\s+/i, '').trim();
-    const byMatch = rest.match(/^(.+?)\s+by\s+(.+)$/i);
-    if (byMatch) {
-      return { title: byMatch[1].trim(), artist: byMatch[2].trim() };
-    }
-    return { title: rest, artist: '' };
-  };
-
-  const extractTrackFromElement = (target, playBtn) => {
-    const container = target?.closest?.(
-      '[data-testid="tracklist-row"], [role="row"], [data-testid="track-row"], [data-testid="card"], [data-encore-id="card"], [data-testid="now-playing-widget"], article'
-    );
-    let trackUrl = '';
-    let title = '';
-    let artist = '';
-    let art = '';
-
-    if (container) {
-      const entityLink = container.querySelector('a[href*="/track/"], a[href*="/album/"], a[href*="/playlist/"], a[href*="/episode/"]');
-      if (entityLink) {
-        trackUrl = entityLink.href || '';
-        const text = (entityLink.textContent || '').trim();
-        if (text) title = text;
-      }
-      if (!title) {
-        const tEl = container.querySelector('[data-testid="internal-track-link"] div, [data-testid="card-title"], [dir="auto"]');
-        title = (tEl?.textContent || '').trim();
-      }
-      const artistLinks = Array.from(container.querySelectorAll('a[href*="/artist/"]'))
-        .map((a) => (a.textContent || '').trim())
-        .filter(Boolean);
-      if (artistLinks.length > 0) artist = [...new Set(artistLinks)].join(', ');
-      const img = container.querySelector('img');
-      if (img && img.src) art = img.src;
-    }
-
-    if (playBtn) {
-      const parsed = parsePlayAriaLabel(playBtn);
-      if (parsed.title && (!title || title.length < 2)) title = parsed.title;
-      if (parsed.artist && !artist) artist = parsed.artist;
-    }
-
-    if (!trackUrl) {
-      const href = String(window.location.href || '');
-      if (/open\.spotify\.com\/(?:intl-[a-z-]+\/)?(track|album|playlist|artist|episode)\//i.test(href)) {
-        trackUrl = href;
-      } else {
-        const pageTrack = document.querySelector('main a[href*="/track/"], main a[href*="/playlist/"], main a[href*="/album/"]');
-        if (pageTrack?.href) trackUrl = pageTrack.href;
-      }
-    }
-    if (!title) {
-      const h1 = document.querySelector('[data-testid="entityTitle"] h1, main h1');
-      if (h1) title = (h1.textContent || '').trim();
-    }
-    if (!artist) {
-      const metaArtist = document.querySelector('[data-testid="creator-link"], [data-testid="entityTitle"] a[href*="/artist/"], main a[href*="/artist/"]');
-      if (metaArtist) artist = (metaArtist.textContent || '').trim();
-    }
-    if (!art) {
-      const coverImg = document.querySelector('main img[src*="i.scdn.co"], [data-testid="entity-image"] img');
-      if (coverImg && coverImg.src) art = coverImg.src;
-    }
-    return { url: trackUrl || window.location.href, title, artist, art };
-  };
-
-  const extractPageContext = () => {
-    const activePlay = document.querySelector('[data-testid="action-bar-row"] button[data-testid="play-button"], main button[data-testid="play-button"]');
-    return extractTrackFromElement(activePlay || document.querySelector('main'), activePlay);
-  };
-
-  const triggerBridgePlay = (ctx) => {
-    try {
-      window.__braveSpotifyBridgeSync({
-        active: true,
-        status: 'resolving',
-        title: ctx.title || 'Loading track...',
-        artist: ctx.artist || 'Matching audio stream...',
-        trackUrl: ctx.url || window.location.href
-      });
-      const q = new URLSearchParams({
-        spotify_play: '1',
-        url: ctx.url || window.location.href,
-        title: ctx.title || '',
-        artist: ctx.artist || '',
-        art: ctx.art || ''
-      });
-      fetch('/__brave_shield_blocked__?' + q.toString(), { cache: 'no-store' }).catch(() => {});
-    } catch (_) {}
-  };
-
-  document.addEventListener('click', (ev) => {
-    try {
-      if (ev.target?.closest?.('#brave-spotify-bridge-bar')) return;
-      const btn = ev.target?.closest?.(
-        'button[data-testid="play-button"], [data-testid="action-bar-row"] button[data-testid="play-button"], [data-testid="tracklist-row"] button, button[data-testid="control-button-playpause"], button[aria-label^="Play"]'
-      );
-      if (!btn) return;
-      const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
-      if (
-        btn.closest('[data-testid="tracklist-row"]') &&
-        aria &&
-        !aria.startsWith('play') &&
-        !aria.startsWith('pause') &&
-        btn.getAttribute('data-testid') !== 'play-button'
-      ) {
-        return;
-      }
-      if (btn.getAttribute('data-testid') === 'control-button-playpause' && window.__braveSpotifyBridgeState?.active) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        fetch('/__brave_shield_blocked__?spotify_control=toggle', { cache: 'no-store' }).catch(() => {});
-        return;
-      }
-      const ctx = extractTrackFromElement(btn, btn);
-      if (!ctx.url && !ctx.title) return;
-      if (window.__braveSpotifyDrmBlocked) {
-        triggerBridgePlay(ctx);
-      } else {
-        setTimeout(() => {
-          const audio = document.querySelector('audio');
-          const nativePlaying = !!(audio && !audio.paused && audio.currentTime > 0);
-          if (!nativePlaying) {
-            triggerBridgePlay(ctx);
-          }
-        }, 350);
-      }
-    } catch (_) {}
-  }, true);
-
-  document.addEventListener('dblclick', (ev) => {
-    try {
-      const row = ev.target?.closest?.('[data-testid="tracklist-row"]');
-      if (!row) return;
-      const ctx = extractTrackFromElement(row, null);
-      if (window.__braveSpotifyDrmBlocked) {
-        triggerBridgePlay(ctx);
-      } else {
-        setTimeout(() => {
-          const audio = document.querySelector('audio');
-          if (!audio || audio.paused) triggerBridgePlay(ctx);
-        }, 350);
-      }
-    } catch (_) {}
-  }, true);
-
-  const bootObserver = () => {
-    suppressProtectedContentBanners();
-    renderBridgeBar();
+  const boot = () => {
+    suppressUnwantedPlayerWidgets();
     const obs = new MutationObserver(() => {
-      scheduleSpotifyMaintenance();
+      scheduleMaintenance();
     });
     if (document.body) {
       obs.observe(document.body, { childList: true, subtree: true });
     }
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && !window.__BRAVE_TAB_SUSPENDED__) {
-        scheduleSpotifyMaintenance();
+        scheduleMaintenance();
       }
     });
   };
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bootObserver, { once: true });
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
   } else {
-    bootObserver();
+    boot();
   }
 })();
 "#;
 
 #[cfg(target_os = "linux")]
-fn apply_webkit_platform_settings(platform_wv: tauri::webview::PlatformWebview, allow_popups: bool) {
+fn apply_webkit_platform_settings(
+    platform_wv: tauri::webview::PlatformWebview,
+    allow_popups: bool,
+    guest_bridge: Option<(AppHandle, &'static str)>,
+) {
     use webkit2gtk::{
-        CacheModel, HardwareAccelerationPolicy, MediaKeySystemPermissionRequest,
-        PermissionRequestExt, SettingsExt, WebContextExt, WebViewExt,
-        WebsiteDataAccessPermissionRequest,
+        CacheModel, CookieAcceptPolicy, CookieManagerExt, HardwareAccelerationPolicy,
+        PermissionRequestExt, SettingsExt, UserContentManagerExt, WebContextExt, WebViewExt,
+        WebsiteDataManagerExt,
     };
     let inner = platform_wv.inner();
     if let Some(ctx) = WebViewExt::context(&inner) {
-        ctx.set_cache_model(CacheModel::DocumentViewer);
+        // Full browser cache + standard cross-site cookies/storage so Google, Spotify, Cloudflare & CAPTCHAs work natively
+        ctx.set_cache_model(CacheModel::WebBrowser);
+        if let Some(wdm) = WebContextExt::website_data_manager(&ctx) {
+            wdm.set_itp_enabled(false);
+            if let Some(cm) = wdm.cookie_manager() {
+                cm.set_accept_policy(CookieAcceptPolicy::Always);
+            }
+        }
+        if let Some(cm) = WebContextExt::cookie_manager(&ctx) {
+            cm.set_accept_policy(CookieAcceptPolicy::Always);
+        }
     }
     if let Some(settings) = WebViewExt::settings(&inner) {
         settings.set_enable_javascript(true);
@@ -695,36 +390,104 @@ fn apply_webkit_platform_settings(platform_wv: tauri::webview::PlatformWebview, 
         settings.set_enable_media_capabilities(true);
         settings.set_enable_media_stream(true);
         settings.set_enable_encrypted_media(true);
-        settings.set_enable_page_cache(false);
-        settings.set_enable_dns_prefetching(false);
+        settings.set_enable_page_cache(true);
+        settings.set_enable_smooth_scrolling(true);
+        settings.set_enable_site_specific_quirks(true);
+        settings.set_enable_back_forward_navigation_gestures(true);
         settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::OnDemand);
         settings.set_media_playback_requires_user_gesture(false);
         settings.set_javascript_can_open_windows_automatically(allow_popups);
         settings.set_enable_write_console_messages_to_stdout(false);
     }
+    // Behave like a full desktop browser: grant requested web permissions cleanly (storage access, EME, media, notifications, etc.)
     inner.connect_permission_request(|_wv, request| {
-        if request.is::<MediaKeySystemPermissionRequest>()
-            || request.is::<WebsiteDataAccessPermissionRequest>()
-        {
-            request.allow();
-            return true;
+        request.allow();
+        true
+    });
+    if guest_bridge.is_some() {
+        inner.set_background_color(&gtk::gdk::RGBA::new(7.0 / 255.0, 8.0 / 255.0, 12.0 / 255.0, 1.0));
+    }
+    if let Some((_app_for_err, label)) = &guest_bridge {
+        let label_owned = *label;
+        inner.connect_load_failed(move |_wv, _event, failing_uri, err| {
+            eprintln!("[{label_owned} LoadFailed] uri={failing_uri} err={err}");
+            false
+        });
+        inner.connect_web_process_terminated(move |_wv, reason| {
+            eprintln!("[{label_owned} WebProcessTerminated] reason={reason:?}");
+        });
+    }
+
+    if let Some((app, label)) = guest_bridge {
+        if let Some(ucm) = inner.user_content_manager() {
+            let _ = ucm.register_script_message_handler("braveGuest");
+            ucm.connect_script_message_received(Some("braveGuest"), move |_mgr, js_res| {
+                let Some(val) = js_res.js_value() else {
+                    return;
+                };
+                let raw = val.to_string();
+                let Ok(parsed) = serde_json::from_str::<Value>(&raw) else {
+                    return;
+                };
+                match parsed.get("type").and_then(|v| v.as_str()).unwrap_or("") {
+                    "shield_blocked" => {
+                        let inc = parsed
+                            .get("count")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(1)
+                            .clamp(1, 50);
+                        let total = BLOCKED_ADS_COUNT.fetch_add(inc, Ordering::SeqCst) + inc;
+                        if label == "spotify-webview" {
+                            SPOTIFY_BLOCKED_COUNT.fetch_add(inc, Ordering::Relaxed);
+                        } else {
+                            YTM_BLOCKED_COUNT.fetch_add(inc, Ordering::Relaxed);
+                        }
+                        let _ = app.emit("shield-update", serde_json::json!({ "count": total }));
+                    }
+                    "url_sync" => {
+                        if let Some(u) = parsed.get("u").and_then(|v| v.as_str()) {
+                            record_webview_url(&app, label, u);
+                        }
+                    }
+                    "log_error" => {
+                        if let Some(msg) = parsed.get("msg").and_then(|v| v.as_str()) {
+                            eprintln!("[{label} Report] {msg}");
+                        }
+                    }
+                    _ => {}
+                }
+            });
         }
-        false
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn configure_webkit_guest_webview(
+    wv: &tauri::Webview,
+    app: &AppHandle,
+    label: &'static str,
+    allow_popups: bool,
+) {
+    let app_clone = app.clone();
+    let _ = wv.with_webview(move |platform_wv| {
+        apply_webkit_platform_settings(platform_wv, allow_popups, Some((app_clone, label)));
     });
 }
 
 #[cfg(target_os = "linux")]
-fn configure_webkit_webview_settings(wv: &tauri::Webview, allow_popups: bool) {
-    let _ = wv.with_webview(move |platform_wv| apply_webkit_platform_settings(platform_wv, allow_popups));
-}
-
-#[cfg(target_os = "linux")]
 fn configure_webkit_window_settings(win: &tauri::WebviewWindow, allow_popups: bool) {
-    let _ = win.with_webview(move |platform_wv| apply_webkit_platform_settings(platform_wv, allow_popups));
+    let _ = win.with_webview(move |platform_wv| {
+        apply_webkit_platform_settings(platform_wv, allow_popups, None);
+    });
 }
 
 #[cfg(not(target_os = "linux"))]
-fn configure_webkit_webview_settings(_wv: &tauri::Webview, _allow_popups: bool) {}
+fn configure_webkit_guest_webview(
+    _wv: &tauri::Webview,
+    _app: &AppHandle,
+    _label: &'static str,
+    _allow_popups: bool,
+) {}
 
 #[cfg(not(target_os = "linux"))]
 fn configure_webkit_window_settings(_win: &tauri::WebviewWindow, _allow_popups: bool) {}
@@ -1211,7 +974,6 @@ fn ensure_spotify_webview_on_main_thread(app: &AppHandle) {
     let app_handle_for_spotify_popup = app.clone();
     let spotify_builder = tauri::WebviewBuilder::new("spotify-webview", tauri::WebviewUrl::External(spotify_url))
         .user_agent(CHROME_USER_AGENT)
-        .initialization_script(WINDOW_CHROME_POLYFILL_SCRIPT)
         .initialization_script(GUEST_ERROR_CAPTURE_SCRIPT)
         .initialization_script(SHIELDS_SCRIPT)
         .initialization_script(SPOTIFY_NAVBAR_FIX_SCRIPT)
@@ -1249,7 +1011,7 @@ fn ensure_spotify_webview_on_main_thread(app: &AppHandle) {
     ) {
         Ok(sp_wv) => {
             eprintln!("[Tauri lazy] spotify-webview added on demand");
-            configure_webkit_webview_settings(&sp_wv, true);
+            configure_webkit_guest_webview(&sp_wv, app, "spotify-webview", true);
             if !webview_has_service_auth(&sp_wv, "spotify") {
                 if let Ok(bytes) = fs::read(auth_dir.join("spotify_session.json")) {
                     if let Ok(records) = serde_json::from_slice::<Vec<Value>>(&bytes) {
@@ -1629,13 +1391,32 @@ fn record_ad_blocked(app: AppHandle, count: Option<u64>, source: Option<String>)
 
 fn is_ad_or_tracker_request(uri: &tauri::http::Uri) -> bool {
     let path_and_query = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("");
-    let host = uri.host().unwrap_or("").to_lowercase();
+    let pq_lower = path_and_query.to_ascii_lowercase();
+    let host = uri.host().unwrap_or("").to_ascii_lowercase();
 
-    // Never block auth / account / Google login requests
+    // Never block auth, OAuth, Cloudflare Turnstile, reCAPTCHA, hCaptcha, Arkose, or challenge verification requests
     if host.contains("accounts.google.")
         || host.contains("accounts.youtube.")
+        || host.contains("accounts.spotify.")
+        || host.contains("challenge.spotify.")
+        || host.contains("cloudflare.")
+        || host.contains("turnstile")
+        || host.contains("recaptcha")
+        || host.contains("hcaptcha.")
+        || host.contains("arkoselabs.")
+        || host.contains("funcaptcha.")
+        || host.contains("geetest.")
         || host.contains("oauth")
-        || (host.contains("spotify.com") && (path_and_query.contains("/login") || path_and_query.contains("/signup") || path_and_query.contains("/authorize")))
+        || pq_lower.contains("/cdn-cgi/challenge")
+        || pq_lower.contains("/recaptcha")
+        || pq_lower.contains("/captcha")
+        || pq_lower.contains("/challenge")
+        || (host.contains("spotify.com")
+            && (pq_lower.contains("/login")
+                || pq_lower.contains("/signup")
+                || pq_lower.contains("/authorize")
+                || pq_lower.contains("/api/")
+                || pq_lower.contains("/token")))
     {
         return false;
     }
@@ -1651,7 +1432,7 @@ fn is_ad_or_tracker_request(uri: &tauri::http::Uri) -> bool {
         || host.contains("pagead")
         || host.contains("adnxs.com")
         || host.contains("scorecardresearch.com")
-        || (host.contains("youtube.com") && (path_and_query.contains("/api/stats/ads") || path_and_query.contains("/pagead/")))
+        || (host.contains("youtube.com") && (pq_lower.contains("/api/stats/ads") || pq_lower.contains("/pagead/")))
 }
 
 #[tauri::command]
@@ -2485,131 +2266,17 @@ async fn get_recommendations(
 }
 
 fn compute_recommendations(
-    app_handle: &tauri::AppHandle,
-    current_track_id: Option<String>,
-    limit: Option<usize>,
-    force_refresh: bool,
+    _app_handle: &tauri::AppHandle,
+    _current_track_id: Option<String>,
+    _limit: Option<usize>,
+    _force_refresh: bool,
 ) -> Result<Value, String> {
-    let max_items = limit.unwrap_or(6).min(12);
-    let doc = read_library(app_handle).unwrap_or_default();
-    let cur_id = current_track_id.unwrap_or_default();
-
-    let mut owned_titles = std::collections::HashSet::new();
-    let mut owned_ids = std::collections::HashSet::new();
-    let mut artist_counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
-
-    for t in &doc.tracks {
-        let title = t.get("title").and_then(|v| v.as_str()).unwrap_or("");
-        let lower_title = title.to_lowercase();
-        if lower_title.contains("never gonna give you up") {
-            continue;
-        }
-        owned_titles.insert(lower_title);
-        if let Some(oid) = t.get("originalId").and_then(|v| v.as_str()) {
-            owned_ids.insert(oid.to_string());
-        }
-        let artist = t.get("artist").and_then(|v| v.as_str()).unwrap_or("").split(|c| c == ',' || c == ';' || c == '&').next().unwrap_or("").trim();
-        if !artist.is_empty() && !artist.eq_ignore_ascii_case("unknown artist") && !artist.eq_ignore_ascii_case("brave music") {
-            let bonus = if t.get("id").and_then(|v| v.as_str()) == Some(cur_id.as_str()) { 5 } else { 1 };
-            *artist_counts.entry(artist.to_string()).or_insert(0) += bonus;
-        }
-    }
-
-    let mut ranked_artists: Vec<(String, i32)> = artist_counts.into_iter().collect();
-    ranked_artists.sort_by(|a, b| b.1.cmp(&a.1));
-    let seed_artists: Vec<String> = ranked_artists.into_iter().take(3).map(|(a, _)| a).collect();
-
-    let cache_key = format!(
-        "{}|{}|{}|{}",
-        seed_artists.first().map(String::as_str).unwrap_or(""),
-        cur_id,
-        doc.tracks.len(),
-        max_items
-    );
-    if !force_refresh {
-        if let Ok(guard) = RECOMMENDATIONS_CACHE.lock() {
-            if let Some((cached_key, cached_at, cached_val)) = guard.as_ref() {
-                if cached_key == &cache_key && cached_at.elapsed() < std::time::Duration::from_secs(600) {
-                    return Ok(cached_val.clone());
-                }
-            }
-        }
-    }
-
-    let mut items: Vec<Value> = Vec::new();
-    if let Some(seed_artist) = seed_artists.first() {
-        if let Some(ytdlp_bin) = resolve_bundled_bin("yt-dlp") {
-            let js_runtime = resolve_validated_js_runtime();
-            let mut cmd = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), None);
-            cmd.args(["--dump-single-json", "--flat-playlist", "--socket-timeout", "6", &format!("ytsearch6:{} official audio mix", seed_artist)]);
-            if let Ok(out) = run_command_output_tracked(&mut cmd)
-            {
-                if out.status.success() {
-                    if let Ok(val) = serde_json::from_slice::<Value>(&out.stdout) {
-                        if let Some(entries) = val.get("entries").and_then(|e| e.as_array()) {
-                            for entry in entries {
-                                let id = entry.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                                let title = entry.get("title").and_then(|v| v.as_str()).unwrap_or("");
-                                let dur = entry.get("duration").and_then(|v| v.as_f64()).map(|d| d.round() as i64).unwrap_or(0);
-                                if id.is_empty() || title.is_empty() || owned_ids.contains(id) || owned_titles.contains(&title.to_lowercase()) || dur > 600 || (dur > 0 && dur < 70) {
-                                    continue;
-                                }
-                                let uploader = entry.get("uploader").and_then(|v| v.as_str()).unwrap_or(seed_artist);
-                                owned_ids.insert(id.to_string());
-                                owned_titles.insert(title.to_lowercase());
-                                items.push(serde_json::json!({
-                                    "id": id,
-                                    "title": title,
-                                    "artist": uploader.replace(" - Topic", ""),
-                                    "duration": dur,
-                                    "thumbnail": format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id),
-                                    "url": format!("https://www.youtube.com/watch?v={}", id),
-                                    "reason": format!("Inspired by {}", seed_artist),
-                                    "source": "youtube"
-                                }));
-                                if items.len() >= max_items {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if items.is_empty() {
-        let starters = [
-            ("4NRXx6U8ABQ", "Blinding Lights", "The Weeknd", "Synth-Pop Classic"),
-            ("dX3k_QDnzHE", "Midnight City", "M83", "Electronic Anthem"),
-            ("TUVcZfQe-Kw", "Levitating", "Dua Lipa", "Upbeat Pop"),
-            ("34Na4j8AVgA", "Starboy", "The Weeknd ft. Daft Punk", "Essential Mix"),
-        ];
-        for (id, title, artist, reason) in starters {
-            if !owned_titles.contains(&title.to_lowercase()) {
-                items.push(serde_json::json!({
-                    "id": id,
-                    "title": title,
-                    "artist": artist,
-                    "thumbnail": format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id),
-                    "url": format!("https://www.youtube.com/watch?v={}", id),
-                    "reason": reason,
-                    "source": "youtube"
-                }));
-            }
-        }
-    }
-
-    let result = serde_json::json!({
+    Ok(serde_json::json!({
         "success": true,
-        "mode": if seed_artists.is_empty() { "starter" } else { "personalized" },
-        "seedArtists": seed_artists,
-        "items": items
-    });
-    if let Ok(mut guard) = RECOMMENDATIONS_CACHE.lock() {
-        *guard = Some((cache_key, std::time::Instant::now(), result.clone()));
-    }
-    Ok(result)
+        "mode": "none",
+        "seedArtists": [],
+        "items": []
+    }))
 }
 
 fn fetch_youtube_playlist_queue(ytdlp_bin: &PathBuf, url: &str) -> Option<(String, String, Vec<(String, Option<SpotifyEmbedTrack>)>)> {
@@ -3742,6 +3409,8 @@ fn is_auth_url(raw_url: &str) -> bool {
         || lower.contains("myaccount.google.")
         || lower.contains("consent.google.")
         || lower.contains("accounts.spotify.com")
+        || lower.contains("challenge.spotify.com")
+        || lower.contains("login.spotify.com")
         || lower.contains("appleid.apple.com")
         || lower.contains("login.live.com")
         || lower.contains("/servicelogin")
@@ -4152,20 +3821,28 @@ fn finalize_auth_cookies(
         "yt-webview"
     };
     let mut applied = 0usize;
+    let mut did_reload = false;
     if let Some(wv) = app.get_webview(target_label) {
         applied = apply_cookie_values_to_webview(&wv, records);
         let _ = wv.eval("window.location.reload()");
+        did_reload = true;
     }
     persist_service_account(&dir, svc, "", "", "", source)?;
-    let _ = app.emit("auth-sync-completed", serde_json::json!({ "service": svc }));
-    emit_auth_status(
-        app,
-        svc,
-        "complete",
-        &format!(
-            "Sign-in complete ({} session cookies synced). Refreshing player…",
-            records.len().max(applied)
-        ),
+    let _ = app.emit(
+        "auth-sync-completed",
+        serde_json::json!({ "service": svc, "reloaded": did_reload }),
+    );
+    let _ = app.emit(
+        "auth-cdp-status",
+        serde_json::json!({
+            "service": normalize_auth_service(svc),
+            "state": "complete",
+            "reloaded": did_reload,
+            "message": format!(
+                "Sign-in complete ({} session cookies synced). Refreshing player…",
+                records.len().max(applied)
+            )
+        }),
     );
     if close_auth_window {
         if let Some(win) = app.get_webview_window("auth-window") {
@@ -4322,6 +3999,7 @@ fn open_auth_window(app: &AppHandle, service: &str, custom_url: Option<String>) 
     .inner_size(520.0, 720.0)
     .resizable(true)
     .center()
+    .on_new_window(|_url, _features| tauri::webview::NewWindowResponse::Allow)
     .on_navigation(move |nav_url| {
         if completed_for_nav.load(Ordering::SeqCst) {
             return true;
@@ -5331,7 +5009,6 @@ fn main() {
             let app_handle_for_yt_nav = app.handle().clone();
             let app_handle_for_yt_popup = app.handle().clone();
             let yt_builder = tauri::WebviewBuilder::new("yt-webview", tauri::WebviewUrl::External(yt_url))
-                .initialization_script(WINDOW_CHROME_POLYFILL_SCRIPT)
                 .initialization_script(GUEST_ERROR_CAPTURE_SCRIPT)
                 .initialization_script(SHIELDS_SCRIPT)
                 .on_navigation(move |nav_url| {
@@ -5368,7 +5045,7 @@ fn main() {
             ) {
                 Ok(yt_wv) => {
                     eprintln!("[Tauri setup] yt-webview added successfully (spotify-webview deferred until selected)");
-                    configure_webkit_webview_settings(&yt_wv, true);
+                    configure_webkit_guest_webview(&yt_wv, app.handle(), "yt-webview", true);
                     if !webview_has_service_auth(&yt_wv, "youtube") {
                         if let Ok(bytes) = fs::read(auth_dir.join("ytmusic_session.json")) {
                             if let Ok(records) = serde_json::from_slice::<Vec<Value>>(&bytes) {
@@ -5503,12 +5180,12 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_shield_ok_response, create_ytdlp_base_command, import_library_file, is_auth_url,
-        is_service_auth_cookie, is_service_landing_url, is_webkit_native_audio_ext,
-        parse_cookie_json_payload, parse_query_params, parse_resize_direction,
-        persist_service_account, provider_url, prune_spotify_bridge_cache, read_accounts_map,
-        register_child_pid, score_yt_candidate, stable_hash_hex, unregister_child_pid,
-        SearchCandidate, ACTIVE_CHILD_PIDS,
+        apply_shield_ok_response, create_ytdlp_base_command, import_library_file,
+        is_ad_or_tracker_request, is_auth_url, is_service_auth_cookie, is_service_landing_url,
+        is_webkit_native_audio_ext, parse_cookie_json_payload, parse_query_params,
+        parse_resize_direction, persist_service_account, provider_url, prune_spotify_bridge_cache,
+        read_accounts_map, register_child_pid, score_yt_candidate, stable_hash_hex,
+        unregister_child_pid, SearchCandidate, ACTIVE_CHILD_PIDS,
     };
     use brave_music_core::library::LibraryDocument;
     use serde_json::json;
@@ -5737,5 +5414,32 @@ mod tests {
         assert_eq!(parse_resize_direction("sw"), Some(tauri_runtime::ResizeDirection::SouthWest));
         assert_eq!(parse_resize_direction("se"), Some(tauri_runtime::ResizeDirection::SouthEast));
         assert_eq!(parse_resize_direction("diagonal"), None);
+    }
+
+    #[test]
+    fn allows_captcha_cloudflare_and_spotify_challenge_urls_without_blocking() {
+        for allowed in [
+            "https://challenges.cloudflare.com/turnstile/v0/api.js",
+            "https://www.google.com/recaptcha/api2/anchor",
+            "https://js.hcaptcha.com/1/api.js",
+            "https://challenge.spotify.com/c/v1/challenge",
+            "https://accounts.spotify.com/en/login",
+            "https://accounts.google.com/v3/signin/identifier",
+            "https://open.spotify.com/api/token",
+        ] {
+            let uri: tauri::http::Uri = allowed.parse().unwrap();
+            assert!(!is_ad_or_tracker_request(&uri), "expected {allowed} to pass shield filter");
+        }
+        assert!(is_auth_url("https://challenge.spotify.com/challenge"));
+        assert!(is_auth_url("https://login.spotify.com/"));
+
+        for blocked in [
+            "https://doubleclick.net/pixel.gif",
+            "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js",
+            "https://music.youtube.com/api/stats/ads?v=123",
+        ] {
+            let uri: tauri::http::Uri = blocked.parse().unwrap();
+            assert!(is_ad_or_tracker_request(&uri), "expected {blocked} to be blocked");
+        }
     }
 }

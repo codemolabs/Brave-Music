@@ -1336,11 +1336,35 @@ document.addEventListener('DOMContentLoaded', () => {
   // BRAVE SHIELDS & WEBVIEWS INTEGRATION
   // ==========================================================================
 
+  let shieldPulseTimer = null;
+
+  function renderShieldBadge(count, pulse = false) {
+    if (!shieldCountLabel || typeof count !== 'number') return;
+    const labelText = `${count} ads blocked`;
+    const textEl = shieldCountLabel.querySelector('.shield-count-text');
+    if (textEl) {
+      textEl.textContent = labelText;
+    } else {
+      shieldCountLabel.textContent = labelText;
+    }
+    shieldCountLabel.classList.add('is-active');
+    if (pulse) {
+      shieldCountLabel.classList.remove('pulse-counter');
+      void shieldCountLabel.offsetWidth;
+      shieldCountLabel.classList.add('pulse-counter');
+      if (shieldPulseTimer) clearTimeout(shieldPulseTimer);
+      shieldPulseTimer = setTimeout(() => {
+        shieldCountLabel.classList.remove('pulse-counter');
+        shieldPulseTimer = null;
+      }, 550);
+    }
+  }
+
   async function syncShieldStats() {
     try {
       const stats = await window.braveApi?.getShieldStats();
-      if (shieldCountLabel && stats && typeof stats.totalBlocked === 'number') {
-        shieldCountLabel.textContent = `${stats.totalBlocked} ads blocked`;
+      if (stats && typeof stats.totalBlocked === 'number') {
+        renderShieldBadge(stats.totalBlocked, false);
       }
     } catch (e) {}
   }
@@ -1350,18 +1374,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (window.braveApi?.onShieldUpdate) {
     window.braveApi.onShieldUpdate((data) => {
-      if (shieldCountLabel && typeof data?.count === 'number') {
-        shieldCountLabel.textContent = `${data.count} ads blocked`;
-        shieldCountLabel.classList.remove('pulse-counter');
-        void shieldCountLabel.offsetWidth;
-        shieldCountLabel.classList.add('pulse-counter');
-        setTimeout(() => shieldCountLabel.classList.remove('pulse-counter'), 500);
+      if (typeof data?.count === 'number') {
+        renderShieldBadge(data.count, true);
       }
     });
   }
 
   shieldCountLabel?.addEventListener('click', () => {
-    showToast(`Brave Shields Protection Active: ${shieldCountLabel.textContent}`);
+    const currentText = shieldCountLabel.querySelector('.shield-count-text')?.textContent || shieldCountLabel.textContent;
+    showToast(`Brave Shields Protection Active: ${currentText}`);
   });
 
   // Proactive webview shield listener & fallback engine
@@ -3594,8 +3615,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
       renderTracksTable();
       renderPlaylistsGrid();
-      updateSmartMixControls();
-      loadRecommendations(false);
 
       // Refresh dedicated playlist detail view if open
       if (playlistDetailModal && playlistDetailModal.style.display !== 'none' && activeDetailPlaylist) {
@@ -4075,135 +4094,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-
-  // ==========================================================================
-  // SMART RECOMMENDATIONS & MIX ENGINE UI
-  // ==========================================================================
-  const recGrid = document.getElementById('recommendations-grid');
-  const recHeading = document.getElementById('rec-shelf-heading');
-  const recSubtitle = document.getElementById('rec-shelf-subtitle');
-  const btnRefreshRecs = document.getElementById('btn-refresh-recommendations');
-  const btnPlaySmartMix = document.getElementById('btn-play-smart-mix');
-  let lastRecSignature = '';
-  let isFetchingRecs = false;
-
-  const OFFLINE_STARTER_PICKS = [
-    { id: '4NRXx6U8ABQ', title: 'Blinding Lights', artist: 'The Weeknd', thumbnail: 'https://i.ytimg.com/vi/4NRXx6U8ABQ/hqdefault.jpg', url: 'https://www.youtube.com/watch?v=4NRXx6U8ABQ', reason: 'Synth-Pop Classic' },
-    { id: 'dX3k_QDnzHE', title: 'Midnight City', artist: 'M83', thumbnail: 'https://i.ytimg.com/vi/dX3k_QDnzHE/hqdefault.jpg', url: 'https://www.youtube.com/watch?v=dX3k_QDnzHE', reason: 'Electronic Anthem' },
-    { id: 'TUVcZfQe-Kw', title: 'Levitating', artist: 'Dua Lipa', thumbnail: 'https://i.ytimg.com/vi/TUVcZfQe-Kw/hqdefault.jpg', url: 'https://www.youtube.com/watch?v=TUVcZfQe-Kw', reason: 'Upbeat Pop' },
-    { id: '34Na4j8AVgA', title: 'Starboy', artist: 'The Weeknd ft. Daft Punk', thumbnail: 'https://i.ytimg.com/vi/34Na4j8AVgA/hqdefault.jpg', url: 'https://www.youtube.com/watch?v=34Na4j8AVgA', reason: 'Essential Mix' }
-  ];
-
-  function updateSmartMixControls() {
-    const playable = (state.library?.tracks || []).filter((t) => !isBuiltInTrack(t));
-    if (btnPlaySmartMix) {
-      btnPlaySmartMix.style.display = playable.length >= 2 ? 'inline-flex' : 'none';
-    }
-  }
-
-  function renderRecommendationsGrid(data) {
-    if (!recGrid) return;
-    const items = Array.isArray(data?.items) ? data.items : [];
-    const seedArtists = Array.isArray(data?.seedArtists) ? data.seedArtists : [];
-
-    if (recHeading) {
-      recHeading.textContent = data?.mode === 'personalized' ? 'Recommended For You' : 'Starter Picks';
-    }
-    if (recSubtitle) {
-      recSubtitle.textContent = (data?.mode === 'personalized' && seedArtists.length > 0)
-        ? `Based on ${seedArtists.join(', ')}`
-        : 'Curated tracks ready to download in one click';
-    }
-
-    recGrid.innerHTML = '';
-    if (items.length === 0) {
-      recGrid.innerHTML = '<div class="rec-empty-msg">No new suggestions right now. Click Refresh to check again.</div>';
-      return;
-    }
-
-    items.forEach((item) => {
-      const card = document.createElement('div');
-      card.className = 'rec-card';
-      const thumb = item.thumbnail || EMPTY_MUSIC_THUMBNAIL;
-      card.innerHTML = `
-        <img class="rec-card-thumb" src="${escapeHtml(thumb)}" alt="" loading="lazy" onerror="this.src='${EMPTY_MUSIC_THUMBNAIL}'">
-        <div class="rec-card-meta">
-          <div class="rec-card-title" title="${escapeHtml(item.title || '')}">${escapeHtml(item.title || 'Unknown Track')}</div>
-          <div class="rec-card-artist" title="${escapeHtml(item.artist || '')}">${escapeHtml(item.artist || 'YouTube Music')}</div>
-          <div class="rec-card-reason">${escapeHtml(item.reason || 'Recommended')}</div>
-        </div>
-        <button class="rec-card-dl-btn" type="button" title="Download track into Offline Library" aria-label="Download ${escapeHtml(item.title || 'track')}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-            <path d="M12 3v12m0 0l-4-4m4 4l4-4"></path>
-            <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
-          </svg>
-        </button>
-      `;
-
-      const dlBtn = card.querySelector('.rec-card-dl-btn');
-      dlBtn?.addEventListener('click', () => {
-        if (!item.url) return;
-        state.downloadType = 'song';
-        toggleSong?.classList.add('active');
-        togglePlaylist?.classList.remove('active');
-        if (inputDownloadUrl) inputDownloadUrl.value = item.url;
-        executeDownload();
-      });
-
-      recGrid.appendChild(card);
-    });
-  }
-
-  async function loadRecommendations(forceRefresh = false) {
-    if (!recGrid) return;
-    const trackCount = (state.library?.tracks || []).length;
-    const curId = state.player.currentTrack?.id || '';
-    const sig = `${trackCount}:${curId}`;
-    if (!forceRefresh && (isFetchingRecs || (lastRecSignature === sig && recGrid.children.length > 0))) {
-      return;
-    }
-
-    isFetchingRecs = true;
-    if (forceRefresh || recGrid.children.length === 0) {
-      recGrid.innerHTML = '<div class="rec-empty-msg">Finding personalized music recommendations…</div>';
-    }
-
-    try {
-      let data = null;
-      if (window.braveApi?.getRecommendations) {
-        data = await window.braveApi.getRecommendations({ currentTrackId: curId, limit: 6 });
-      }
-      if (!data || !Array.isArray(data.items) || data.items.length === 0) {
-        const ownedTitles = new Set((state.library?.tracks || []).map((t) => String(t.title || '').toLowerCase().trim()));
-        data = {
-          mode: 'starter',
-          seedArtists: [],
-          items: OFFLINE_STARTER_PICKS.filter((p) => !ownedTitles.has(p.title.toLowerCase()))
-        };
-      }
-      lastRecSignature = sig;
-      renderRecommendationsGrid(data);
-    } catch (e) {
-      renderRecommendationsGrid({ mode: 'starter', seedArtists: [], items: OFFLINE_STARTER_PICKS });
-    } finally {
-      isFetchingRecs = false;
-    }
-  }
-
-  btnRefreshRecs?.addEventListener('click', () => loadRecommendations(true));
-
-  btnPlaySmartMix?.addEventListener('click', () => {
-    const tracks = getSortedAndFilteredTracks();
-    if (tracks.length === 0) {
-      showToast('Download a couple of tracks first to launch Smart Mix.');
-      return;
-    }
-    state.player.isShuffle = true;
-    playerShuffleBtn?.classList.add('active');
-    const nextIdx = state.player.currentTrack ? pickSmartNextTrackIndex(tracks) : 0;
-    playTrack(tracks[nextIdx], nextIdx);
-    showToast('Smart Mix started — queuing similar artists & playlists');
-  });
 
   // Initial setup & data load
   setupCustomDropdowns();

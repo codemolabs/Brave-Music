@@ -86,8 +86,12 @@
 
     <!-- Right: Shields Counter, Refresh, Credits & Window Controls -->
     <div class="header-right">
-      <!-- Ads blocked text label near refresh (no icon) -->
-      <span class="ads-blocked-label" id="shield-count-label">0 ads blocked</span>
+      <!-- Active Brave Shields block badge -->
+      <button type="button" class="ads-blocked-label is-active" id="shield-count-label"
+        title="Brave Shields Active — Click to view protection count" aria-live="polite">
+        <span class="shield-live-dot" aria-hidden="true"></span>
+        <span class="shield-count-text">0 ads blocked</span>
+      </button>
 
       <!-- User Account / Login Button (Simple Empty Profile Icon) -->
       <button class="icon-action-btn" id="btn-auth-sync" title="Sign In &amp; Account"
@@ -119,8 +123,7 @@
       </button>
 
       <div class="window-controls">
-        <button class="win-btn win-menu" id="win-menu" title="Window Options (Ubuntu Menu)"
-          aria-label="Window Options">
+        <button class="win-btn win-menu" id="win-menu" title="Window Options (Ubuntu Menu)" aria-label="Window Options">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="4" width="18" height="16" rx="2"></rect>
@@ -513,38 +516,9 @@
               </svg>
             </div>
             <h3 class="empty-heading">No Downloaded Music Yet</h3>
-            <p class="empty-desc">Paste any YouTube Music or Spotify song or playlist link above, or pick a recommended
-              track below to start building your offline library.</p>
+            <p class="empty-desc">Paste any YouTube Music or Spotify song or playlist link above to start building your
+              offline library.</p>
           </div>
-
-          <!-- Smart Music Recommendations Shelf -->
-          <section class="recommendations-shelf" id="recommendations-shelf" aria-label="Recommended Music">
-            <div class="rec-shelf-header">
-              <div class="rec-shelf-titles">
-                <h2 class="rec-shelf-heading" id="rec-shelf-heading">Recommended For You</h2>
-                <span class="rec-shelf-subtitle" id="rec-shelf-subtitle">Personalized recommendations from your
-                  library</span>
-              </div>
-              <div class="rec-shelf-actions">
-                <button class="ghost-btn rec-action-btn" id="btn-play-smart-mix"
-                  title="Play a cohesive smart mix from your offline tracks" style="display: none;">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                  </svg>
-                  <span>Play Smart Mix</span>
-                </button>
-                <button class="ghost-btn rec-action-btn" id="btn-refresh-recommendations"
-                  title="Refresh recommendations">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="23 4 23 10 17 10"></polyline>
-                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-                  </svg>
-                  <span>Refresh</span>
-                </button>
-              </div>
-            </div>
-            <div class="rec-cards-grid" id="recommendations-grid"></div>
-          </section>
         </div>
 
         <!-- Library Content: Playlists Bento Grid View -->
@@ -1014,8 +988,7 @@
 
         <!-- Action Buttons Outside the Bubble: Email Us, Update & Report -->
         <div class="about-external-actions-row">
-          <button class="about-white-action-btn" id="btn-email-donation"
-            title="Email us at cosl@codemoteams.org">
+          <button class="about-white-action-btn" id="btn-email-donation" title="Email us at cosl@codemoteams.org">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               stroke-linecap="round" stroke-linejoin="round">
               <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>

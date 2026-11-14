@@ -7,31 +7,53 @@
  * Provides 0ms instant skipping, zero sound leaks, and cosmetic filtering.
  */
 
+function isShieldBypassUrl(hostname, href) {
+  const h = (hostname || '').toLowerCase();
+  const u = (href || '').toLowerCase();
+  return (
+    h.includes('accounts.google.') ||
+    h.includes('accounts.youtube.') ||
+    h.includes('myaccount.google.') ||
+    h.includes('apis.google.') ||
+    h.includes('oauth2.googleapis.') ||
+    h.includes('identitytoolkit.') ||
+    h.includes('securetoken.') ||
+    h.includes('appleid.apple.') ||
+    h.includes('login.live.') ||
+    h.includes('accounts.spotify.') ||
+    h.includes('challenge.spotify.') ||
+    h.includes('challenges.cloudflare.') ||
+    (h.includes('cloudflare.com') && (u.includes('turnstile') || u.includes('cdn-cgi'))) ||
+    h.includes('recaptcha') ||
+    h.includes('hcaptcha.') ||
+    h.includes('arkoselabs.') ||
+    h.includes('funcaptcha.') ||
+    h.includes('geetest.') ||
+    h.includes('gstatic.com') ||
+    u.includes('/signin') ||
+    u.includes('/servicelogin') ||
+    u.includes('/v3/signin') ||
+    u.includes('/identifier') ||
+    u.includes('/challenge') ||
+    u.includes('/captcha') ||
+    u.includes('/verify') ||
+    u.includes('/turnstile') ||
+    u.includes('/cdn-cgi/challenge') ||
+    u.includes('/oauth') ||
+    u.includes('/authorize') ||
+    (h.includes('spotify.com') && (u.includes('/login') || u.includes('/signup')))
+  );
+}
+
 function runShields() {
+  if (window.top !== window.self) return;
   if (window.__BRAVE_SHIELDS_INITIALIZED__) return;
 
   const hostname = (window.location.hostname || '').toLowerCase();
   const href = (window.location.href || '').toLowerCase();
 
-  // 1. NEVER execute shields on ANY authentication, login, Google Account, or OAuth pages
-  if (
-    hostname.includes('accounts.google.') ||
-    hostname.includes('accounts.youtube.') ||
-    hostname.includes('myaccount.google.') ||
-    hostname.includes('apis.google.') ||
-    hostname.includes('oauth2.googleapis.') ||
-    hostname.includes('identitytoolkit.') ||
-    hostname.includes('securetoken.') ||
-    hostname.includes('appleid.apple.') ||
-    hostname.includes('gstatic.com') ||
-    href.includes('/signin') ||
-    href.includes('/servicelogin') ||
-    href.includes('/v3/signin') ||
-    href.includes('/identifier') ||
-    href.includes('/challenge') ||
-    href.includes('/oauth') ||
-    (hostname.includes('spotify.com') && (href.includes('/login') || href.includes('/signup') || href.includes('/authorize')))
-  ) {
+  // 1. NEVER execute shields on authentication, OAuth, Cloudflare, or CAPTCHA pages
+  if (isShieldBypassUrl(hostname, href)) {
     return;
   }
 
@@ -46,25 +68,37 @@ function runShields() {
   window.__BRAVE_SHIELDS_INITIALIZED__ = true;
 
   let pendingShieldPingTimer = null;
+  let queuedShieldCount = 0;
   let queuedShieldDetail = '';
 
   function notifyBlocked(detail) {
     try {
       window.__BRAVE_SHIELDS_BLOCKED_COUNT__ = (window.__BRAVE_SHIELDS_BLOCKED_COUNT__ || 0) + 1;
+      queuedShieldCount += 1;
       queuedShieldDetail = detail || queuedShieldDetail || 'in-page';
-      if (!pendingShieldPingTimer && typeof fetch === 'function') {
+      if (!pendingShieldPingTimer) {
         pendingShieldPingTimer = setTimeout(() => {
           pendingShieldPingTimer = null;
+          const count = queuedShieldCount || 1;
           const payload = queuedShieldDetail || 'in-page';
+          queuedShieldCount = 0;
           queuedShieldDetail = '';
-          fetch('/__brave_shield_blocked__?t=' + Date.now() + '&source=' + encodeURIComponent(payload), {
-            method: 'GET',
-            cache: 'no-store',
-            credentials: 'omit'
-          }).catch(() => {});
-        }, 350);
+          const guestHandler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.braveGuest;
+          if (guestHandler && typeof guestHandler.postMessage === 'function') {
+            guestHandler.postMessage(JSON.stringify({
+              type: 'shield_blocked',
+              count,
+              detail: payload
+            }));
+          } else if (typeof fetch === 'function') {
+            fetch('/__brave_shield_blocked__?t=' + Date.now() + '&count=' + count + '&source=' + encodeURIComponent(payload), {
+              method: 'GET',
+              cache: 'no-store',
+              credentials: 'omit'
+            }).catch(() => {});
+          }
+        }, 120);
       }
-      console.log('[BRAVE_SHIELD_BLOCKED]', detail);
     } catch (e) {}
   }
 
@@ -88,6 +122,7 @@ function runShields() {
           url.includes('/stats/ads') ||
           url.includes('scorecardresearch')
         )) {
+          notifyBlocked('Ad telemetry beacon blocked');
           return true;
         }
         return origBeacon.apply(this, arguments);
@@ -339,19 +374,10 @@ body {
 
     if (typeof url === 'string') {
       const lowerUrl = url.toLowerCase();
-      // Pass-through all authentication and login requests immediately without cloning or inspection
-      if (
-        lowerUrl.includes('accounts.google.') ||
-        lowerUrl.includes('accounts.youtube.') ||
-        lowerUrl.includes('apis.google.') ||
-        lowerUrl.includes('oauth2.googleapis.') ||
-        lowerUrl.includes('/signin') ||
-        lowerUrl.includes('/servicelogin') ||
-        lowerUrl.includes('/v3/signin') ||
-        lowerUrl.includes('/identifier') ||
-        lowerUrl.includes('/challenge') ||
-        lowerUrl.includes('/oauth')
-      ) {
+      // Pass-through all authentication, CAPTCHA, Cloudflare, and challenge requests untouched
+      let reqHost = '';
+      try { reqHost = new URL(url, window.location.href).hostname; } catch (_) {}
+      if (isShieldBypassUrl(reqHost, lowerUrl)) {
         return rawFetch.apply(this, args);
       }
 
@@ -621,32 +647,26 @@ body {
 
 // Bootstrap execution via webFrame to ensure execution in main world (worldId 0)
 try {
-  const _host = (window.location && window.location.hostname || '').toLowerCase();
-  const _href = (window.location && window.location.href || '').toLowerCase();
-  const _isAuthPage =
-    _host.includes('accounts.google.') ||
-    _host.includes('accounts.youtube.') ||
-    _host.includes('accounts.spotify.') ||
-    _host.includes('myaccount.google.') ||
-    _href.includes('/signin') ||
-    _href.includes('/servicelogin') ||
-    _href.includes('/v3/signin');
+  if (window.top === window.self) {
+    const _host = (window.location && window.location.hostname || '').toLowerCase();
+    const _href = (window.location && window.location.href || '').toLowerCase();
 
-  if (!_isAuthPage) {
-    let webFrameModule = null;
-    try {
-      webFrameModule = require('electron').webFrame;
-    } catch (e) {}
+    if (!isShieldBypassUrl(_host, _href)) {
+      let webFrameModule = null;
+      try {
+        webFrameModule = require('electron').webFrame;
+      } catch (e) {}
 
-    if (webFrameModule && typeof webFrameModule.executeJavaScript === 'function') {
-      webFrameModule.executeJavaScript('(' + runShields.toString() + ')()');
-    } else {
-      runShields();
+      if (webFrameModule && typeof webFrameModule.executeJavaScript === 'function') {
+        webFrameModule.executeJavaScript('(' + runShields.toString() + ')()');
+      } else {
+        runShields();
+      }
     }
   }
 } catch (err) {
   try {
-    runShields();
+    if (window.top === window.self) runShields();
   } catch (e) {
     console.warn('[Brave Shields Preload] Error initializing:', e.message);
   }

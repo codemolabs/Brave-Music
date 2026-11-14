@@ -247,7 +247,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.addEventListener('keydown', (e) => {
     if (e.key === 'F11') {
       e.preventDefault();
-      window.braveApi?.toggleFullscreen?.().then(applyWindowStateToUI).catch(() => {});
+      window.braveApi?.toggleFullscreen?.().then(applyWindowStateToUI).catch(() => { });
     } else if (e.altKey && e.key === 'F10') {
       e.preventDefault();
       window.braveApi?.maximize?.();
@@ -258,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   window.braveApi?.onWindowStateChanged?.(applyWindowStateToUI);
-  window.braveApi?.getWindowState?.().then(applyWindowStateToUI).catch(() => {});
+  window.braveApi?.getWindowState?.().then(applyWindowStateToUI).catch(() => { });
 
   // ==========================================================================
   // IN-APP HISTORY & PAGE VIEW NAVIGATION (< BACK, > FORWARD)
@@ -358,7 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (typeof webview.getURL === 'function') {
         currentUrl = webview.getURL();
       }
-    } catch (e) {}
+    } catch (e) { }
 
     if (!currentUrl || currentUrl === 'about:blank') {
       webview.src = defaultUrl;
@@ -370,14 +370,14 @@ document.addEventListener('DOMContentLoaded', () => {
         webview.reload();
         return;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       if (typeof webview.reloadIgnoringCache === 'function') {
         webview.reloadIgnoringCache();
         return;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     try {
       webview.executeJavaScript('window.location.reload();').catch(() => {
@@ -405,7 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           currentUrl = webview.getAttribute('src') || '';
         }
-      } catch (e) {}
+      } catch (e) { }
 
       const lowerUrl = currentUrl.toLowerCase();
       const stuckOnAuthOrBlank =
@@ -418,13 +418,13 @@ document.addEventListener('DOMContentLoaded', () => {
         lowerUrl.includes('/login');
 
       const onPostSignInLoad = () => {
-        try { webview.removeEventListener?.('did-finish-load', onPostSignInLoad); } catch (e) {}
+        try { webview.removeEventListener?.('did-finish-load', onPostSignInLoad); } catch (e) { }
         setTimeout(() => {
           inspectAndSaveWebviewUser(normalized);
           refreshAuthStatusUI();
         }, 700);
       };
-      try { webview.addEventListener?.('did-finish-load', onPostSignInLoad); } catch (e) {}
+      try { webview.addEventListener?.('did-finish-load', onPostSignInLoad); } catch (e) { }
 
       if (stuckOnAuthOrBlank) {
         try {
@@ -446,7 +446,7 @@ document.addEventListener('DOMContentLoaded', () => {
             webview.src = homeUrl;
           }
         } catch (error) {
-          try { webview.src = homeUrl; } catch (e2) {}
+          try { webview.src = homeUrl; } catch (e2) { }
         }
       }
     }
@@ -505,7 +505,7 @@ document.addEventListener('DOMContentLoaded', () => {
             versionEl.textContent = `Version v${v}`;
           }
         }
-      } catch (e) {}
+      } catch (e) { }
       aboutModal.style.display = 'flex';
       btnCloseAbout?.focus();
     }
@@ -525,7 +525,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (versionEl) {
         versionEl.textContent = `Version v${v}`;
       }
-    }).catch(() => {});
+    }).catch(() => { });
   }
 
   btnAbout?.addEventListener('click', openAboutModal);
@@ -546,21 +546,21 @@ document.addEventListener('DOMContentLoaded', () => {
     window.braveApi?.openExternal('mailto:cosl@codemoteams.org');
     try {
       navigator.clipboard?.writeText('cosl@codemoteams.org');
-    } catch (e) {}
+    } catch (e) { }
     showToast('Contact email copied: cosl@codemoteams.org');
   });
 
   const btnCheckUpdate = document.getElementById('btn-check-update');
   btnCheckUpdate?.addEventListener('click', () => {
     const releaseUrl = 'https://github.com/codemolabs/Brave-Music/releases';
-    window.braveApi?.openExternal(releaseUrl)?.catch?.(() => {});
+    window.braveApi?.openExternal(releaseUrl)?.catch?.(() => { });
     showToast('Opening releases page...');
   });
 
   const btnReportIssue = document.getElementById('btn-report-issue');
   btnReportIssue?.addEventListener('click', () => {
     const issuesUrl = 'https://github.com/codemolabs/Brave-Music/issues';
-    window.braveApi?.openExternal(issuesUrl)?.catch?.(() => {});
+    window.braveApi?.openExternal(issuesUrl)?.catch?.(() => { });
     showToast('Opening issues page...');
   });
 
@@ -1093,7 +1093,7 @@ document.addEventListener('DOMContentLoaded', () => {
         cfg.statusEl.textContent = 'Sign-in cancelled.';
       }
       await window.braveApi.cancelServiceLogin();
-    } catch (e) {}
+    } catch (e) { }
   }
 
   btnStartYtmCdp?.addEventListener('click', () => startServiceSignInFlow('youtube', 'browser'));
@@ -1385,7 +1385,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       window.braveApi?.switchTab?.(targetId);
-    } catch (e) {}
+    } catch (e) { }
 
     if (typeof updateNavHistoryState === 'function') {
       updateNavHistoryState();
@@ -1419,7 +1419,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (shieldCountLabel && stats && typeof stats.totalBlocked === 'number') {
         shieldCountLabel.textContent = `${stats.totalBlocked} ads blocked`;
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   syncShieldStats();
@@ -1458,8 +1458,8 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!window.__BRAVE_SHIELDS_INITIALIZED__) {
             console.warn('[Brave Shields] Re-verifying proactive engine on navigation');
           }
-        `).catch(() => {});
-      } catch (e) {}
+        `).catch(() => { });
+      } catch (e) { }
     };
 
     webview.addEventListener('did-navigate', verifyShields);
@@ -1488,9 +1488,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const u = String(rawUrl || '').trim();
     if (!u) return false;
     return /[?&]list=[a-zA-Z0-9_-]+/i.test(u) ||
-           /open\.spotify\.com\/(?:intl-[a-z-]+\/)?(playlist|album|artist)\/[a-zA-Z0-9]+/i.test(u) ||
-           /spotify:(playlist|album|artist):[a-zA-Z0-9]+/i.test(u) ||
-           /\/playlist\?list=/i.test(u);
+      /open\.spotify\.com\/(?:intl-[a-z-]+\/)?(playlist|album|artist)\/[a-zA-Z0-9]+/i.test(u) ||
+      /spotify:(playlist|album|artist):[a-zA-Z0-9]+/i.test(u) ||
+      /\/playlist\?list=/i.test(u);
   }
 
   function getTrackFormatMeta(track) {
@@ -2117,8 +2117,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const artist = (track.artist || '').toLowerCase();
     const filename = (track.filename || '').toLowerCase();
     return title.includes('never gonna give you up') ||
-           filename.includes('dqw4w9wgxcq') ||
-           (artist.includes('rick astley') && title.includes('never gonna'));
+      filename.includes('dqw4w9wgxcq') ||
+      (artist.includes('rick astley') && title.includes('never gonna'));
   }
 
   const EMPTY_MUSIC_THUMBNAIL = 'assets/empty-music.svg';
@@ -2301,8 +2301,8 @@ document.addEventListener('DOMContentLoaded', () => {
       tr.innerHTML = `
         <td class="col-num" style="width: 44px; text-align: center;">
           ${isCurrentlyPlayingThis && state.player.isPlaying
-            ? '<div class="playing-num-eq"><span></span><span></span><span></span></div>'
-            : (idx + 1)}
+          ? '<div class="playing-num-eq"><span></span><span></span><span></span></div>'
+          : (idx + 1)}
         </td>
         <td class="col-title">
           <div class="track-meta-cell">
@@ -2565,7 +2565,7 @@ document.addEventListener('DOMContentLoaded', () => {
       playerTitle.textContent = track.title || 'Unknown Title';
       playerArtist.textContent = track.artist || 'Offline Library';
       playerArtImg.src = getTrackThumbnail(track);
-      playerArtImg.onerror = function() { this.src = EMPTY_MUSIC_THUMBNAIL; };
+      playerArtImg.onerror = function () { this.src = EMPTY_MUSIC_THUMBNAIL; };
       if (playerWaves) playerWaves.style.display = 'inline-flex';
       playerPlayIcon.style.display = 'none';
       playerPauseIcon.style.display = 'block';
@@ -2591,7 +2591,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pauseYouTube();
         if (!state.player.currentTrack.isSpotifyBridge) pauseSpotify();
         state.activeAudioSource = state.player.currentTrack.isSpotifyBridge ? 'spotify-bridge' : 'local';
-        runtimeAudio.play().catch(() => {});
+        runtimeAudio.play().catch(() => { });
         state.player.isPlaying = true;
         playerPlayIcon.style.display = 'none';
         playerPauseIcon.style.display = 'block';
@@ -2706,7 +2706,7 @@ document.addEventListener('DOMContentLoaded', () => {
           position: runtimeAudio.currentTime || 0,
           duration: runtimeAudio.duration || 0,
           isPlaying: true
-        }).catch(() => {});
+        }).catch(() => { });
       }
     }
   });
@@ -2721,8 +2721,8 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       spotifyWebview.executeJavaScript(
         `window.__braveSpotifyBridgeSync?.(${JSON.stringify(statusPayload)});`
-      ).catch(() => {});
-    } catch (_) {}
+      ).catch(() => { });
+    } catch (_) { }
   }
 
   function startSpotifyBridgePlaybackPayload(payload) {
@@ -2763,7 +2763,7 @@ document.addEventListener('DOMContentLoaded', () => {
     playerTitle.textContent = state.player.currentTrack.title;
     playerArtist.textContent = state.player.currentTrack.artist;
     playerArtImg.src = state.player.currentTrack.thumbnail || EMPTY_MUSIC_THUMBNAIL;
-    playerArtImg.onerror = function() { this.src = EMPTY_MUSIC_THUMBNAIL; };
+    playerArtImg.onerror = function () { this.src = EMPTY_MUSIC_THUMBNAIL; };
     if (playerWaves) playerWaves.style.display = 'inline-flex';
     playerPlayIcon.style.display = 'none';
     playerPauseIcon.style.display = 'block';
@@ -2895,7 +2895,7 @@ document.addEventListener('DOMContentLoaded', () => {
   runtimeAudio.addEventListener('ended', () => {
     if (state.player.isRepeat) {
       runtimeAudio.currentTime = 0;
-      runtimeAudio.play().catch(() => {});
+      runtimeAudio.play().catch(() => { });
       syncPlayerToMprisAndMediaSession({ isPlaying: true });
     } else if (state.player.currentTrack?.isSpotifyBridge && Array.isArray(state.spotifyBridgeQueue) && state.spotifyBridgeQueue.length > 1) {
       stepSpotifyBridgeQueue(1);
@@ -2983,7 +2983,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (playerVolumeFill) playerVolumeFill.style.height = `${pct}%`;
     updateVolumeIcon();
     if (window.braveApi?.updateMprisState) {
-      window.braveApi.updateMprisState({ volume: state.player.isMuted ? 0 : clamped }).catch(() => {});
+      window.braveApi.updateMprisState({ volume: state.player.isMuted ? 0 : clamped }).catch(() => { });
     }
   }
 
@@ -3131,8 +3131,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (video && !video.paused) video.pause();
           } catch (e) {}
         })()
-      `).catch(() => {});
-    } catch (e) {}
+      `).catch(() => { });
+    } catch (e) { }
   }
 
   // Pause Spotify webview
@@ -3147,8 +3147,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (ariaLabel.includes('pause') && playBtn) playBtn.click();
           } catch (e) {}
         })()
-      `).catch(() => {});
-    } catch (e) {}
+      `).catch(() => { });
+    } catch (e) { }
   }
 
   // Pause Local Music
@@ -3194,7 +3194,7 @@ document.addEventListener('DOMContentLoaded', () => {
               }
             } catch (e) {}
           })()
-        `).catch(() => {});
+        `).catch(() => { });
       } else if (action === 'next') {
         ytWebview.executeJavaScript(`
           (() => {
@@ -3212,7 +3212,7 @@ document.addEventListener('DOMContentLoaded', () => {
               }
             } catch (e) {}
           })()
-        `).catch(() => {});
+        `).catch(() => { });
       } else if (action === 'previous') {
         ytWebview.executeJavaScript(`
           (() => {
@@ -3230,7 +3230,7 @@ document.addEventListener('DOMContentLoaded', () => {
               }
             } catch (e) {}
           })()
-        `).catch(() => {});
+        `).catch(() => { });
       }
     } catch (e) {
       console.warn('[YTMControl] Notice:', e.message);
@@ -3260,7 +3260,7 @@ document.addEventListener('DOMContentLoaded', () => {
               }
             } catch (e) {}
           })()
-        `).catch(() => {});
+        `).catch(() => { });
       } else if (action === 'next') {
         spotifyWebview.executeJavaScript(`
           (() => {
@@ -3271,7 +3271,7 @@ document.addEventListener('DOMContentLoaded', () => {
               if (nextBtn) nextBtn.click();
             } catch (e) {}
           })()
-        `).catch(() => {});
+        `).catch(() => { });
       } else if (action === 'previous') {
         spotifyWebview.executeJavaScript(`
           (() => {
@@ -3282,7 +3282,7 @@ document.addEventListener('DOMContentLoaded', () => {
               if (prevBtn) prevBtn.click();
             } catch (e) {}
           })()
-        `).catch(() => {});
+        `).catch(() => { });
       }
     } catch (e) {
       console.warn('[SpotifyControl] Notice:', e.message);
@@ -3429,7 +3429,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     if (window.braveApi?.updateMprisState) {
-      window.braveApi.updateMprisState(mprisPayload).catch(() => {});
+      window.braveApi.updateMprisState(mprisPayload).catch(() => { });
     }
 
     updateMediaSession({
@@ -3472,7 +3472,7 @@ document.addEventListener('DOMContentLoaded', () => {
         album: meta.album || 'Brave Music',
         artwork
       });
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // Handle incoming remote MPRIS commands from Linux desktop (panel buttons, notification controls, media keys)
@@ -3816,7 +3816,7 @@ document.addEventListener('DOMContentLoaded', () => {
           });
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   if (!window.__TAURI__) {
@@ -3912,11 +3912,11 @@ document.addEventListener('DOMContentLoaded', () => {
       let albumDisplay = 'Single';
       if (assignedPlaylists.length > 0) {
         albumDisplay = assignedPlaylists.join(', ');
-      } else if (track.album && 
-                 track.album !== 'Downloaded Playlist' && 
-                 track.album !== 'Downloaded Album' && 
-                 track.album !== track.playlist &&
-                 !Object.keys(state.library.playlists || {}).includes(track.album)) {
+      } else if (track.album &&
+        track.album !== 'Downloaded Playlist' &&
+        track.album !== 'Downloaded Album' &&
+        track.album !== track.playlist &&
+        !Object.keys(state.library.playlists || {}).includes(track.album)) {
         albumDisplay = track.album;
       } else {
         albumDisplay = 'Single';
@@ -3979,37 +3979,37 @@ document.addEventListener('DOMContentLoaded', () => {
               </svg>
             </button>
             ${isBuiltIn
-              ? `<button class="row-action-btn built-in-locked-btn" disabled title="Built-in track cannot be added to custom playlists">
+          ? `<button class="row-action-btn built-in-locked-btn" disabled title="Built-in track cannot be added to custom playlists">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                   </svg>
                 </button>`
-              : `<button class="row-action-btn add-playlist-btn" title="Add to custom playlist">
+          : `<button class="row-action-btn add-playlist-btn" title="Add to custom playlist">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
                     <line x1="5" y1="12" x2="19" y2="12"></line>
                   </svg>
                 </button>`
-            }
+        }
             <button class="row-action-btn folder-track-btn" title="Locate file in folder">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
               </svg>
             </button>
             ${isBuiltIn
-              ? `<button class="row-action-btn built-in-locked-btn" disabled title="Built-in track is protected from deletion">
+          ? `<button class="row-action-btn built-in-locked-btn" disabled title="Built-in track is protected from deletion">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                   </svg>
                 </button>`
-              : `<button class="row-action-btn delete-btn" title="Delete offline file from storage">
+          : `<button class="row-action-btn delete-btn" title="Delete offline file from storage">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="3 6 5 6 21 6"></polyline>
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                   </svg>
                 </button>`
-            }
+        }
           </div>
         </td>
       `;
@@ -4240,10 +4240,10 @@ document.addEventListener('DOMContentLoaded', () => {
   function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
-              .replace(/"/g, '&quot;')
-              .replace(/'/g, '&#039;');
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   // ==========================================================================
