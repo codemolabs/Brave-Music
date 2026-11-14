@@ -1,0 +1,6 @@
+#!/bin/sh
+# Ensure /var/tmp bind target ($SNAP_COMMON/var-tmp) is world-writable with sticky
+# bit so WebKitWebProcess/GStreamer gstdownloadbuffer can buffer HTTP/bridge media.
+mkdir -p "$SNAP_COMMON/var-tmp"
+chmod 1777 "$SNAP_COMMON/var-tmp"
+exit 0

@@ -57,6 +57,8 @@ layout:
     bind: $SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/libproxy
   /usr/share/xml/iso-codes:
     bind: $SNAP/gnome-platform/usr/share/xml/iso-codes
+  /var/tmp:
+    bind: $SNAP_COMMON/var-tmp
 hooks:
   configure:
     command-chain:
@@ -128,6 +130,10 @@ chmod 755 "$STAGE_DIR/snap/command-chain/"*
 mkdir -p "$STAGE_DIR/meta/hooks"
 cat << 'EOF' > "$STAGE_DIR/meta/hooks/configure"
 #!/bin/sh
+# Ensure /var/tmp bind target ($SNAP_COMMON/var-tmp) is world-writable with sticky
+# bit so WebKitWebProcess/GStreamer gstdownloadbuffer can buffer HTTP/bridge media.
+mkdir -p "$SNAP_COMMON/var-tmp"
+chmod 1777 "$SNAP_COMMON/var-tmp"
 # Font cache is built by the gnome-46-2404 hook command-chain.
 exit 0
 EOF
@@ -165,6 +171,114 @@ chmod +x "$STAGE_DIR/opt/brave-music/backend/bin/yt-dlp" \
          "$STAGE_DIR/opt/brave-music/backend/bin/ffprobe" 2>/dev/null || true
 
 # 4. Create Snap Launcher Script (bin/brave-music-snap)
+# Stage Ubuntu 24.04 (noble / core24) GStreamer plugins missing from gnome-46-2404
+# so YouTube Music (H.264/AAC/VP9/AV1 + fakevideosink) and bridge playback work out of the box.
+stage_noble_gst_codecs() {
+  local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/brave-music-snap-gst-noble"
+  local dst_lib="$STAGE_DIR/usr/lib/x86_64-linux-gnu"
+  local dst_gst="$dst_lib/gstreamer-1.0"
+  mkdir -p "$cache_dir/lib" "$cache_dir/gst" "$dst_gst"
+
+  local req_gst=(
+    libgstaom.so
+    libgstdebugutilsbad.so
+    libgstfaad.so
+    libgsthls.so
+    libgstopenh264.so
+    libgstsubenc.so
+    libgstvideoparsersbad.so
+  )
+  local need_fetch=0
+  for p in "${req_gst[@]}"; do
+    [ -f "$cache_dir/gst/$p" ] || { need_fetch=1; break; }
+  done
+  [ -e "$cache_dir/lib/libfaad.so.2" ] || need_fetch=1
+  [ -e "$cache_dir/lib/libopenh264.so.7" ] || need_fetch=1
+
+  if [ "$need_fetch" -eq 1 ]; then
+    echo "Fetching Ubuntu 24.04 (noble) GStreamer codec plugins for Snap..."
+    python3 - "$cache_dir" <<'PYEOF'
+import gzip, os, shutil, subprocess, sys, tempfile, urllib.request
+
+cache_dir = sys.argv[1]
+pkgs_wanted = {"gstreamer1.0-plugins-bad", "libfaad2", "libopenh264-7"}
+debs = {}
+seed_map = {
+    "gstreamer1.0-plugins-bad": "/tmp/gst_noble_test/bad.deb",
+    "libfaad2": "/tmp/gst_noble_test/faad2.deb",
+    "libopenh264-7": "/tmp/gst_noble_test/openh264.deb",
+}
+for pkg, path in seed_map.items():
+    if os.path.exists(path):
+        debs[pkg] = path
+
+with tempfile.TemporaryDirectory() as tmp:
+    missing = pkgs_wanted - set(debs.keys())
+    if missing:
+        found_urls = {}
+        for suite in ("noble-updates", "noble"):
+            for comp in ("universe", "main"):
+                idx_url = f"http://archive.ubuntu.com/ubuntu/dists/{suite}/{comp}/binary-amd64/Packages.gz"
+                try:
+                    raw = urllib.request.urlopen(idx_url, timeout=30).read()
+                    text = gzip.decompress(raw).decode("utf-8", errors="replace")
+                except Exception:
+                    continue
+                cur_pkg = None
+                for line in text.splitlines():
+                    if line.startswith("Package: "):
+                        cur_pkg = line[9:].strip()
+                    elif line.startswith("Filename: ") and cur_pkg in missing and cur_pkg not in found_urls:
+                        found_urls[cur_pkg] = "http://archive.ubuntu.com/ubuntu/" + line[10:].strip()
+                    elif not line:
+                        cur_pkg = None
+                if missing.issubset(found_urls.keys()):
+                    break
+            if missing.issubset(found_urls.keys()):
+                break
+        for pkg in sorted(missing):
+            if pkg not in found_urls:
+                raise RuntimeError(f"Could not locate noble package: {pkg}")
+            dest = os.path.join(tmp, f"{pkg}.deb")
+            urllib.request.urlretrieve(found_urls[pkg], dest)
+            debs[pkg] = dest
+
+    ext = os.path.join(tmp, "ext")
+    os.makedirs(ext, exist_ok=True)
+    for deb in debs.values():
+        subprocess.run(["dpkg-deb", "-x", deb, ext], check=True)
+
+    lib_root = os.path.join(ext, "usr", "lib", "x86_64-linux-gnu")
+    for name in os.listdir(lib_root):
+        if name.startswith("libfaad.so.") or name.startswith("libopenh264.so."):
+            src = os.path.join(lib_root, name)
+            dst = os.path.join(cache_dir, "lib", name)
+            if os.path.islink(src):
+                if os.path.lexists(dst):
+                    os.unlink(dst)
+                os.symlink(os.readlink(src), dst)
+            else:
+                shutil.copy2(src, dst)
+
+    gst_src = os.path.join(lib_root, "gstreamer-1.0")
+    for p in (
+        "libgstaom.so",
+        "libgstdebugutilsbad.so",
+        "libgstfaad.so",
+        "libgsthls.so",
+        "libgstopenh264.so",
+        "libgstsubenc.so",
+        "libgstvideoparsersbad.so",
+    ):
+        shutil.copy2(os.path.join(gst_src, p), os.path.join(cache_dir, "gst", p))
+PYEOF
+  fi
+
+  cp -a "$cache_dir/lib/." "$dst_lib/"
+  cp -a "$cache_dir/gst/." "$dst_gst/"
+}
+stage_noble_gst_codecs
+
 cat << 'EOF' > "$STAGE_DIR/bin/brave-music-snap"
 #!/bin/bash
 APP_DIR="${SNAP:-}/opt/brave-music"
@@ -172,7 +286,12 @@ if [ ! -d "$APP_DIR" ]; then
   APP_DIR="/opt/brave-music"
 fi
 export PATH="$APP_DIR/backend/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-export LD_LIBRARY_PATH="${SNAP:+$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu:$SNAP/gnome-platform/lib/x86_64-linux-gnu:}$APP_DIR/backend/bin:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH="${SNAP:+$SNAP/usr/lib/x86_64-linux-gnu:$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu:$SNAP/gnome-platform/lib/x86_64-linux-gnu:}$APP_DIR/backend/bin:${LD_LIBRARY_PATH:-}"
+if [ -n "${SNAP:-}" ]; then
+  GST_BUNDLED="$SNAP/usr/lib/x86_64-linux-gnu/gstreamer-1.0:$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/gstreamer-1.0"
+  export GST_PLUGIN_PATH="$GST_BUNDLED${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}"
+  export GST_PLUGIN_SYSTEM_PATH="$GST_BUNDLED"
+fi
 export GIO_USE_PROXY_RESOLVER="${GIO_USE_PROXY_RESOLVER:-dummy}"
 export GIO_USE_NETWORK_MONITOR="${GIO_USE_NETWORK_MONITOR:-netlink}"
 export NO_AT_BRIDGE="${NO_AT_BRIDGE:-1}"

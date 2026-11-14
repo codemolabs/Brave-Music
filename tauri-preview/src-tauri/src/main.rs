@@ -36,6 +36,8 @@ static AUTH_ACTIVE_SERVICE: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| M
 static CURRENT_YT_URL: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("https://music.youtube.com/".to_string()));
 static CURRENT_SPOTIFY_URL: LazyLock<Mutex<String>> = LazyLock::new(|| Mutex::new("https://open.spotify.com/".to_string()));
 static LAST_SPOTIFY_BRIDGE_TRIGGER: LazyLock<Mutex<(String, u64)>> = LazyLock::new(|| Mutex::new((String::new(), 0)));
+static SPOTIFY_BRIDGE_GEN: AtomicU64 = AtomicU64::new(0);
+static SPOTIFY_BRIDGE_ACTIVE_PID: LazyLock<Mutex<Option<u32>>> = LazyLock::new(|| Mutex::new(None));
 static ACTIVE_CHILD_PIDS: LazyLock<Mutex<HashSet<u32>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 static CACHED_JS_RUNTIME: OnceLock<Option<String>> = OnceLock::new();
 static CACHED_FFMPEG_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
@@ -1159,7 +1161,7 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
     const heroArtist = getPageArtistFallback();
     const row = target?.closest?.('[data-testid="tracklist-row"], [role="row"]');
     const cardContainer = target?.closest?.(
-      '[data-testid="track-row"], [data-testid="card"], [data-encore-id="card"], [data-testid="now-playing-widget"], article'
+      '[data-testid="track-row"], [data-testid="card"], [data-testid*="card"], [data-encore-id="card"], [data-testid="shortcut-card"], [data-testid="now-playing-widget"], [role="group"], article'
     );
 
     if (row) {
@@ -2290,15 +2292,36 @@ fn get_browser_driver_status(app: AppHandle) -> Value {
     let settings = current_browser_settings(Some(&app));
     let widevine_paths = detect_widevine_cdm_paths();
     let has_native_widevine = !widevine_paths.is_empty();
-    let has_gst_libav = find_binary_on_path("gst-inspect-1.0")
-        .map(|bin| {
-            std::process::Command::new(bin)
-                .args(["libav"])
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
+    let has_gst_plugins_in_env = std::env::var("GST_PLUGIN_PATH")
+        .ok()
+        .map(|paths| {
+            paths.split(':').any(|dir| {
+                let d = std::path::Path::new(dir);
+                d.join("libgstlibav.so").is_file()
+                    || (d.join("libgstopenh264.so").is_file() && d.join("libgstfaad.so").is_file())
+            })
         })
         .unwrap_or(false);
+    let has_gst_libav = has_gst_plugins_in_env
+        || find_binary_on_path("gst-inspect-1.0")
+            .map(|bin| {
+                std::process::Command::new(&bin)
+                    .args(["libav"])
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
+                    || (std::process::Command::new(&bin)
+                        .args(["openh264"])
+                        .output()
+                        .map(|o| o.status.success())
+                        .unwrap_or(false)
+                        && std::process::Command::new(&bin)
+                            .args(["faad"])
+                            .output()
+                            .map(|o| o.status.success())
+                            .unwrap_or(false))
+            })
+            .unwrap_or(false);
     let widevine_browser = [
         "google-chrome",
         "google-chrome-stable",
@@ -3988,6 +4011,10 @@ fn score_yt_candidate(cand: &SearchCandidate, target_title: &str, target_artist:
         score += 14;
     }
 
+    if target_duration == 0 && cand.duration > 480 {
+        score -= 60;
+    }
+
     for tag in [
         "slowed", "reverb", "nightcore", "8d ", "sped up", "karaoke",
         "instrumental", "cover", "reaction", "parody", "live at", "concert", "teaser", "trailer", "remix",
@@ -3997,21 +4024,91 @@ fn score_yt_candidate(cand: &SearchCandidate, target_title: &str, target_artist:
         }
     }
 
+    // Strongly penalize multi-song mixes/compilations unless the query itself asks for one.
+    for mix_tag in [
+        "mixtape", "jukebox", "nonstop", "non-stop", "compilation",
+        "full album", "playlist", "1 hour", "30 min", "best songs",
+        "top songs", "mashup", "mega mix", "megamix", " and more",
+    ] {
+        if cand_title.contains(mix_tag) && !t_title.contains(mix_tag.trim()) {
+            score -= 80;
+        }
+    }
+    if !t_title.contains("mix")
+        && cand_title
+            .split(|c: char| !c.is_alphanumeric())
+            .any(|w| w == "mix")
+    {
+        score -= 80;
+    }
+
     score
 }
 
-fn run_command_output_tracked(cmd: &mut std::process::Command) -> std::io::Result<std::process::Output> {
-    if APP_SHUTTING_DOWN.load(Ordering::SeqCst) {
-        return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "Application shutting down"));
+fn is_bridge_gen_current(expected_gen: Option<u64>) -> bool {
+    !APP_SHUTTING_DOWN.load(Ordering::SeqCst)
+        && expected_gen
+            .map(|g| SPOTIFY_BRIDGE_GEN.load(Ordering::SeqCst) == g)
+            .unwrap_or(true)
+}
+
+fn terminate_active_spotify_bridge_job() {
+    if let Ok(mut slot) = SPOTIFY_BRIDGE_ACTIVE_PID.lock() {
+        if let Some(pid) = slot.take() {
+            unregister_child_pid(pid);
+            terminate_pid_immediate(pid);
+        }
+    }
+}
+
+fn run_command_output_tracked_for_gen(
+    cmd: &mut std::process::Command,
+    expected_gen: Option<u64>,
+) -> std::io::Result<std::process::Output> {
+    if !is_bridge_gen_current(expected_gen) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Interrupted,
+            "Superseded by newer Spotify playback request",
+        ));
     }
     cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     let child = cmd.spawn()?;
     let pid = child.id();
     register_child_pid(pid);
+    if expected_gen.is_some() {
+        if let Ok(mut slot) = SPOTIFY_BRIDGE_ACTIVE_PID.lock() {
+            *slot = Some(pid);
+        }
+        if !is_bridge_gen_current(expected_gen) {
+            terminate_pid_immediate(pid);
+            if let Ok(mut slot) = SPOTIFY_BRIDGE_ACTIVE_PID.lock() {
+                if *slot == Some(pid) {
+                    *slot = None;
+                }
+            }
+            unregister_child_pid(pid);
+            let _ = child.wait_with_output();
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "Superseded by newer Spotify playback request",
+            ));
+        }
+    }
     let output = child.wait_with_output();
+    if expected_gen.is_some() {
+        if let Ok(mut slot) = SPOTIFY_BRIDGE_ACTIVE_PID.lock() {
+            if *slot == Some(pid) {
+                *slot = None;
+            }
+        }
+    }
     unregister_child_pid(pid);
     output
+}
+
+fn run_command_output_tracked(cmd: &mut std::process::Command) -> std::io::Result<std::process::Output> {
+    run_command_output_tracked_for_gen(cmd, None)
 }
 
 fn resolve_validated_js_runtime() -> Option<String> {
@@ -4071,6 +4168,21 @@ fn create_ytdlp_base_command(
 }
 
 fn resolve_best_spotify_youtube_url(ytdlp_bin: &PathBuf, title: &str, artist: &str, target_duration: i64, is_video: bool) -> String {
+    resolve_best_spotify_youtube_url_for_gen(ytdlp_bin, title, artist, target_duration, is_video, None)
+        .unwrap_or_else(|| format!("ytsearch1:{} {} {}", title, artist, if is_video { "official music video" } else { "official audio" }))
+}
+
+fn resolve_best_spotify_youtube_url_for_gen(
+    ytdlp_bin: &PathBuf,
+    title: &str,
+    artist: &str,
+    target_duration: i64,
+    is_video: bool,
+    expected_gen: Option<u64>,
+) -> Option<String> {
+    if !is_bridge_gen_current(expected_gen) {
+        return None;
+    }
     let suffix = if is_video { "official music video" } else { "official audio" };
     let search_query = format!("ytsearch5:{} {} {}", title, artist, suffix);
     let js_runtime = resolve_validated_js_runtime();
@@ -4078,9 +4190,15 @@ fn resolve_best_spotify_youtube_url(ytdlp_bin: &PathBuf, title: &str, artist: &s
     cmd.arg("--dump-single-json")
         .arg("--flat-playlist")
         .arg("--socket-timeout")
-        .arg("10")
+        .arg("12")
         .arg(&search_query);
-    let output = run_command_output_tracked(&mut cmd);
+    let output = run_command_output_tracked_for_gen(&mut cmd, expected_gen);
+
+    if let Err(ref e) = output {
+        if e.kind() == std::io::ErrorKind::Interrupted {
+            return None;
+        }
+    }
 
     if let Ok(out) = output {
         if out.status.success() {
@@ -4102,14 +4220,17 @@ fn resolve_best_spotify_youtube_url(ytdlp_bin: &PathBuf, title: &str, artist: &s
                         }
                     }
                     if !best_id.is_empty() && best_score > -100 {
-                        return format!("https://www.youtube.com/watch?v={}", best_id);
+                        return Some(format!("https://www.youtube.com/watch?v={}", best_id));
                     }
                 }
             }
         }
     }
 
-    format!("ytsearch1:{} {} {}", title, artist, suffix)
+    if !is_bridge_gen_current(expected_gen) {
+        return None;
+    }
+    Some(format!("ytsearch1:{} {} {}", title, artist, suffix))
 }
 
 #[tauri::command]
@@ -6414,6 +6535,39 @@ fn find_cached_spotify_bridge_file(cache_dir: &std::path::Path, stem: &str) -> O
     None
 }
 
+fn has_spotify_entity_path(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    lower.contains("spotify.link/")
+        || lower.starts_with("spotify:track:")
+        || lower.starts_with("spotify:album:")
+        || lower.starts_with("spotify:playlist:")
+        || lower.starts_with("spotify:episode:")
+        || lower.starts_with("spotify:artist:")
+        || [
+            "/track/",
+            "/album/",
+            "/playlist/",
+            "/episode/",
+            "/artist/",
+        ]
+        .iter()
+        .any(|seg| lower.contains(seg))
+}
+
+fn should_fetch_spotify_embed_metadata(track_url: &str, eff_title: &str, eff_artist: &str, queue_len: usize) -> bool {
+    if !has_spotify_entity_path(track_url) {
+        return false;
+    }
+    let is_container = track_url.contains("/album/")
+        || track_url.contains("/playlist/")
+        || track_url.contains("/artist/");
+    eff_title.is_empty()
+        || eff_title == "Unknown Title"
+        || eff_title.to_ascii_lowercase().ends_with(" and more")
+        || eff_artist.is_empty()
+        || (is_container && queue_len == 0)
+}
+
 fn resolve_spotify_playable_stream(
     app: &AppHandle,
     track_url: &str,
@@ -6422,9 +6576,24 @@ fn resolve_spotify_playable_stream(
     raw_artwork: &str,
     dom_queue: &[Value],
 ) -> Result<Value, String> {
+    resolve_spotify_playable_stream_for_gen(app, track_url, raw_title, raw_artist, raw_artwork, dom_queue, None)
+}
+
+fn resolve_spotify_playable_stream_for_gen(
+    app: &AppHandle,
+    track_url: &str,
+    raw_title: &str,
+    raw_artist: &str,
+    raw_artwork: &str,
+    dom_queue: &[Value],
+    expected_gen: Option<u64>,
+) -> Result<Value, String> {
     let port = STREAM_SERVER_PORT.load(Ordering::SeqCst);
     if port == 0 {
         return Err("Local audio streaming server not initialized".to_string());
+    }
+    if !is_bridge_gen_current(expected_gen) {
+        return Err("Superseded by newer Spotify playback request".to_string());
     }
 
     let mut eff_title = raw_title.trim().to_string();
@@ -6461,14 +6630,15 @@ fn resolve_spotify_playable_stream(
         }
     }
 
-    let meta_opt = if track_url.contains("open.spotify.com/")
-        || track_url.starts_with("spotify:")
-        || track_url.contains("spotify.link/")
-    {
+    let meta_opt = if should_fetch_spotify_embed_metadata(track_url, &eff_title, &eff_artist, queue_payload.len()) {
         fetch_spotify_embed_metadata(track_url)
     } else {
         None
     };
+
+    if !is_bridge_gen_current(expected_gen) {
+        return Err("Superseded by newer Spotify playback request".to_string());
+    }
 
     if let Some(ref meta) = meta_opt {
         if !meta.tracks.is_empty() {
@@ -6495,6 +6665,16 @@ fn resolve_spotify_playable_stream(
                         "url": track_url
                     }));
                 }
+            }
+        }
+    }
+
+    // If a home Mix card supplied a raw subtitle like "Artist A, Artist B and more" without an entity link, strip the filler suffix cleanly.
+    if eff_title.to_ascii_lowercase().ends_with(" and more") {
+        if let Some(stripped) = eff_title.get(..eff_title.len() - 9) {
+            let trimmed = stripped.trim().trim_end_matches(',').trim();
+            if !trimmed.is_empty() {
+                eff_title = trimmed.to_string();
             }
         }
     }
@@ -6533,7 +6713,12 @@ fn resolve_spotify_playable_stream(
     let js_runtime = resolve_validated_js_runtime();
     let ffmpeg_dir = resolve_ffmpeg_dir();
     let matched_yt_url =
-        resolve_best_spotify_youtube_url(&ytdlp_bin, &clean_t, &display_artist, eff_duration, false);
+        resolve_best_spotify_youtube_url_for_gen(&ytdlp_bin, &clean_t, &display_artist, eff_duration, false, expected_gen)
+            .ok_or_else(|| "Superseded by newer Spotify playback request".to_string())?;
+
+    if !is_bridge_gen_current(expected_gen) {
+        return Err("Superseded by newer Spotify playback request".to_string());
+    }
 
     let out_tpl = cache_dir.join(format!("{stem}.%(ext)s"));
     let mut cmd = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), ffmpeg_dir.as_ref());
@@ -6541,15 +6726,20 @@ fn resolve_spotify_playable_stream(
         "--concurrent-fragments",
         "4",
         "--no-playlist",
+        "--max-filesize",
+        "35M",
+        "--retries",
+        "2",
         "--socket-timeout",
-        "10",
+        "15",
         "-f",
         "bestaudio[acodec=opus][ext=webm]/bestaudio[ext=webm]/bestaudio[ext=ogg]/bestaudio[ext=mp3]/bestaudio[ext=m4a]/bestaudio/18/best",
         "-o",
     ])
     .arg(out_tpl.to_string_lossy().as_ref())
     .arg(&matched_yt_url);
-    let out = run_command_output_tracked(&mut cmd);
+    let out = run_command_output_tracked_for_gen(&mut cmd, expected_gen);
+    let mut last_err_detail = String::new();
 
     let mut chosen_file: Option<String> = None;
     if let Ok(res) = out {
@@ -6574,7 +6764,7 @@ fn resolve_spotify_playable_stream(
                                 .arg(&raw_path)
                                 .args(["-vn", "-c:a", "libmp3lame", "-q:a", "2"])
                                 .arg(&mp3_path);
-                            let conv_ok = run_command_output_tracked(&mut conv)
+                            let conv_ok = run_command_output_tracked_for_gen(&mut conv, expected_gen)
                                 .map(|o| o.status.success())
                                 .unwrap_or(false);
                             let _ = fs::remove_file(&raw_path);
@@ -6586,17 +6776,34 @@ fn resolve_spotify_playable_stream(
                     }
                 }
             }
+        } else {
+            last_err_detail = String::from_utf8_lossy(&res.stderr)
+                .lines()
+                .rev()
+                .find(|l| !l.trim().is_empty())
+                .unwrap_or("")
+                .trim()
+                .to_string();
         }
+    } else if let Err(ref e) = out {
+        if e.kind() == std::io::ErrorKind::Interrupted {
+            return Err("Superseded by newer Spotify playback request".to_string());
+        }
+        last_err_detail = e.to_string();
     }
 
-    if chosen_file.is_none() && ffmpeg_dir.is_some() {
+    if chosen_file.is_none() && ffmpeg_dir.is_some() && is_bridge_gen_current(expected_gen) {
         let mut fb_cmd = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), ffmpeg_dir.as_ref());
         fb_cmd
             .args([
                 "--check-formats",
                 "--no-playlist",
+                "--max-filesize",
+                "35M",
+                "--retries",
+                "2",
                 "--socket-timeout",
-                "12",
+                "15",
                 "-f",
                 "18/best[ext=mp4]/bestaudio/best",
                 "-x",
@@ -6608,16 +6815,31 @@ fn resolve_spotify_playable_stream(
             ])
             .arg(out_tpl.to_string_lossy().as_ref())
             .arg(&matched_yt_url);
-        let fb = run_command_output_tracked(&mut fb_cmd);
+        let fb = run_command_output_tracked_for_gen(&mut fb_cmd, expected_gen);
         if let Ok(res) = fb {
             let mp3_name = format!("{stem}.mp3");
             if res.status.success() && cache_dir.join(&mp3_name).exists() {
                 chosen_file = Some(mp3_name);
+            } else if last_err_detail.is_empty() {
+                last_err_detail = String::from_utf8_lossy(&res.stderr)
+                    .lines()
+                    .rev()
+                    .find(|l| !l.trim().is_empty())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
             }
         }
     }
 
+    if !is_bridge_gen_current(expected_gen) {
+        return Err("Superseded by newer Spotify playback request".to_string());
+    }
+
     let final_name = chosen_file.ok_or_else(|| {
+        if !last_err_detail.is_empty() {
+            eprintln!("[SpotifyBridge] ytdlp error detail: {last_err_detail}");
+        }
         "Could not play this Spotify track yet. Check your connection and try again.".to_string()
     })?;
     prune_spotify_bridge_cache(&cache_dir, 15);
@@ -6658,7 +6880,10 @@ fn spawn_spotify_bridge_play(
         *guard = (key, now_ms);
     }
 
-    eprintln!("[SpotifyBridge] trigger url={track_url} title={title} artist={artist} queue_len={}", dom_queue.len());
+    let gen = SPOTIFY_BRIDGE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    terminate_active_spotify_bridge_job();
+
+    eprintln!("[SpotifyBridge] trigger gen={gen} url={track_url} title={title} artist={artist} queue_len={}", dom_queue.len());
 
     let _ = app.emit(
         "spotify-bridge-status",
@@ -6672,16 +6897,24 @@ fn spawn_spotify_bridge_play(
     );
 
     std::thread::spawn(move || {
-        match resolve_spotify_playable_stream(&app, &track_url, &title, &artist, &artwork, &dom_queue) {
+        match resolve_spotify_playable_stream_for_gen(&app, &track_url, &title, &artist, &artwork, &dom_queue, Some(gen)) {
             Ok(payload) => {
+                if !is_bridge_gen_current(Some(gen)) {
+                    eprintln!("[SpotifyBridge] ignoring stale ready gen={gen}");
+                    return;
+                }
                 eprintln!(
-                    "[SpotifyBridge] ready streamUrl={}",
+                    "[SpotifyBridge] ready gen={gen} streamUrl={}",
                     payload.get("streamUrl").and_then(|v| v.as_str()).unwrap_or("")
                 );
                 let _ = app.emit("spotify-bridge-ready", payload);
             }
             Err(err) => {
-                eprintln!("[SpotifyBridge] error={err}");
+                if !is_bridge_gen_current(Some(gen)) {
+                    eprintln!("[SpotifyBridge] canceled stale gen={gen}");
+                    return;
+                }
+                eprintln!("[SpotifyBridge] error gen={gen} {err}");
                 let _ = app.emit(
                     "spotify-bridge-status",
                     serde_json::json!({
@@ -7486,5 +7719,53 @@ mod tests {
         assert!(!is_service_landing_url("spotify", "https://accounts.spotify.com/en/login"));
         assert!(is_service_landing_url("youtube", "https://music.youtube.com/"));
         assert!(!is_service_landing_url("youtube", "https://accounts.google.com/v3/signin/identifier"));
+    }
+
+    #[test]
+    fn skips_embed_fetch_for_home_url_or_complete_track_metadata() {
+        assert!(!super::has_spotify_entity_path("https://open.spotify.com/"));
+        assert!(super::has_spotify_entity_path("https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC"));
+        assert!(!super::should_fetch_spotify_embed_metadata("https://open.spotify.com/", "Milaap", "Bayaan", 0));
+        assert!(!super::should_fetch_spotify_embed_metadata(
+            "https://open.spotify.com/track/123",
+            "Milaap",
+            "Bayaan",
+            0
+        ));
+        assert!(super::should_fetch_spotify_embed_metadata(
+            "https://open.spotify.com/album/123",
+            "Safar",
+            "Bayaan",
+            0
+        ));
+        assert!(!super::should_fetch_spotify_embed_metadata(
+            "https://open.spotify.com/album/123",
+            "Milaap",
+            "Bayaan",
+            5
+        ));
+    }
+
+    #[test]
+    fn penalizes_mix_compilations_over_official_audio_candidates() {
+        let single = super::SearchCandidate {
+            id: "abc123",
+            title: "Milaap (Official Audio)",
+            uploader: "Bayaan - Topic",
+            duration: 308,
+            url: "https://www.youtube.com/watch?v=abc123",
+            is_live: false,
+        };
+        let mix = super::SearchCandidate {
+            id: "mix999",
+            title: "Shubh, Juss, Bayaan Nonstop Mixtape Playlist 30 min",
+            uploader: "ChillVibes",
+            duration: 750,
+            url: "https://www.youtube.com/watch?v=mix999",
+            is_live: false,
+        };
+        let s_single = super::score_yt_candidate(&single, "Milaap", "Bayaan", 0, false);
+        let s_mix = super::score_yt_candidate(&mix, "Milaap", "Bayaan", 0, false);
+        assert!(s_single > s_mix + 100, "single={s_single} mix={s_mix}");
     }
 }

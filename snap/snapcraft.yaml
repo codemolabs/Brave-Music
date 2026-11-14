@@ -38,6 +38,8 @@ slots:
 layout:
   /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1:
     bind: $SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1
+  /var/tmp:
+    bind: $SNAP_COMMON/var-tmp
 
 apps:
   brave-music:
@@ -85,7 +87,12 @@ parts:
       #!/bin/bash
       APP_DIR="${SNAP}/opt/brave-music"
       export PATH="$APP_DIR/backend/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
-      export LD_LIBRARY_PATH="${SNAP:+$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu:$SNAP/gnome-platform/lib/x86_64-linux-gnu:}$APP_DIR/backend/bin:${LD_LIBRARY_PATH:-}"
+      export LD_LIBRARY_PATH="${SNAP:+$SNAP/usr/lib/x86_64-linux-gnu:$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu:$SNAP/gnome-platform/lib/x86_64-linux-gnu:}$APP_DIR/backend/bin:${LD_LIBRARY_PATH:-}"
+      if [ -n "${SNAP:-}" ]; then
+        GST_BUNDLED="$SNAP/usr/lib/x86_64-linux-gnu/gstreamer-1.0:$SNAP/gnome-platform/usr/lib/x86_64-linux-gnu/gstreamer-1.0"
+        export GST_PLUGIN_PATH="$GST_BUNDLED${GST_PLUGIN_PATH:+:$GST_PLUGIN_PATH}"
+        export GST_PLUGIN_SYSTEM_PATH="$GST_BUNDLED"
+      fi
       export GIO_USE_PROXY_RESOLVER="${GIO_USE_PROXY_RESOLVER:-dummy}"
       export GIO_USE_NETWORK_MONITOR="${GIO_USE_NETWORK_MONITOR:-netlink}"
       export NO_AT_BRIDGE="${NO_AT_BRIDGE:-1}"
@@ -111,3 +118,6 @@ parts:
       - python3
       - curl
       - ca-certificates
+      - gstreamer1.0-plugins-bad
+      - libfaad2
+      - libopenh264-7
