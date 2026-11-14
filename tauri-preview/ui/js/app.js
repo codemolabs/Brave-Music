@@ -2547,6 +2547,9 @@ document.addEventListener('DOMContentLoaded', () => {
       // Immediately pause OTT webviews so local music is exclusive
       pauseYouTube();
       pauseSpotify();
+      if (state.player.currentTrack?.isSpotifyBridge) {
+        syncSpotifyBridgeOverlay({ active: false, status: 'idle', title: '', artist: '', art: '', trackUrl: '', currentTime: 0, duration: 0 });
+      }
       state.activeAudioSource = 'local';
 
       state.player.currentTrack = track;
@@ -2598,6 +2601,9 @@ document.addEventListener('DOMContentLoaded', () => {
         playerPlayIcon.style.display = 'block';
         playerPauseIcon.style.display = 'none';
         if (playerWaves) playerWaves.style.display = 'none';
+        if (state.player.currentTrack.isSpotifyBridge) {
+          syncSpotifyBridgeFromState('paused');
+        }
         syncPlayerToMprisAndMediaSession({ isPlaying: false, isPaused: true });
       } else {
         pauseYouTube();
@@ -2608,6 +2614,9 @@ document.addEventListener('DOMContentLoaded', () => {
         playerPlayIcon.style.display = 'none';
         playerPauseIcon.style.display = 'block';
         if (playerWaves) playerWaves.style.display = 'inline-flex';
+        if (state.player.currentTrack.isSpotifyBridge) {
+          syncSpotifyBridgeFromState('playing');
+        }
         syncPlayerToMprisAndMediaSession({ isPlaying: true, isPaused: false });
       }
       renderTracksTable();
@@ -2701,6 +2710,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Audio Event Listeners
   let lastMprisPositionSync = 0;
+  let lastSpotifyDomProgressSync = 0;
+
+  function syncSpotifyBridgeFromState(statusOverride, titleOverride, artistOverride) {
+    const tr = state.player.currentTrack;
+    const isBridge = Boolean(tr?.isSpotifyBridge);
+    const computedStatus = statusOverride || (isBridge ? (state.player.isPlaying ? 'playing' : 'paused') : 'idle');
+    syncSpotifyBridgeOverlay({
+      active: isBridge || computedStatus === 'resolving',
+      status: computedStatus,
+      title: titleOverride !== undefined ? titleOverride : (tr?.title || ''),
+      artist: artistOverride !== undefined ? artistOverride : (tr?.artist || ''),
+      art: tr?.thumbnail && tr.thumbnail !== EMPTY_MUSIC_THUMBNAIL ? tr.thumbnail : '',
+      trackUrl: tr?.trackUrl || '',
+      currentTime: Number.isFinite(runtimeAudio.currentTime) ? runtimeAudio.currentTime : 0,
+      duration: Number.isFinite(runtimeAudio.duration) ? runtimeAudio.duration : 0,
+      shuffle: Boolean(state.player.isShuffle),
+      repeat: Boolean(state.player.isRepeat),
+      muted: Boolean(runtimeAudio.muted || state.player.isMuted),
+      volume: Number(state.player.volume) || 0,
+    });
+  }
+
   runtimeAudio.addEventListener('timeupdate', () => {
     playerCurrentTime.textContent = formatDuration(runtimeAudio.currentTime);
 
@@ -2711,6 +2742,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const now = Date.now();
+    if (state.player.currentTrack?.isSpotifyBridge && now - lastSpotifyDomProgressSync > 400) {
+      lastSpotifyDomProgressSync = now;
+      syncSpotifyBridgeFromState();
+    }
     if (now - lastMprisPositionSync > 2500) {
       lastMprisPositionSync = now;
       if (window.braveApi?.updateMprisState && state.player.isPlaying) {
@@ -2725,7 +2760,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   runtimeAudio.addEventListener('loadedmetadata', () => {
     playerTotalTime.textContent = formatDuration(runtimeAudio.duration);
+    if (state.player.currentTrack?.isSpotifyBridge) {
+      syncSpotifyBridgeFromState();
+    }
     syncPlayerToMprisAndMediaSession();
+  });
+
+  runtimeAudio.addEventListener('seeked', () => {
+    if (state.player.currentTrack?.isSpotifyBridge) {
+      syncSpotifyBridgeFromState();
+    }
   });
 
   function syncSpotifyBridgeOverlay(statusPayload) {
@@ -2768,7 +2812,11 @@ document.addEventListener('DOMContentLoaded', () => {
         active: false,
         status: 'error',
         title: 'Spotify Playback Failed',
-        artist: 'Click any track to retry'
+        artist: 'Click any track to retry',
+        shuffle: Boolean(state.player.isShuffle),
+        repeat: Boolean(state.player.isRepeat),
+        muted: Boolean(state.player.isMuted),
+        volume: Number(state.player.volume) || 0,
       });
     });
 
@@ -2779,12 +2827,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (playerWaves) playerWaves.style.display = 'inline-flex';
     playerPlayIcon.style.display = 'none';
     playerPauseIcon.style.display = 'block';
-    syncSpotifyBridgeOverlay({
-      active: true,
-      status: 'playing',
-      title: state.player.currentTrack.title,
-      artist: state.player.currentTrack.artist
-    });
+    syncSpotifyBridgeFromState('playing');
     syncPlayerToMprisAndMediaSession({ isPlaying: true });
     showToast(`Playing "${state.player.currentTrack.title}" in Brave Music`);
   }
@@ -2792,7 +2835,16 @@ document.addEventListener('DOMContentLoaded', () => {
   async function stepSpotifyBridgeQueue(delta) {
     const queue = Array.isArray(state.spotifyBridgeQueue) ? state.spotifyBridgeQueue : [];
     if (queue.length === 0) return false;
-    const nextIdx = (state.spotifyBridgeIndex + delta + queue.length) % queue.length;
+    let nextIdx;
+    if (state.player.isShuffle && queue.length > 1 && delta > 0) {
+      let randIdx = Math.floor(Math.random() * queue.length);
+      if (randIdx === state.spotifyBridgeIndex) {
+        randIdx = (randIdx + 1) % queue.length;
+      }
+      nextIdx = randIdx;
+    } else {
+      nextIdx = (state.spotifyBridgeIndex + delta + queue.length) % queue.length;
+    }
     state.spotifyBridgeIndex = nextIdx;
     const target = queue[nextIdx];
     if (!target || !window.braveApi?.playSpotifyBridge) return false;
@@ -2800,14 +2852,22 @@ document.addEventListener('DOMContentLoaded', () => {
       active: true,
       status: 'resolving',
       title: target.title || 'Loading track...',
-      artist: target.artist || 'Spotify'
+      artist: target.artist || 'Spotify',
+      art: target.artwork || target.art || '',
+      trackUrl: target.url || 'https://open.spotify.com/',
+      currentTime: 0,
+      duration: 0,
+      shuffle: Boolean(state.player.isShuffle),
+      repeat: Boolean(state.player.isRepeat),
+      muted: Boolean(runtimeAudio.muted || state.player.isMuted),
+      volume: Number(state.player.volume) || 0,
     });
     try {
       const res = await window.braveApi.playSpotifyBridge({
         url: target.url || 'https://open.spotify.com/',
         title: target.title || '',
         artist: target.artist || '',
-        artwork: target.artwork || ''
+        artwork: target.artwork || target.art || ''
       });
       if (res && res.streamUrl) {
         startSpotifyBridgePlaybackPayload(res);
@@ -2827,7 +2887,15 @@ document.addEventListener('DOMContentLoaded', () => {
         active: true,
         status: 'resolving',
         title: st.title || 'Loading Spotify track...',
-        artist: st.artist || 'Resolving audio stream...'
+        artist: st.artist || 'Resolving audio stream...',
+        art: st.artwork || '',
+        trackUrl: st.trackUrl || '',
+        currentTime: 0,
+        duration: 0,
+        shuffle: Boolean(state.player.isShuffle),
+        repeat: Boolean(state.player.isRepeat),
+        muted: Boolean(runtimeAudio.muted || state.player.isMuted),
+        volume: Number(state.player.volume) || 0,
       });
     } else if (st.status === 'error') {
       showToast(st.message || 'Could not play Spotify track');
@@ -2835,7 +2903,11 @@ document.addEventListener('DOMContentLoaded', () => {
         active: false,
         status: 'error',
         title: 'Spotify Playback',
-        artist: st.message || 'Select a track to play'
+        artist: st.message || 'Select a track to play',
+        shuffle: Boolean(state.player.isShuffle),
+        repeat: Boolean(state.player.isRepeat),
+        muted: Boolean(runtimeAudio.muted || state.player.isMuted),
+        volume: Number(state.player.volume) || 0,
       });
     }
   });
@@ -2845,17 +2917,49 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   window.braveApi?.onSpotifyBridgeControl?.((ctrl) => {
-    if (!ctrl || !state.player.currentTrack?.isSpotifyBridge) return;
-    if (ctrl.action === 'toggle') {
+    const action = String(ctrl?.action || '');
+    if (!action) return;
+    if (action === 'shuffle') {
+      playerShuffleBtn?.click();
+      return;
+    }
+    if (action === 'repeat') {
+      playerRepeatBtn?.click();
+      return;
+    }
+    if (action === 'mute') {
+      btnQuickMute?.click();
+      return;
+    }
+    if (action.startsWith('volume:')) {
+      const ratio = Number(action.slice(7));
+      if (Number.isFinite(ratio)) {
+        setPlayerVolume(ratio);
+      }
+      return;
+    }
+    if (!state.player.currentTrack?.isSpotifyBridge) return;
+    if (action === 'toggle') {
       togglePlayPause();
-    } else if (ctrl.action === 'pause' && state.player.isPlaying) {
+    } else if (action === 'pause' && state.player.isPlaying) {
       togglePlayPause();
-    } else if (ctrl.action === 'play' && !state.player.isPlaying) {
+    } else if (action === 'play' && !state.player.isPlaying) {
       togglePlayPause();
-    } else if (ctrl.action === 'next') {
+    } else if (action === 'next') {
       stepSpotifyBridgeQueue(1);
-    } else if (ctrl.action === 'prev') {
-      stepSpotifyBridgeQueue(-1);
+    } else if (action === 'prev') {
+      if (runtimeAudio.currentTime > 3) {
+        runtimeAudio.currentTime = 0;
+        syncSpotifyBridgeFromState();
+      } else {
+        stepSpotifyBridgeQueue(-1);
+      }
+    } else if (action.startsWith('seek:')) {
+      const ratio = Number(action.slice(5));
+      if (Number.isFinite(ratio) && runtimeAudio.duration > 0) {
+        runtimeAudio.currentTime = Math.max(0, Math.min(runtimeAudio.duration, ratio * runtimeAudio.duration));
+        syncSpotifyBridgeFromState();
+      }
     }
   });
 
@@ -2874,12 +2978,7 @@ document.addEventListener('DOMContentLoaded', () => {
     playerPauseIcon.style.display = 'block';
     if (playerWaves) playerWaves.style.display = 'inline-flex';
     if (state.player.currentTrack?.isSpotifyBridge) {
-      syncSpotifyBridgeOverlay({
-        active: true,
-        status: 'playing',
-        title: state.player.currentTrack.title,
-        artist: state.player.currentTrack.artist
-      });
+      syncSpotifyBridgeFromState('playing');
     }
     renderTracksTable();
     syncPlayerToMprisAndMediaSession({ isPlaying: true });
@@ -2892,12 +2991,7 @@ document.addEventListener('DOMContentLoaded', () => {
       playerPauseIcon.style.display = 'none';
       if (playerWaves) playerWaves.style.display = 'none';
       if (state.player.currentTrack?.isSpotifyBridge) {
-        syncSpotifyBridgeOverlay({
-          active: true,
-          status: 'paused',
-          title: state.player.currentTrack.title,
-          artist: state.player.currentTrack.artist
-        });
+        syncSpotifyBridgeFromState('paused');
       }
       renderTracksTable();
       syncPlayerToMprisAndMediaSession({ isPlaying: false, isPaused: true });
@@ -2960,6 +3054,9 @@ document.addEventListener('DOMContentLoaded', () => {
   playerShuffleBtn.addEventListener('click', () => {
     state.player.isShuffle = !state.player.isShuffle;
     playerShuffleBtn.classList.toggle('active', state.player.isShuffle);
+    if (state.player.currentTrack?.isSpotifyBridge || state.currentTab === 'spotify-view') {
+      syncSpotifyBridgeFromState();
+    }
     showToast(state.player.isShuffle ? 'Shuffle enabled' : 'Shuffle disabled');
     syncPlayerToMprisAndMediaSession();
   });
@@ -2967,6 +3064,9 @@ document.addEventListener('DOMContentLoaded', () => {
   playerRepeatBtn.addEventListener('click', () => {
     state.player.isRepeat = !state.player.isRepeat;
     playerRepeatBtn.classList.toggle('active', state.player.isRepeat);
+    if (state.player.currentTrack?.isSpotifyBridge || state.currentTab === 'spotify-view') {
+      syncSpotifyBridgeFromState();
+    }
     showToast(state.player.isRepeat ? 'Repeat track enabled' : 'Repeat disabled');
     syncPlayerToMprisAndMediaSession();
   });
@@ -2994,6 +3094,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (playerVolPercent) playerVolPercent.textContent = `${pct}%`;
     if (playerVolumeFill) playerVolumeFill.style.height = `${pct}%`;
     updateVolumeIcon();
+    if (state.player.currentTrack?.isSpotifyBridge || state.currentTab === 'spotify-view') {
+      syncSpotifyBridgeFromState();
+    }
     if (window.braveApi?.updateMprisState) {
       window.braveApi.updateMprisState({ volume: state.player.isMuted ? 0 : clamped }).catch(() => { });
     }
@@ -3057,6 +3160,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const pct = Math.round(state.player.volume * 100);
       if (playerVolPercent) playerVolPercent.textContent = `${pct}%`;
       if (playerVolumeFill) playerVolumeFill.style.height = `${pct}%`;
+    }
+    if (state.player.currentTrack?.isSpotifyBridge || state.currentTab === 'spotify-view') {
+      syncSpotifyBridgeFromState();
     }
   });
 
@@ -3254,6 +3360,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Control Spotify OTT
   function controlSpotify(action) {
+    if (state.player.currentTrack?.isSpotifyBridge) {
+      if (action === 'play') {
+        if (!state.player.isPlaying) togglePlayPause();
+        return;
+      }
+      if (action === 'pause') {
+        if (state.player.isPlaying) togglePlayPause();
+        return;
+      }
+      if (action === 'playpause') {
+        togglePlayPause();
+        return;
+      }
+      if (action === 'next') {
+        stepSpotifyBridgeQueue(1);
+        return;
+      }
+      if (action === 'previous') {
+        stepSpotifyBridgeQueue(-1);
+        return;
+      }
+    }
     if (!spotifyWebview) return;
     try {
       if (action === 'playpause' || action === 'play' || action === 'pause') {

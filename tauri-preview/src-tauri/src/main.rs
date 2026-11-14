@@ -371,7 +371,9 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
             audioCapabilities: [{ contentType: 'audio/mp4; codecs="mp4a.40.2"' }],
           }]).then(() => {
             window.__braveSpotifyHasNativeWidevine = true;
+            window.__braveSpotifyDrmBlocked = false;
           }).catch(() => {
+            window.__braveSpotifyHasNativeWidevine = false;
             window.__braveSpotifyDrmBlocked = true;
           });
         } catch (_) {
@@ -440,10 +442,239 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
   }
   if (window.__braveSpotifyCleanUiBootstrapped) return;
   window.__braveSpotifyCleanUiBootstrapped = true;
-  window.__braveSpotifyBridgeState = window.__braveSpotifyBridgeState || { active: false };
+  window.__braveSpotifyHasNativeWidevine = false;
+  window.__braveSpotifyDrmBlocked = true;
+
+  const useBridgePlayback = () => !window.__braveSpotifyHasNativeWidevine;
+
+  window.__braveSpotifyBridgeState = window.__braveSpotifyBridgeState || {
+    active: false,
+    status: 'idle',
+    title: '',
+    artist: '',
+    art: '',
+    trackUrl: '',
+    currentTime: 0,
+    duration: 0,
+    shuffle: false,
+    repeat: false,
+    muted: false,
+    volume: 0.85,
+  };
+
+  const formatBridgeTime = (sec) => {
+    const s = Math.max(0, Math.floor(Number(sec) || 0));
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return `${m}:${rem < 10 ? '0' : ''}${rem}`;
+  };
+
+  const escapeHtml = (s) =>
+    String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const PLAY_SVG_MARKUP =
+    '<svg role="img" height="16" width="16" aria-hidden="true" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1.713a.7.7 0 0 1 1.05-.607l10.89 6.288a.7.7 0 0 1 0 1.212L4.05 14.894A.7.7 0 0 1 3 14.288V1.713z"></path></svg>';
+  const PAUSE_SVG_MARKUP =
+    '<svg role="img" height="16" width="16" aria-hidden="true" viewBox="0 0 16 16" fill="currentColor"><path d="M2.7 1a.7.7 0 0 0-.7.7v12.6a.7.7 0 0 0 .7.7h2.6a.7.7 0 0 0 .7-.7V1.7a.7.7 0 0 0-.7-.7H2.7zm8 0a.7.7 0 0 0-.7.7v12.6a.7.7 0 0 0 .7.7h2.6a.7.7 0 0 0 .7-.7V1.7a.7.7 0 0 0-.7-.7h-2.6z"></path></svg>';
+
+  const enableTransportControls = () => {
+    if (!useBridgePlayback()) return;
+    try {
+      const selectors = [
+        '[data-testid="now-playing-bar"] button',
+        '[data-testid="player-controls"] button',
+        '[data-testid="control-button-playpause"]',
+        '[data-testid="control-button-skip-back"]',
+        '[data-testid="control-button-skip-forward"]',
+        '[data-testid="control-button-shuffle"]',
+        '[data-testid="control-button-repeat"]',
+        '[data-testid="playback-progressbar"] input',
+        '[data-testid="playback-progressbar"] [role="slider"]',
+        '[data-testid="volume-bar"] input',
+        '[data-testid="volume-bar-toggle-mute-button"]',
+        '[data-testid="action-bar-row"] button[data-testid="play-button"]',
+        '[data-testid="tracklist-row"] button[data-testid="play-button"]',
+        '[data-testid="tracklist-row"] [aria-colindex="1"] button',
+        'button[data-testid="play-button"]',
+      ];
+      const els = document.querySelectorAll(selectors.join(', '));
+      for (const el of els) {
+        if (el.disabled) el.disabled = false;
+        if (el.hasAttribute('disabled')) el.removeAttribute('disabled');
+        if (el.getAttribute('aria-disabled') === 'true') {
+          el.setAttribute('aria-disabled', 'false');
+        }
+        el.style.setProperty('pointer-events', 'auto', 'important');
+        el.style.setProperty('cursor', 'pointer', 'important');
+        el.style.setProperty('opacity', '1', 'important');
+      }
+      const rows = document.querySelectorAll('[data-testid="tracklist-row"] [aria-colindex="1"]');
+      for (const cell of rows) {
+        cell.style.setProperty('cursor', 'pointer', 'important');
+      }
+    } catch (_) {}
+  };
+
+  let syncPendingRaf = false;
+  const applyBridgeStateToSpotifyDom = () => {
+    syncPendingRaf = false;
+    enableTransportControls();
+    const st = window.__braveSpotifyBridgeState || {};
+    const hasTrack = Boolean(st.title);
+    const isPlayingUi = st.status === 'playing' || st.status === 'resolving';
+
+    try {
+      const playPauseBtn = document.querySelector('[data-testid="control-button-playpause"]');
+      if (playPauseBtn) {
+        playPauseBtn.disabled = false;
+        playPauseBtn.removeAttribute('disabled');
+        playPauseBtn.setAttribute('aria-disabled', 'false');
+        playPauseBtn.setAttribute('aria-label', isPlayingUi ? 'Pause' : 'Play');
+        playPauseBtn.title = isPlayingUi ? 'Pause (Brave Music)' : 'Play (Brave Music)';
+        playPauseBtn.classList.toggle('brave-sp-btn-loading', st.status === 'resolving');
+        const nextSvg = isPlayingUi ? PAUSE_SVG_MARKUP : PLAY_SVG_MARKUP;
+        if (playPauseBtn.getAttribute('data-brave-icon') !== (isPlayingUi ? 'pause' : 'play')) {
+          playPauseBtn.setAttribute('data-brave-icon', isPlayingUi ? 'pause' : 'play');
+          playPauseBtn.innerHTML = nextSvg;
+        }
+      }
+
+      const shuffleBtn = document.querySelector('[data-testid="control-button-shuffle"]');
+      if (shuffleBtn) {
+        shuffleBtn.setAttribute('aria-checked', st.shuffle ? 'true' : 'false');
+        shuffleBtn.classList.toggle('brave-sp-ctrl-active', Boolean(st.shuffle));
+      }
+      const repeatBtn = document.querySelector('[data-testid="control-button-repeat"]');
+      if (repeatBtn) {
+        repeatBtn.setAttribute('aria-checked', st.repeat ? 'true' : 'false');
+        repeatBtn.classList.toggle('brave-sp-ctrl-active', Boolean(st.repeat));
+      }
+
+      const footer = document.querySelector('footer[data-testid="now-playing-bar"], [data-testid="now-playing-bar"]');
+      const footerIsPromoBanner = Boolean(footer && (footer.querySelector('[data-testid="signup-bar"]') || (footer.textContent || '').includes('Preview of Spotify')));
+      const hasNativeTransport = Boolean(playPauseBtn && playPauseBtn.offsetWidth > 0 && playPauseBtn.offsetHeight > 0 && !footerIsPromoBanner);
+      if (footer && hasTrack) {
+        let leftHost = hasNativeTransport
+          ? (footer.querySelector('.brave-sp-left-host') || footer.querySelector('[data-testid="now-playing-widget"]')?.parentElement || footer.firstElementChild)
+          : footer;
+        if (leftHost) {
+          let card = document.getElementById('brave-sp-nowplaying-card');
+          if (!card) {
+            card = document.createElement('div');
+            card.id = 'brave-sp-nowplaying-card';
+            leftHost.prepend(card);
+          }
+          card.classList.toggle('brave-sp-standalone', !hasNativeTransport);
+          footer.classList.toggle('brave-sp-footer-override', !hasNativeTransport);
+          const nativeWidget = footer.querySelector('[data-testid="now-playing-widget"]');
+          if (nativeWidget && nativeWidget !== card && !nativeWidget.contains(card)) {
+            nativeWidget.style.setProperty('display', 'none', 'important');
+          }
+          const badge = st.status === 'resolving'
+            ? '<span class="brave-sp-badge loading">Loading…</span>'
+            : (st.status === 'playing' ? '<span class="brave-sp-badge playing">Brave Audio</span>' : '');
+          const artHtml = st.art
+            ? `<img src="${escapeHtml(st.art)}" alt="" onerror="this.style.display='none'">`
+            : '<div class="brave-sp-art-fallback">♪</div>';
+          const curSec = Number(st.currentTime) || 0;
+          const durSec = Number(st.duration) || 0;
+          const pct = durSec > 0 ? Math.max(0, Math.min(100, (curSec / durSec) * 100)) : 0;
+          const inlineControlsHtml = !hasNativeTransport ? `
+            <div class="brave-sp-inline-center">
+              <div class="brave-sp-inline-btns">
+                <button type="button" class="brave-sp-inline-btn" data-brave-sp-action="prev" title="Previous Track"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3.3 1a.7.7 0 0 1 .7.7v5.15l9.95-5.744a.7.7 0 0 1 1.05.606v12.575a.7.7 0 0 1-1.05.607L4 9.149V14.3a.7.7 0 0 1-.7.7H1.7a.7.7 0 0 1-.7-.7V1.7a.7.7 0 0 1 .7-.7h1.6z"></path></svg></button>
+                <button type="button" class="brave-sp-inline-play ${st.status === 'resolving' ? 'brave-sp-btn-loading' : ''}" data-brave-sp-action="toggle" title="${isPlayingUi ? 'Pause' : 'Play'}">${isPlayingUi ? PAUSE_SVG_MARKUP : PLAY_SVG_MARKUP}</button>
+                <button type="button" class="brave-sp-inline-btn" data-brave-sp-action="next" title="Next Track"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.7 1a.7.7 0 0 0-.7.7v5.15L2.05 1.107A.7.7 0 0 0 1 1.712v12.575a.7.7 0 0 0 1.05.607L12 9.149V14.3a.7.7 0 0 0 .7.7h1.6a.7.7 0 0 0 .7-.7V1.7a.7.7 0 0 0-.7-.7h-1.6z"></path></svg></button>
+              </div>
+              <div class="brave-sp-inline-progress">
+                <span>${formatBridgeTime(curSec)}</span>
+                <div class="brave-sp-inline-track" id="brave-sp-inline-seek">
+                  <div class="brave-sp-inline-fill" style="width:${pct.toFixed(2)}%;"></div>
+                </div>
+                <span>${durSec > 0 ? formatBridgeTime(durSec) : '0:00'}</span>
+              </div>
+            </div>
+          ` : '';
+          card.innerHTML = `
+            <div class="brave-sp-art">${artHtml}</div>
+            <div class="brave-sp-meta">
+              <div class="brave-sp-title-row">
+                <span class="brave-sp-title">${escapeHtml(st.title)}</span>
+                ${badge}
+              </div>
+              <span class="brave-sp-artist">${escapeHtml(st.artist || 'Spotify')}</span>
+            </div>
+            ${inlineControlsHtml}
+            <button type="button" class="brave-sp-dl-btn" id="brave-sp-dl-current" title="Download current track in Brave Music">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </button>
+          `;
+        }
+      } else {
+        const oldCard = document.getElementById('brave-sp-nowplaying-card');
+        if (oldCard) oldCard.remove();
+        if (footer) footer.classList.remove('brave-sp-footer-override');
+        const nativeWidget = document.querySelector('[data-testid="now-playing-bar"] [data-testid="now-playing-widget"]');
+        if (nativeWidget) nativeWidget.style.removeProperty('display');
+      }
+
+      if (hasTrack) {
+        const curSec = Number(st.currentTime) || 0;
+        const durSec = Number(st.duration) || 0;
+        const pct = durSec > 0 ? Math.max(0, Math.min(100, (curSec / durSec) * 100)) : 0;
+        const posEl = document.querySelector('[data-testid="playback-position"]');
+        if (posEl) posEl.textContent = formatBridgeTime(curSec);
+        const durEl = document.querySelector('[data-testid="playback-duration"]');
+        if (durEl) durEl.textContent = durSec > 0 ? formatBridgeTime(durSec) : '0:00';
+        const pb = document.querySelector('[data-testid="playback-progressbar"]');
+        if (pb) {
+          pb.style.setProperty('--progress-bar-transform', `${pct.toFixed(2)}%`);
+          const bar = pb.querySelector('[data-testid="progress-bar"], [style*="--progress-bar-transform"]');
+          if (bar) {
+            bar.style.setProperty('--progress-bar-transform', `${pct.toFixed(2)}%`);
+          }
+          const range = pb.querySelector('input[type="range"]');
+          if (range && !range.__braveDragging) {
+            range.max = durSec > 0 ? String(Math.floor(durSec)) : '100';
+            range.value = durSec > 0 ? String(Math.floor(curSec)) : '0';
+          }
+        }
+      }
+
+      const volBar = document.querySelector('[data-testid="volume-bar"]');
+      if (volBar && typeof st.volume === 'number') {
+        const volPct = st.muted ? 0 : Math.max(0, Math.min(100, Math.round(st.volume * 100)));
+        volBar.style.setProperty('--progress-bar-transform', `${volPct}%`);
+        const vInner = volBar.querySelector('[data-testid="progress-bar"], [style*="--progress-bar-transform"]');
+        if (vInner) vInner.style.setProperty('--progress-bar-transform', `${volPct}%`);
+      }
+
+      const activeTitleLower = String(st.title || '').trim().toLowerCase();
+      const rows = document.querySelectorAll('[data-testid="tracklist-row"], [role="row"]');
+      for (const row of rows) {
+        const tNode = row.querySelector('a[href*="/track/"], [data-testid="internal-track-link"] div, [dir="auto"]');
+        const rowTitle = (tNode?.textContent || '').trim().toLowerCase();
+        const isCurrentRow = Boolean(hasTrack && activeTitleLower && rowTitle && (rowTitle === activeTitleLower || rowTitle.includes(activeTitleLower)));
+        row.classList.toggle('brave-sp-row-active', isCurrentRow);
+      }
+    } catch (_) {}
+  };
+
   window.__braveSpotifyBridgeSync = (st) => {
     try {
-      window.__braveSpotifyBridgeState = Object.assign({ active: false }, st || {});
+      window.__braveSpotifyBridgeState = Object.assign(
+        { active: false, status: 'idle', title: '', artist: '', art: '', trackUrl: '', currentTime: 0, duration: 0 },
+        window.__braveSpotifyBridgeState || {},
+        st || {}
+      );
+      if (!syncPendingRaf) {
+        syncPendingRaf = true;
+        requestAnimationFrame(applyBridgeStateToSpotifyDom);
+      }
     } catch (_) {}
   };
 
@@ -481,6 +712,218 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
           margin: 0 !important;
           padding: 0 !important;
           pointer-events: none !important;
+        }
+        [data-testid="now-playing-bar"],
+        [data-testid="now-playing-bar"] button,
+        [data-testid="player-controls"] button,
+        [data-testid="playback-progressbar"],
+        [data-testid="playback-progressbar"] *,
+        [data-testid="volume-bar"],
+        [data-testid="volume-bar"] *,
+        button[data-testid="play-button"] {
+          pointer-events: auto !important;
+        }
+        [data-testid="now-playing-bar"] button,
+        [data-testid="playback-progressbar"],
+        [data-testid="volume-bar"],
+        button[data-testid="play-button"] {
+          cursor: pointer !important;
+          opacity: 1 !important;
+          filter: none !important;
+        }
+        [data-testid="control-button-playpause"] {
+          background-color: #ffffff !important;
+          color: #000000 !important;
+          border-radius: 50% !important;
+          min-width: 34px !important;
+          min-height: 34px !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          transition: transform 0.12s ease !important;
+        }
+        [data-testid="control-button-playpause"]:hover {
+          transform: scale(1.06) !important;
+        }
+        [data-testid="control-button-playpause"].brave-sp-btn-loading {
+          opacity: 0.78 !important;
+          animation: braveSpPulse 1.1s ease-in-out infinite !important;
+        }
+        @keyframes braveSpPulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(0.93); }
+        }
+        [data-testid="control-button-shuffle"].brave-sp-ctrl-active,
+        [data-testid="control-button-repeat"].brave-sp-ctrl-active {
+          color: #1ed760 !important;
+        }
+        [data-testid="control-button-skip-back"],
+        [data-testid="control-button-skip-forward"] {
+          color: #e2e8f0 !important;
+        }
+        #brave-sp-nowplaying-card {
+          display: flex !important;
+          align-items: center !important;
+          gap: 12px !important;
+          min-width: 0 !important;
+          max-width: 330px !important;
+          padding-left: 8px !important;
+        }
+        #brave-sp-nowplaying-card.brave-sp-standalone {
+          max-width: 100% !important;
+          width: 100% !important;
+          background: #0d0f17 !important;
+          border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+          padding: 10px 18px !important;
+          box-sizing: border-box !important;
+          justify-content: space-between !important;
+        }
+        [data-testid="now-playing-bar"].brave-sp-footer-override {
+          background: #0d0f17 !important;
+          background-image: none !important;
+          padding: 0 !important;
+          display: flex !important;
+          align-items: center !important;
+        }
+        [data-testid="now-playing-bar"].brave-sp-footer-override > :not(#brave-sp-nowplaying-card) {
+          display: none !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-inline-center {
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          gap: 5px !important;
+          flex: 1 !important;
+          max-width: 460px !important;
+          min-width: 180px !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-inline-btns {
+          display: flex !important;
+          align-items: center !important;
+          gap: 14px !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-inline-btn {
+          background: transparent !important;
+          border: none !important;
+          color: #cbd5e1 !important;
+          font-size: 14px !important;
+          cursor: pointer !important;
+          padding: 4px !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-inline-play {
+          background: #ffffff !important;
+          color: #000000 !important;
+          border: none !important;
+          border-radius: 50% !important;
+          width: 32px !important;
+          height: 32px !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          cursor: pointer !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-inline-progress {
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+          width: 100% !important;
+          font-size: 11px !important;
+          color: #a7a7a7 !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-inline-track {
+          flex: 1 !important;
+          height: 4px !important;
+          border-radius: 999px !important;
+          background: rgba(255, 255, 255, 0.22) !important;
+          overflow: hidden !important;
+          cursor: pointer !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-inline-fill {
+          height: 100% !important;
+          background: #1ed760 !important;
+          border-radius: 999px !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-art {
+          width: 48px !important;
+          height: 48px !important;
+          border-radius: 6px !important;
+          overflow: hidden !important;
+          background: #181b24 !important;
+          flex-shrink: 0 !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-art img {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
+          display: block !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-art-fallback {
+          color: #1ed760 !important;
+          font-size: 20px !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-meta {
+          display: flex !important;
+          flex-direction: column !important;
+          min-width: 0 !important;
+          gap: 2px !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-title-row {
+          display: flex !important;
+          align-items: center !important;
+          gap: 6px !important;
+          min-width: 0 !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-title {
+          color: #ffffff !important;
+          font-size: 13.5px !important;
+          font-weight: 600 !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-artist {
+          color: #a7a7a7 !important;
+          font-size: 11.5px !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-badge {
+          font-size: 10px !important;
+          font-weight: 700 !important;
+          padding: 1px 6px !important;
+          border-radius: 999px !important;
+          flex-shrink: 0 !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-badge.loading {
+          background: rgba(250, 204, 21, 0.16) !important;
+          color: #fde047 !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-badge.playing {
+          background: rgba(30, 215, 96, 0.16) !important;
+          color: #1ed760 !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-dl-btn {
+          background: transparent !important;
+          border: none !important;
+          color: #b3b3b3 !important;
+          padding: 6px !important;
+          border-radius: 50% !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+        }
+        #brave-sp-nowplaying-card .brave-sp-dl-btn:hover {
+          color: #ffffff !important;
+          background: rgba(255, 255, 255, 0.08) !important;
+        }
+        [data-testid="tracklist-row"].brave-sp-row-active a[href*="/track/"],
+        [data-testid="tracklist-row"].brave-sp-row-active [data-testid="internal-track-link"] div,
+        [data-testid="tracklist-row"].brave-sp-row-active [aria-colindex="1"] {
+          color: #1ed760 !important;
         }
       `;
       (document.head || document.documentElement).appendChild(style);
@@ -603,6 +1046,10 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
           }
         }
       }
+      enableTransportControls();
+      if (window.__braveSpotifyBridgeState?.title || window.__braveSpotifyBridgeState?.active) {
+        applyBridgeStateToSpotifyDom();
+      }
     } catch (_) {}
   };
 
@@ -648,32 +1095,128 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
     return { title: rest, artist: '' };
   };
 
+  const getPageHeroArt = () => {
+    const heroImg = document.querySelector('main img[src*="i.scdn.co"], main img');
+    return heroImg?.src || '';
+  };
+
+  const getPageArtistFallback = () => {
+    const pageArtists = Array.from(document.querySelectorAll('main [data-testid="creator-link"], main a[href*="/artist/"]'))
+      .map((a) => (a.textContent || '').trim())
+      .filter(Boolean);
+    return pageArtists.length > 0 ? [...new Set(pageArtists)].slice(0, 3).join(', ') : '';
+  };
+
+  const extractRowData = (row, fallbackArt, fallbackArtist) => {
+    if (!row) return null;
+    const trackLink = row.querySelector('a[href*="/track/"], a[href*="/episode/"]');
+    const rowTitleEl = trackLink || row.querySelector('[data-testid="internal-track-link"] div, [data-testid="internal-track-link"], [aria-colindex="2"] div[dir="auto"], div[dir="auto"]');
+    const title = (rowTitleEl?.textContent || '').trim();
+    const url = trackLink?.href || '';
+    const artistLinks = Array.from(row.querySelectorAll('a[href*="/artist/"]'))
+      .map((a) => (a.textContent || '').trim())
+      .filter(Boolean);
+    let artist = artistLinks.length > 0 ? [...new Set(artistLinks)].join(', ') : '';
+    if (!artist) {
+      const btn = row.querySelector('button[aria-label]');
+      if (btn) artist = parsePlayAriaLabel(btn).artist;
+    }
+    if (!artist) artist = fallbackArtist || '';
+    const img = row.querySelector('img');
+    const art = img?.src || fallbackArt || '';
+    if (!title && !url) return null;
+    return {
+      url: url || String(window.location.href || ''),
+      title,
+      artist,
+      art,
+    };
+  };
+
+  const extractPageQueue = (limit = 50) => {
+    const fallbackArt = getPageHeroArt();
+    const fallbackArtist = getPageArtistFallback();
+    const rows = document.querySelectorAll('[data-testid="tracklist-row"], [role="row"]');
+    const list = [];
+    const seen = new Set();
+    for (const row of rows) {
+      if (row.closest('[role="rowgroup"]')?.previousElementSibling == null && row.querySelector('[role="columnheader"]')) {
+        continue;
+      }
+      const item = extractRowData(row, fallbackArt, fallbackArtist);
+      if (!item || !item.title) continue;
+      const key = `${item.title.toLowerCase()}|${item.artist.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      list.push(item);
+      if (list.length >= limit) break;
+    }
+    return list;
+  };
+
   const extractTrackFromElement = (target, playBtn) => {
-    const container = target?.closest?.(
-      '[data-testid="tracklist-row"], [role="row"], [data-testid="track-row"], [data-testid="card"], [data-encore-id="card"], [data-testid="now-playing-widget"], article'
+    const heroArt = getPageHeroArt();
+    const heroArtist = getPageArtistFallback();
+    const row = target?.closest?.('[data-testid="tracklist-row"], [role="row"]');
+    const cardContainer = target?.closest?.(
+      '[data-testid="track-row"], [data-testid="card"], [data-encore-id="card"], [data-testid="now-playing-widget"], article'
     );
+
+    if (row) {
+      const rowData = extractRowData(row, heroArt, heroArtist);
+      if (rowData) {
+        if (playBtn) {
+          const parsed = parsePlayAriaLabel(playBtn);
+          if (parsed.title && (!rowData.title || rowData.title.length < 2)) rowData.title = parsed.title;
+          if (parsed.artist && !rowData.artist) rowData.artist = parsed.artist;
+        }
+        return {
+          url: rowData.url,
+          title: rowData.title,
+          artist: rowData.artist,
+          art: rowData.art,
+          queue: extractPageQueue(),
+        };
+      }
+    }
+
     let trackUrl = '';
     let title = '';
     let artist = '';
     let art = '';
 
-    if (container) {
-      const entityLink = container.querySelector('a[href*="/track/"], a[href*="/album/"], a[href*="/playlist/"], a[href*="/episode/"]');
+    if (cardContainer) {
+      const entityLink = cardContainer.querySelector('a[href*="/track/"], a[href*="/album/"], a[href*="/playlist/"], a[href*="/episode/"]');
       if (entityLink) {
         trackUrl = entityLink.href || '';
         const text = (entityLink.textContent || '').trim();
         if (text) title = text;
       }
       if (!title) {
-        const tEl = container.querySelector('[data-testid="internal-track-link"] div, [data-testid="card-title"], [dir="auto"]');
+        const tEl = cardContainer.querySelector('[data-testid="internal-track-link"] div, [data-testid="card-title"], [dir="auto"]');
         title = (tEl?.textContent || '').trim();
       }
-      const artistLinks = Array.from(container.querySelectorAll('a[href*="/artist/"]'))
+      const artistLinks = Array.from(cardContainer.querySelectorAll('a[href*="/artist/"]'))
         .map((a) => (a.textContent || '').trim())
         .filter(Boolean);
       if (artistLinks.length > 0) artist = [...new Set(artistLinks)].join(', ');
-      const img = container.querySelector('img');
+      const img = cardContainer.querySelector('img');
       if (img && img.src) art = img.src;
+    }
+
+    const inActionOrFooter = Boolean(
+      target?.closest?.('[data-testid="action-bar-row"], [data-testid="now-playing-bar"], [data-testid="entityTitle"]')
+    );
+    const pageQueue = extractPageQueue();
+    if ((!title || !trackUrl || inActionOrFooter) && !cardContainer && pageQueue.length > 0) {
+      const first = pageQueue[0];
+      return {
+        url: first.url || String(window.location.href || ''),
+        title: first.title,
+        artist: first.artist || heroArtist,
+        art: first.art || heroArt,
+        queue: pageQueue,
+      };
     }
 
     if (playBtn) {
@@ -698,67 +1241,183 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
       const h1 = document.querySelector('main h1, [data-testid="entityTitle"]');
       title = (h1?.textContent || '').trim();
     }
-    if (!artist) {
-      const pageArtists = Array.from(document.querySelectorAll('main [data-testid="creator-link"], main a[href*="/artist/"]'))
-        .map((a) => (a.textContent || '').trim())
-        .filter(Boolean);
-      if (pageArtists.length > 0) artist = [...new Set(pageArtists)].slice(0, 3).join(', ');
-    }
-    if (!art) {
-      const heroImg = document.querySelector('main img[src*="i.scdn.co"], main img');
-      if (heroImg?.src) art = heroImg.src;
-    }
-    return { url: trackUrl || window.location.href, title, artist, art };
+    if (!artist) artist = heroArtist;
+    if (!art) art = heroArt;
+    return { url: trackUrl || window.location.href, title, artist, art, queue: pageQueue };
   };
 
   let lastBridgeClickAt = 0;
   const triggerBridgePlay = (ctx) => {
     const now = Date.now();
-    if (now - lastBridgeClickAt < 450) return;
+    if (now - lastBridgeClickAt < 420) return;
     lastBridgeClickAt = now;
     scheduleBurstSuppression();
+    window.__braveSpotifyBridgeSync({
+      active: true,
+      status: 'resolving',
+      title: ctx?.title || 'Loading track...',
+      artist: ctx?.artist || 'Spotify',
+      art: ctx?.art || '',
+      trackUrl: ctx?.url || window.location.href,
+    });
     postGuestMessage({
       type: 'spotify_play',
       url: ctx?.url || window.location.href,
       title: ctx?.title || '',
       artist: ctx?.artist || '',
       art: ctx?.art || '',
+      queue: Array.isArray(ctx?.queue) ? ctx.queue : [],
     });
+  };
+
+  const computeBarRatio = (barEl, clientX) => {
+    const rect = barEl?.getBoundingClientRect?.();
+    if (!rect || rect.width <= 0) return null;
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  };
+
+  const handleBridgeTransportControl = (testId, ev) => {
+    const st = window.__braveSpotifyBridgeState || {};
+    if (testId === 'control-button-playpause') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (st.active || st.title) {
+        postGuestMessage({ type: 'spotify_control', action: 'toggle' });
+      } else {
+        const ctx = extractTrackFromElement(document.querySelector('[data-testid="now-playing-bar"]') || document.body, null);
+        if (ctx.title || ctx.url) triggerBridgePlay(ctx);
+      }
+      return true;
+    }
+    if (testId === 'control-button-skip-forward') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      postGuestMessage({ type: 'spotify_control', action: 'next' });
+      return true;
+    }
+    if (testId === 'control-button-skip-back') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      postGuestMessage({ type: 'spotify_control', action: 'prev' });
+      return true;
+    }
+    if (testId === 'control-button-shuffle') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      postGuestMessage({ type: 'spotify_control', action: 'shuffle' });
+      return true;
+    }
+    if (testId === 'control-button-repeat') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      postGuestMessage({ type: 'spotify_control', action: 'repeat' });
+      return true;
+    }
+    if (testId === 'volume-bar-toggle-mute-button') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      postGuestMessage({ type: 'spotify_control', action: 'mute' });
+      return true;
+    }
+    return false;
   };
 
   const wirePlaybackBridge = () => {
     if (window.__braveSpotifyBridgeEventsWired) return;
     window.__braveSpotifyBridgeEventsWired = true;
 
+    // Pre-empt disabled buttons before click suppression kicks in.
+    document.addEventListener('pointerdown', (ev) => {
+      if (!useBridgePlayback()) return;
+      try {
+        enableTransportControls();
+        const inlineSeek = ev.target?.closest?.('#brave-sp-inline-seek');
+        if (inlineSeek) {
+          const ratio = computeBarRatio(inlineSeek, ev.clientX);
+          if (ratio !== null) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            postGuestMessage({ type: 'spotify_control', action: `seek:${ratio.toFixed(4)}` });
+            return;
+          }
+        }
+        const progBar = ev.target?.closest?.('[data-testid="playback-progressbar"]');
+        if (progBar && (window.__braveSpotifyBridgeState?.active || window.__braveSpotifyBridgeState?.title)) {
+          const ratio = computeBarRatio(progBar, ev.clientX);
+          if (ratio !== null) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            postGuestMessage({ type: 'spotify_control', action: `seek:${ratio.toFixed(4)}` });
+            return;
+          }
+        }
+        const volBar = ev.target?.closest?.('[data-testid="volume-bar"]');
+        if (volBar) {
+          const ratio = computeBarRatio(volBar, ev.clientX);
+          if (ratio !== null) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            postGuestMessage({ type: 'spotify_control', action: `volume:${ratio.toFixed(3)}` });
+            return;
+          }
+        }
+      } catch (_) {}
+    }, true);
+
     document.addEventListener('click', (ev) => {
       try {
+        const dlBtn = ev.target?.closest?.('#brave-sp-dl-current');
+        if (dlBtn) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const st = window.__braveSpotifyBridgeState || {};
+          postGuestMessage({
+            type: 'spotify_download',
+            url: st.trackUrl || window.location.href,
+          });
+          return;
+        }
+
+        const inlineActionBtn = ev.target?.closest?.('[data-brave-sp-action]');
+        if (inlineActionBtn) {
+          const action = inlineActionBtn.getAttribute('data-brave-sp-action');
+          if (action) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            postGuestMessage({ type: 'spotify_control', action });
+            return;
+          }
+        }
+
+        if (!useBridgePlayback()) return;
+
+        const ctrlBtn = ev.target?.closest?.(
+          '[data-testid="control-button-playpause"], [data-testid="control-button-skip-forward"], [data-testid="control-button-skip-back"], [data-testid="control-button-shuffle"], [data-testid="control-button-repeat"], [data-testid="volume-bar-toggle-mute-button"]'
+        );
+        if (ctrlBtn) {
+          const testId = ctrlBtn.getAttribute('data-testid') || '';
+          if (handleBridgeTransportControl(testId, ev)) return;
+        }
+
+        // Single-click on track # / play cell inside any tracklist row plays that track immediately.
+        const indexCell = ev.target?.closest?.('[data-testid="tracklist-row"] [aria-colindex="1"], [role="row"] [aria-colindex="1"]');
+        if (indexCell) {
+          const row = indexCell.closest('[data-testid="tracklist-row"], [role="row"]');
+          const ctx = extractTrackFromElement(row, indexCell.querySelector('button'));
+          if (ctx.title || ctx.url) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            triggerBridgePlay(ctx);
+            return;
+          }
+        }
+
         const btn = ev.target?.closest?.(
-          'button[data-testid="play-button"], [data-testid="action-bar-row"] button[data-testid="play-button"], [data-testid="tracklist-row"] button, [role="row"] button, button[data-testid="control-button-playpause"], button[data-testid="control-button-skip-forward"], button[data-testid="control-button-skip-back"], button[aria-label^="Play"]'
+          'button[data-testid="play-button"], [data-testid="play-button"], [data-testid="action-bar-row"] button[data-testid="play-button"], [data-testid="tracklist-row"] button, [role="row"] button, button[aria-label^="Play"], button[aria-label^="Pause"]'
         );
         if (!btn) return;
         const testId = btn.getAttribute('data-testid') || '';
         const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
-
-        if (window.__braveSpotifyBridgeState?.active) {
-          if (testId === 'control-button-playpause') {
-            ev.preventDefault();
-            ev.stopPropagation();
-            postGuestMessage({ type: 'spotify_control', action: 'toggle' });
-            return;
-          }
-          if (testId === 'control-button-skip-forward') {
-            ev.preventDefault();
-            ev.stopPropagation();
-            postGuestMessage({ type: 'spotify_control', action: 'next' });
-            return;
-          }
-          if (testId === 'control-button-skip-back') {
-            ev.preventDefault();
-            ev.stopPropagation();
-            postGuestMessage({ type: 'spotify_control', action: 'prev' });
-            return;
-          }
-        }
 
         if (
           btn.closest('[data-testid="tracklist-row"], [role="row"]') &&
@@ -772,26 +1431,33 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
 
         const ctx = extractTrackFromElement(btn, btn);
         if (!ctx.url && !ctx.title) return;
-        scheduleBurstSuppression();
-        if (window.__braveSpotifyDrmBlocked) {
-          ev.preventDefault();
-          ev.stopPropagation();
-          triggerBridgePlay(ctx);
-        }
+        ev.preventDefault();
+        ev.stopPropagation();
+        triggerBridgePlay(ctx);
       } catch (_) {}
     }, true);
 
     document.addEventListener('dblclick', (ev) => {
       try {
+        if (!useBridgePlayback()) return;
         const row = ev.target?.closest?.('[data-testid="tracklist-row"], [role="row"]');
         if (!row) return;
         const ctx = extractTrackFromElement(row, row.querySelector('button[data-testid="play-button"], button[aria-label^="Play"]'));
         if (!ctx.url && !ctx.title) return;
-        scheduleBurstSuppression();
-        if (window.__braveSpotifyDrmBlocked) {
-          ev.preventDefault();
-          ev.stopPropagation();
-          triggerBridgePlay(ctx);
+        ev.preventDefault();
+        ev.stopPropagation();
+        triggerBridgePlay(ctx);
+      } catch (_) {}
+    }, true);
+
+    // Silence Spotify's own failed internal media elements when Brave Audio Bridge handles playback.
+    document.addEventListener('play', (ev) => {
+      try {
+        if (!useBridgePlayback()) return;
+        const media = ev.target;
+        if (media && (media.tagName === 'AUDIO' || media.tagName === 'VIDEO')) {
+          media.muted = true;
+          try { media.pause(); } catch (_) {}
         }
       } catch (_) {}
     }, true);
@@ -799,15 +1465,18 @@ const SPOTIFY_NAVBAR_FIX_SCRIPT: &str = r#"
 
   const boot = () => {
     suppressUnwantedPlayerWidgets();
+    enableTransportControls();
     wirePlaybackBridge();
     const obs = new MutationObserver(() => {
+      enableTransportControls();
       scheduleMaintenance();
     });
     if (document.body) {
-      obs.observe(document.body, { childList: true, subtree: true });
+      obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'aria-disabled'] });
     }
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && !window.__BRAVE_TAB_SUSPENDED__) {
+        enableTransportControls();
         scheduleMaintenance();
       }
     });
@@ -831,9 +1500,41 @@ enum GuestBridgeCommand {
         title: String,
         artist: String,
         art: String,
+        queue: Vec<Value>,
     },
     SpotifyControl(String),
     SpotifyDownload(String),
+}
+
+fn normalize_dom_queue_items(items: &[Value], fallback_url: &str, fallback_art: &str) -> Vec<Value> {
+    let mut out = Vec::new();
+    for item in items.iter().take(50) {
+        let t = item.get("title").and_then(|v| v.as_str()).unwrap_or("").trim();
+        if t.is_empty() {
+            continue;
+        }
+        let a = item.get("artist").and_then(|v| v.as_str()).unwrap_or("").trim();
+        let u = item
+            .get("url")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(fallback_url);
+        let art = item
+            .get("art")
+            .or_else(|| item.get("artwork"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .unwrap_or(fallback_art);
+        out.push(serde_json::json!({
+            "title": t,
+            "artist": if a.is_empty() { "Spotify" } else { a },
+            "artwork": art,
+            "url": u,
+        }));
+    }
+    out
 }
 
 fn parse_brave_guest_command(raw: &str) -> Option<GuestBridgeCommand> {
@@ -856,32 +1557,42 @@ fn parse_brave_guest_command(raw: &str) -> Option<GuestBridgeCommand> {
             .get("msg")
             .and_then(|v| v.as_str())
             .map(|m| GuestBridgeCommand::LogError(m.to_string())),
-        "spotify_play" => Some(GuestBridgeCommand::SpotifyPlay {
-            url: parsed
+        "spotify_play" => {
+            let url = parsed
                 .get("url")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .trim()
-                .to_string(),
-            title: parsed
-                .get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .trim()
-                .to_string(),
-            artist: parsed
-                .get("artist")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .trim()
-                .to_string(),
-            art: parsed
+                .to_string();
+            let art = parsed
                 .get("art")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .trim()
-                .to_string(),
-        }),
+                .to_string();
+            let queue = parsed
+                .get("queue")
+                .and_then(|v| v.as_array())
+                .map(|arr| normalize_dom_queue_items(arr, &url, &art))
+                .unwrap_or_default();
+            Some(GuestBridgeCommand::SpotifyPlay {
+                url,
+                title: parsed
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+                artist: parsed
+                    .get("artist")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+                art,
+                queue,
+            })
+        }
         "spotify_control" => parsed
             .get("action")
             .and_then(|v| v.as_str())
@@ -921,13 +1632,14 @@ fn handle_brave_guest_command(app: &AppHandle, label: &str, cmd: GuestBridgeComm
             title,
             artist,
             art,
+            queue,
         } => {
             let track_url = if url.is_empty() {
                 get_webview_url("spotify-webview".to_string())
             } else {
                 url
             };
-            spawn_spotify_bridge_play(app.clone(), track_url, title, artist, art);
+            spawn_spotify_bridge_play(app.clone(), track_url, title, artist, art, queue);
         }
         GuestBridgeCommand::SpotifyControl(action) => {
             if !action.is_empty() {
@@ -5643,12 +6355,72 @@ fn is_webkit_native_audio_ext(ext: &str) -> bool {
     )
 }
 
+fn choose_spotify_embed_track_index(meta: &SpotifyEmbedMetadata, requested_title: &str) -> Option<usize> {
+    if meta.tracks.is_empty() {
+        return None;
+    }
+    let req = requested_title.trim();
+    if req.is_empty() || req.eq_ignore_ascii_case(&meta.name) {
+        return Some(0);
+    }
+    let lower_req = req.to_lowercase();
+    if let Some(pos) = meta.tracks.iter().position(|t| t.title.to_lowercase() == lower_req) {
+        return Some(pos);
+    }
+    meta.tracks.iter().position(|t| {
+        let lower_t = t.title.to_lowercase();
+        lower_t.contains(&lower_req) || lower_req.contains(&lower_t)
+    })
+}
+
+fn build_bridge_ready_payload(
+    port: u16,
+    served_rel_or_name: &str,
+    is_bridge_subdir: bool,
+    title: &str,
+    artist: &str,
+    artwork: &str,
+    track_url: &str,
+    cached: bool,
+    queue: Vec<Value>,
+) -> Value {
+    let encoded = if let Some(sub) = served_rel_or_name.strip_prefix("__bridge/") {
+        format!("__bridge/{}", percent_encode(sub))
+    } else if is_bridge_subdir {
+        format!("__bridge/{}", percent_encode(served_rel_or_name))
+    } else {
+        percent_encode(served_rel_or_name)
+    };
+    serde_json::json!({
+        "success": true,
+        "streamUrl": format!("http://127.0.0.1:{port}/{encoded}"),
+        "title": title,
+        "artist": if artist.is_empty() { "Spotify".to_string() } else { artist.to_string() },
+        "artwork": artwork,
+        "trackUrl": track_url,
+        "cached": cached,
+        "queue": queue
+    })
+}
+
+fn find_cached_spotify_bridge_file(cache_dir: &std::path::Path, stem: &str) -> Option<String> {
+    for ext in ["webm", "opus", "ogg", "mp3", "flac", "wav"] {
+        let candidate_name = format!("{stem}.{ext}");
+        let candidate = cache_dir.join(&candidate_name);
+        if candidate.exists() && candidate.metadata().map(|m| m.len() > 8192).unwrap_or(false) {
+            return Some(candidate_name);
+        }
+    }
+    None
+}
+
 fn resolve_spotify_playable_stream(
     app: &AppHandle,
     track_url: &str,
     raw_title: &str,
     raw_artist: &str,
     raw_artwork: &str,
+    dom_queue: &[Value],
 ) -> Result<Value, String> {
     let port = STREAM_SERVER_PORT.load(Ordering::SeqCst);
     if port == 0 {
@@ -5659,7 +6431,35 @@ fn resolve_spotify_playable_stream(
     let mut eff_artist = raw_artist.trim().to_string();
     let mut eff_artwork = raw_artwork.trim().to_string();
     let mut eff_duration: i64 = 0;
-    let mut queue_payload: Vec<Value> = Vec::new();
+    let mut queue_payload: Vec<Value> = dom_queue.to_vec();
+
+    // Fast path: if DOM already supplied exact track metadata (not an album/playlist hero) and we already have a cached or local match, return immediately without network latency.
+    let cache_dir = spotify_bridge_cache_dir(app);
+    let is_container_url = track_url.contains("/album/") || track_url.contains("/playlist/") || track_url.contains("/artist/");
+    if !eff_title.is_empty() && !eff_artist.is_empty() && (!is_container_url || !queue_payload.is_empty()) {
+        let (clean_t, clean_a) = clean_track_metadata(&eff_title, &eff_artist);
+        let display_artist = if clean_a == "Brave Music" || clean_a.is_empty() {
+            eff_artist.clone()
+        } else {
+            clean_a
+        };
+        if !clean_t.is_empty() && clean_t != "Unknown Title" {
+            if let Some((local_filename, _, local_thumb)) = find_local_playable_match(app, &clean_t, &display_artist) {
+                let mut served = local_filename.clone();
+                if let Some(full) = resolve_audio_file(app, &local_filename) {
+                    if let Some(transcoded) = ensure_snap_playable_audio(app, &full) {
+                        served = transcoded;
+                    }
+                }
+                let art = if eff_artwork.is_empty() { local_thumb } else { eff_artwork.clone() };
+                return Ok(build_bridge_ready_payload(port, &served, false, &clean_t, &display_artist, &art, track_url, true, queue_payload));
+            }
+            let fast_stem = format!("sp_{}", stable_hash_hex(&format!("{}|{}", clean_t.to_lowercase(), display_artist.to_lowercase())));
+            if let Some(cached_name) = find_cached_spotify_bridge_file(&cache_dir, &fast_stem) {
+                return Ok(build_bridge_ready_payload(port, &cached_name, true, &clean_t, &display_artist, &eff_artwork, track_url, true, queue_payload));
+            }
+        }
+    }
 
     let meta_opt = if track_url.contains("open.spotify.com/")
         || track_url.starts_with("spotify:")
@@ -5672,26 +6472,20 @@ fn resolve_spotify_playable_stream(
 
     if let Some(ref meta) = meta_opt {
         if !meta.tracks.is_empty() {
-            let chosen = if !eff_title.is_empty() {
-                let lower_req = eff_title.to_lowercase();
-                meta.tracks
-                    .iter()
-                    .find(|t| t.title.to_lowercase() == lower_req)
-                    .unwrap_or(&meta.tracks[0])
-            } else {
-                &meta.tracks[0]
-            };
-            eff_title = chosen.title.clone();
-            eff_artist = chosen.artist.clone();
-            eff_duration = chosen.duration as i64;
-            if eff_artwork.is_empty() {
-                eff_artwork = if chosen.thumbnail.is_empty() {
-                    meta.cover_url.clone()
-                } else {
-                    chosen.thumbnail.clone()
-                };
+            if let Some(idx) = choose_spotify_embed_track_index(meta, &eff_title) {
+                let chosen = &meta.tracks[idx];
+                eff_title = chosen.title.clone();
+                eff_artist = chosen.artist.clone();
+                eff_duration = chosen.duration as i64;
+                if eff_artwork.is_empty() {
+                    eff_artwork = if chosen.thumbnail.is_empty() {
+                        meta.cover_url.clone()
+                    } else {
+                        chosen.thumbnail.clone()
+                    };
+                }
             }
-            if meta.tracks.len() > 1 {
+            if meta.tracks.len() > 1 && queue_payload.is_empty() {
                 for t in meta.tracks.iter().take(50) {
                     queue_payload.push(serde_json::json!({
                         "title": t.title,
@@ -5722,45 +6516,17 @@ fn resolve_spotify_playable_stream(
                 served = transcoded;
             }
         }
-        let encoded = if let Some(sub) = served.strip_prefix("__bridge/") {
-            format!("__bridge/{}", percent_encode(sub))
-        } else {
-            percent_encode(&served)
-        };
         let art = if eff_artwork.is_empty() { local_thumb } else { eff_artwork };
-        return Ok(serde_json::json!({
-            "success": true,
-            "streamUrl": format!("http://127.0.0.1:{port}/{encoded}"),
-            "title": clean_t,
-            "artist": if display_artist.is_empty() { "Spotify".to_string() } else { display_artist },
-            "artwork": art,
-            "trackUrl": track_url,
-            "cached": true,
-            "queue": queue_payload
-        }));
+        return Ok(build_bridge_ready_payload(port, &served, false, &clean_t, &display_artist, &art, track_url, true, queue_payload));
     }
 
-    let cache_dir = spotify_bridge_cache_dir(app);
     let stem = format!(
         "sp_{}",
         stable_hash_hex(&format!("{}|{}", clean_t.to_lowercase(), display_artist.to_lowercase()))
     );
 
-    for ext in ["webm", "opus", "ogg", "mp3"] {
-        let candidate_name = format!("{stem}.{ext}");
-        let candidate = cache_dir.join(&candidate_name);
-        if candidate.exists() && candidate.metadata().map(|m| m.len() > 8192).unwrap_or(false) {
-            return Ok(serde_json::json!({
-                "success": true,
-                "streamUrl": format!("http://127.0.0.1:{port}/__bridge/{}", percent_encode(&candidate_name)),
-                "title": clean_t,
-                "artist": if display_artist.is_empty() { "Spotify".to_string() } else { display_artist },
-                "artwork": eff_artwork,
-                "trackUrl": track_url,
-                "cached": true,
-                "queue": queue_payload
-            }));
-        }
+    if let Some(candidate_name) = find_cached_spotify_bridge_file(&cache_dir, &stem) {
+        return Ok(build_bridge_ready_payload(port, &candidate_name, true, &clean_t, &display_artist, &eff_artwork, track_url, true, queue_payload));
     }
 
     let ytdlp_bin = resolve_bundled_bin("yt-dlp").unwrap_or_else(|| PathBuf::from("yt-dlp"));
@@ -5772,14 +6538,13 @@ fn resolve_spotify_playable_stream(
     let out_tpl = cache_dir.join(format!("{stem}.%(ext)s"));
     let mut cmd = create_ytdlp_base_command(&ytdlp_bin, js_runtime.as_deref(), ffmpeg_dir.as_ref());
     cmd.args([
-        "--check-formats",
         "--concurrent-fragments",
         "4",
         "--no-playlist",
         "--socket-timeout",
         "10",
         "-f",
-        "bestaudio[ext=webm][acodec=opus]/bestaudio[ext=ogg]/bestaudio[ext=mp3]/18/best[ext=mp4]/bestaudio/best",
+        "bestaudio[acodec=opus][ext=webm]/bestaudio[ext=webm]/bestaudio[ext=ogg]/bestaudio[ext=mp3]/bestaudio[ext=m4a]/bestaudio/18/best",
         "-o",
     ])
     .arg(out_tpl.to_string_lossy().as_ref())
@@ -5857,16 +6622,17 @@ fn resolve_spotify_playable_stream(
     })?;
     prune_spotify_bridge_cache(&cache_dir, 15);
 
-    Ok(serde_json::json!({
-        "success": true,
-        "streamUrl": format!("http://127.0.0.1:{port}/__bridge/{}", percent_encode(&final_name)),
-        "title": clean_t,
-        "artist": if display_artist.is_empty() { "Spotify".to_string() } else { display_artist },
-        "artwork": eff_artwork,
-        "trackUrl": track_url,
-        "cached": false,
-        "queue": queue_payload
-    }))
+    Ok(build_bridge_ready_payload(
+        port,
+        &final_name,
+        true,
+        &clean_t,
+        &display_artist,
+        &eff_artwork,
+        track_url,
+        false,
+        queue_payload,
+    ))
 }
 
 fn spawn_spotify_bridge_play(
@@ -5875,6 +6641,7 @@ fn spawn_spotify_bridge_play(
     title: String,
     artist: String,
     artwork: String,
+    dom_queue: Vec<Value>,
 ) {
     let key = format!("{}|{}|{}", track_url.trim(), title.trim(), artist.trim());
     let now_ms = std::time::SystemTime::now()
@@ -5891,7 +6658,7 @@ fn spawn_spotify_bridge_play(
         *guard = (key, now_ms);
     }
 
-    eprintln!("[SpotifyBridge] trigger url={track_url} title={title} artist={artist}");
+    eprintln!("[SpotifyBridge] trigger url={track_url} title={title} artist={artist} queue_len={}", dom_queue.len());
 
     let _ = app.emit(
         "spotify-bridge-status",
@@ -5905,7 +6672,7 @@ fn spawn_spotify_bridge_play(
     );
 
     std::thread::spawn(move || {
-        match resolve_spotify_playable_stream(&app, &track_url, &title, &artist, &artwork) {
+        match resolve_spotify_playable_stream(&app, &track_url, &title, &artist, &artwork, &dom_queue) {
             Ok(payload) => {
                 eprintln!(
                     "[SpotifyBridge] ready streamUrl={}",
@@ -5940,7 +6707,7 @@ async fn play_spotify_bridge(
     let art = artwork.unwrap_or_default();
     let app_clone = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        resolve_spotify_playable_stream(&app_clone, &url, &t, &a, &art)
+        resolve_spotify_playable_stream(&app_clone, &url, &t, &a, &art, &[])
     })
     .await
     .map_err(|e| format!("Spotify bridge task error: {e}"))?
@@ -6074,7 +6841,7 @@ fn handle_shield_or_bridge_request(
             let title = params.get("title").cloned().unwrap_or_default();
             let artist = params.get("artist").cloned().unwrap_or_default();
             let art = params.get("art").cloned().unwrap_or_default();
-            spawn_spotify_bridge_play(app.clone(), track_url, title, artist, art);
+            spawn_spotify_bridge_play(app.clone(), track_url, title, artist, art, Vec::new());
         } else if path_and_query.contains("spotify_control=") {
             let params = parse_query_params(path_and_query);
             if let Some(action) = params.get("spotify_control") {
@@ -6635,13 +7402,19 @@ mod tests {
         );
         assert_eq!(
             parse_brave_guest_command(
-                r#"{"type":"spotify_play","url":"https://open.spotify.com/track/123","title":"Blinding Lights","artist":"The Weeknd","art":"https://i.scdn.co/img.jpg"}"#
+                r#"{"type":"spotify_play","url":"https://open.spotify.com/track/123","title":"Blinding Lights","artist":"The Weeknd","art":"https://i.scdn.co/img.jpg","queue":[{"title":"Save Your Tears","artist":"The Weeknd"}]}"#
             ),
             Some(GuestBridgeCommand::SpotifyPlay {
                 url: "https://open.spotify.com/track/123".to_string(),
                 title: "Blinding Lights".to_string(),
                 artist: "The Weeknd".to_string(),
                 art: "https://i.scdn.co/img.jpg".to_string(),
+                queue: vec![serde_json::json!({
+                    "title": "Save Your Tears",
+                    "artist": "The Weeknd",
+                    "artwork": "https://i.scdn.co/img.jpg",
+                    "url": "https://open.spotify.com/track/123",
+                })],
             })
         );
         assert_eq!(
@@ -6649,10 +7422,40 @@ mod tests {
             Some(GuestBridgeCommand::SpotifyControl("toggle".to_string()))
         );
         assert_eq!(
+            parse_brave_guest_command(r#"{"type":"spotify_control","action":"seek:0.4250"}"#),
+            Some(GuestBridgeCommand::SpotifyControl("seek:0.4250".to_string()))
+        );
+        assert_eq!(
             parse_brave_guest_command(r#"{"type":"spotify_download","url":"https://open.spotify.com/track/123"}"#),
             Some(GuestBridgeCommand::SpotifyDownload("https://open.spotify.com/track/123".to_string()))
         );
         assert_eq!(parse_brave_guest_command("not json"), None);
+    }
+
+    #[test]
+    fn selects_matching_track_without_overwriting_distinct_song() {
+        let meta = super::SpotifyEmbedMetadata {
+            kind: "album".to_string(),
+            name: "Safar".to_string(),
+            cover_url: "https://i.scdn.co/safar.jpg".to_string(),
+            tracks: vec![
+                super::SpotifyEmbedTrack {
+                    title: "Milaap".to_string(),
+                    artist: "Bayaan".to_string(),
+                    duration: 308,
+                    thumbnail: String::new(),
+                },
+                super::SpotifyEmbedTrack {
+                    title: "Darya".to_string(),
+                    artist: "Bayaan".to_string(),
+                    duration: 62,
+                    thumbnail: String::new(),
+                },
+            ],
+        };
+        assert_eq!(super::choose_spotify_embed_track_index(&meta, "Safar"), Some(0));
+        assert_eq!(super::choose_spotify_embed_track_index(&meta, "Darya"), Some(1));
+        assert_eq!(super::choose_spotify_embed_track_index(&meta, "Unlisted Song"), None);
     }
 
     #[test]
